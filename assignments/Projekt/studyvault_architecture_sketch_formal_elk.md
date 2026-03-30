@@ -54,6 +54,17 @@ Keycloak         File Service    Catalog Service   Search Service   Activity Ser
                       |
                       v
              Elasticsearch + Logstash + Kibana
+
+Izvorna koda v repozitoriju
+    |
+    v
+GitHub Actions CI/CD Pipeline
+    |
+    v
+Docker Registry
+    |
+    v
+Docker Compose Deployment Host
 ```
 
 ---
@@ -79,6 +90,9 @@ graph TD
     O[Logstash]
     P[Elasticsearch]
     Q[Kibana]
+    R[GitHub Actions CI/CD Pipeline]
+    S[Docker Registry]
+    T[Docker Compose Deployment Host]
 
     A --> B
     B --> C
@@ -115,6 +129,16 @@ graph TD
     J --> O
     O --> P
     Q --> P
+
+    R --> S
+    S --> T
+    T --> D
+    T --> E
+    T --> F
+    T --> G
+    T --> H
+    T --> I
+    T --> J
 ```
 
 ---
@@ -386,6 +410,26 @@ Tak pristop zmanjsa neposredno odvisnost med storitvami in omogoca bolj pregledn
 
 ---
 
+### 3.16 CI/CD Pipeline
+
+**Uporabljena storitev:** `GitHub Actions`
+
+**Zakaj:** projekt vsebuje vec komponent, ki jih je smiselno preveriti, zgraditi in pripraviti za objavo na poenoten nacin. `CI/CD` zmanjsa rocno delo, zmanjsa moznost napak pri dostavi in omogoca bolj pregledno demonstracijo celotnega razvojnega procesa.
+
+**Kako:** `GitHub Actions` se sprozi ob `pull request` in ob `push` na glavno vejo. V validacijskem delu izvede osnovne korake, kot so preverjanje kode, poganjanje testov in build frontenda. Nato lahko zgradi `Docker` slike za frontend, `Nginx` in posamezne mikrostoritve, jih objavi v `Docker Registry` ter na ciljnem `Docker Compose` hostu sprozi posodobitev storitev. Tako `CI/CD` ne sodeluje v uporabniskem request flowu, ampak skrbi za zanesljivo pripravo in dostavo runtime okolja.
+
+Glavne odgovornosti storitve:
+
+- sprozanje pipeline ob `push` in `pull request`
+- avtomatizirano preverjanje kode in testov
+- build frontenda in mikrostoritev
+- gradnja `Docker` slik
+- objava slik v `Docker Registry`
+- avtomatizirana dostava na `Docker Compose` host
+- priprava ponovljivega postopka za demo in produkcijsko namestitev
+
+---
+
 ## 4. Razmejitev odgovornosti po komponentah
 
 ### 4.1 Kaj uporablja Cloudflare
@@ -503,6 +547,27 @@ To so fleksibilni dokumentni zapisi, ki jih je smiselno hraniti izven glavnega t
 
 ---
 
+### 4.8 Kaj izvaja CI/CD pipeline
+
+`CI/CD pipeline` v sistemu izvaja:
+
+- avtomatizirano preverjanje sprememb ob `pull request`
+- build frontenda in backend storitev
+- gradnjo in oznacevanje `Docker` slik
+- objavo slik v `Docker Registry`
+- posodobitev ciljnega `Docker Compose` okolja po uspesnem buildu
+
+`CI/CD pipeline` ne izvaja:
+
+- poslovne logike aplikacije
+- avtentikacije uporabnikov
+- runtime usmerjanja prometa
+- shranjevanja datotek ali metapodatkov
+
+Njegova naloga je avtomatizirati prehod od spremembe v repozitoriju do posodobljene zagnane verzije sistema.
+
+---
+
 ## 5. Potek zahtevkov skozi sistem
 
 ### 5.1 Prijava uporabnika
@@ -556,6 +621,18 @@ To so fleksibilni dokumentni zapisi, ki jih je smiselno hraniti izven glavnega t
 2. Izvorna storitev objavi dogodek v `RabbitMQ` ali poklice interni activity endpoint.
 3. `Activity Service` shrani zapis v `MongoDB`.
 4. Frontend lahko preko `GET /api/activity/me` prikaze zadnje dogodke.
+
+---
+
+### 5.6 Potek CI/CD dostave
+
+1. Razvijalec potisne spremembo v repozitorij ali odpre `pull request`.
+2. `GitHub Actions` zazna dogodek in sprozi ustrezen workflow.
+3. Pipeline izvede korake za preverjanje kode, testiranje in build frontenda.
+4. Ob `push` na glavno vejo se zgradijo `Docker` slike za frontend, `Nginx` in mikrostoritve.
+5. Zgrajene slike se objavijo v `Docker Registry`.
+6. Na ciljnem `Docker Compose` hostu se sprozi posodobitev storitev.
+7. Posodobljeni vsebniki se ponovno zazenejo in nova verzija sistema postane dosegljiva prek `Nginx`.
 
 ---
 
@@ -732,6 +809,8 @@ Za lokalni zagon projekta v `docker-compose` morajo biti predvidene naslednje st
 
 V produkcijskem okolju je pred temi storitvami se zunanji `Cloudflare`, ki pa ni del lokalnega `docker-compose` zagona.
 
+`GitHub Actions CI/CD Pipeline` ni del lokalnega `docker-compose` seznama, ker predstavlja zunanji avtomatizacijski sloj, ki storitve preveri, zgradi in dostavi v ciljno okolje.
+
 ---
 
 ## 8. Zakljucna arhitekturna logika
@@ -747,5 +826,6 @@ Glavna logika sistema je naslednja:
 - `RabbitMQ` povezuje storitve z asinhronimi dogodki
 - `PostgreSQL`, `MongoDB` in `MinIO` hranijo razlicne tipe podatkov po nacelu prave shrambe za pravi namen
 - `ELK stack` skrbi za centralizirano belezenje in opazovanje delovanja sistema
+- `GitHub Actions` avtomatizira preverjanje, build in dostavo sistema proti `Docker Compose` okolju
 
 Taksna zasnova je dovolj obsezna, moderna in argumentirana za projekt pri predmetu NUKS, hkrati pa se vedno dovolj realisticna, da jo je mogoce predstaviti in postopno implementirati z `Docker Compose`.
