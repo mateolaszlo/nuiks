@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI
+
+from studyvault_backend_common.logging import configure_logging, install_request_logging
+
+from app.api.routes import build_router
+from app.core.config import get_settings
+from app.repositories.activity import InMemoryActivityRepository, MongoActivityRepository
+from app.services.activity import ActivityService
+
+
+def create_app(repository=None) -> FastAPI:
+    settings = get_settings()
+    configure_logging(settings.service_name)
+
+    if repository is None:
+        repository = MongoActivityRepository(settings.activity_mongodb_url, settings.activity_database_name)
+    if hasattr(repository, "ensure_indexes"):
+        repository.ensure_indexes()
+
+    service = ActivityService(repository)
+    app = FastAPI(title="StudyVault Activity Service")
+    install_request_logging(app)
+    app.include_router(build_router(service))
+    app.state.repository = repository
+    return app
+
+
+app = FastAPI(title="StudyVault Activity Service placeholder")
+if os.environ.get("STUDYVAULT_SKIP_APP_BOOTSTRAP", "false").lower() != "true":
+    app = create_app()
+
+
+__all__ = ["app", "create_app", "InMemoryActivityRepository"]
