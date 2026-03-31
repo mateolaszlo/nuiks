@@ -18,7 +18,7 @@ security = HTTPBearer(auto_error=False)
 
 class AuthSettings(BaseModel):
     issuer: str
-    audience: str
+    audience: str | None = None
     jwks_url: str
     auth_disabled: bool = False
 
@@ -85,8 +85,9 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
                 token,
                 key,
                 algorithms=[unverified_header.get("alg", "RS256")],
-                audience=settings.audience,
                 issuer=settings.issuer,
+                options={"verify_aud": settings.audience is not None},
+                audience=settings.audience,
             )
         except Exception as exc:  # pragma: no cover - exact library exception is not important
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
