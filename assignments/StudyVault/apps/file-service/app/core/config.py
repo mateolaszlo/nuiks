@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     service_name: str = "file-service"
     auth_disabled: bool = False
-    keycloak_issuer_url: str = "http://keycloak:8080/realms/studyvault"
+    keycloak_issuer_url: str = "http://localhost:8080/realms/studyvault"
     keycloak_jwks_url: str = "http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs"
     keycloak_client_id: str = "studyvault-frontend"
     internal_base_url: str = "http://nginx"

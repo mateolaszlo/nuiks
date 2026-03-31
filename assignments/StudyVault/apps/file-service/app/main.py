@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 
 from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.startup import retry_startup
 
 from app.api.routes import build_router
 from app.core.config import get_settings
@@ -25,8 +26,10 @@ def create_app(object_store=None, downstream=None) -> FastAPI:
             bucket_name=settings.file_s3_bucket,
             region_name=settings.file_s3_region,
         )
+    if hasattr(object_store, "ping"):
+        retry_startup(object_store.ping)
     if hasattr(object_store, "ensure_bucket"):
-        object_store.ensure_bucket()
+        retry_startup(object_store.ensure_bucket)
 
     if downstream is None:
         downstream = HttpDownstreamPublisher(

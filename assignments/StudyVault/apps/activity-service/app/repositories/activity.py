@@ -13,6 +13,8 @@ class ActivityRepository(Protocol):
 
     def list_events(self, owner_id: str) -> list[ActivityRecord]: ...
 
+    def ping(self) -> None: ...
+
 
 class InMemoryActivityRepository:
     def __init__(self, seed: Iterable[ActivityRecord] | None = None) -> None:
@@ -26,6 +28,9 @@ class InMemoryActivityRepository:
         records = [record for record in self._records.values() if record.owner_id == owner_id]
         return sorted(records, key=lambda item: item.created_at, reverse=True)
 
+    def ping(self) -> None:
+        return None
+
 
 class MongoActivityRepository:
     def __init__(self, mongodb_url: str, database_name: str) -> None:
@@ -34,6 +39,9 @@ class MongoActivityRepository:
 
     def ensure_indexes(self) -> None:
         self.collection.create_index([("owner_id", DESCENDING), ("created_at", DESCENDING)])
+
+    def ping(self) -> None:
+        self.client.admin.command("ping")
 
     def create_event(self, activity_record: ActivityRecord) -> ActivityRecord:
         self.collection.insert_one(activity_record.model_dump(mode="json"))

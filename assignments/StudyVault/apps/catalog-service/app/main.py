@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 
 from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.startup import retry_startup
 
 from app.api.routes import build_router
 from app.core.config import get_settings
@@ -18,8 +19,10 @@ def create_app(repository=None) -> FastAPI:
 
     if repository is None:
         repository = SqlAlchemyCatalogRepository(settings.catalog_database_url)
+    if hasattr(repository, "ping"):
+        retry_startup(repository.ping)
     if hasattr(repository, "create_tables"):
-        repository.create_tables()
+        retry_startup(repository.create_tables)
 
     service = CatalogService(repository)
     app = FastAPI(title="StudyVault Catalog Service")

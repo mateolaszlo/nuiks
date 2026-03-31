@@ -8,7 +8,6 @@ const keycloak = new Keycloak({
 
 export async function initializeAuth(): Promise<boolean> {
   return keycloak.init({
-    onLoad: "check-sso",
     pkceMethod: "S256",
     checkLoginIframe: false,
   });

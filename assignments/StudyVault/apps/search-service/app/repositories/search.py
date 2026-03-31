@@ -13,6 +13,8 @@ class SearchRepository(Protocol):
 
     def search(self, owner_id: str, query: str) -> list[FileRecord]: ...
 
+    def ping(self) -> None: ...
+
 
 class InMemorySearchRepository:
     def __init__(self, seed: Iterable[FileRecord] | None = None) -> None:
@@ -36,6 +38,9 @@ class InMemorySearchRepository:
         ]
         return sorted(matches, key=lambda item: item.created_at, reverse=True)
 
+    def ping(self) -> None:
+        return None
+
 
 class MongoSearchRepository:
     def __init__(self, mongodb_url: str, database_name: str) -> None:
@@ -44,6 +49,9 @@ class MongoSearchRepository:
 
     def ensure_indexes(self) -> None:
         self.collection.create_index([("owner_id", DESCENDING), ("created_at", DESCENDING)])
+
+    def ping(self) -> None:
+        self.client.admin.command("ping")
 
     def index_file(self, file_record: FileRecord) -> FileRecord:
         self.collection.replace_one(

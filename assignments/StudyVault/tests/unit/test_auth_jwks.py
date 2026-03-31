@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import pytest
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.testclient import TestClient
+
+from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+
+
+class FakeJwksCache:
+    async def get(self, jwks_url: str) -> dict[str, Any]:
+        return {"keys": [{"kid": "test-kid", "alg": "RS256", "kty": "RSA"}]}
+
+
+def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "user-1",
+            "email": "demo@example.com",
+            "preferred_username": "demo",
+            "realm_access": {"roles": ["user"]},
+        },
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    app = FastAPI()
+
+    @app.get("/me")
+    async def me(user=Depends(dependency)):
+        return user.model_dump()
+
+    with TestClient(app) as client:
+        response = client.get("/me", headers={"authorization": "Bearer fake-token"})
+
+    assert response.status_code == 200
+    assert response.json()["subject"] == "user-1"
+
+
+def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+
+    def raise_decode(*args, **kwargs):
+        raise ValueError("bad token")
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", raise_decode)
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
+
+    assert exc.value.status_code == 401

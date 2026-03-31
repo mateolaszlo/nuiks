@@ -4,8 +4,8 @@ import json
 from collections.abc import Iterable
 from typing import Protocol
 
-from sqlalchemy import create_engine, desc, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, desc, select, text
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from studyvault_backend_common.models import FileRecord
@@ -19,6 +19,8 @@ class CatalogRepository(Protocol):
     def list_files(self, owner_id: str) -> list[FileRecord]: ...
 
     def get_file(self, owner_id: str, file_id: str) -> FileRecord | None: ...
+
+    def ping(self) -> None: ...
 
 
 class InMemoryCatalogRepository:
@@ -39,6 +41,9 @@ class InMemoryCatalogRepository:
             return record
         return None
 
+    def ping(self) -> None:
+        return None
+
 
 class SqlAlchemyCatalogRepository:
     def __init__(self, database_url: str) -> None:
@@ -51,6 +56,10 @@ class SqlAlchemyCatalogRepository:
 
     def create_tables(self) -> None:
         Base.metadata.create_all(self.engine)
+
+    def ping(self) -> None:
+        with self.engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         with self.session_factory() as session:

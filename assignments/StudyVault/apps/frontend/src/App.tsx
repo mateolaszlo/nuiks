@@ -50,16 +50,28 @@ export default function App() {
     async function bootstrap() {
       try {
         const loggedIn = await initializeAuth();
-        setAuthenticated(loggedIn || isAuthenticated());
+        const authReady = loggedIn || isAuthenticated();
+        setAuthenticated(authReady);
         setProfileLabel(getProfileSummary());
         setAuthState("ready");
-        if (loggedIn || isAuthenticated()) {
-          await refreshDashboard();
+        setError(null);
+        if (authReady) {
+          try {
+            await refreshDashboard();
+          } catch (dashboardError) {
+            setError(
+              dashboardError instanceof Error
+                ? dashboardError.message
+                : String(dashboardError),
+            );
+          }
         }
       } catch (bootstrapError) {
         setAuthState("error");
         setError(
-          bootstrapError instanceof Error ? bootstrapError.message : "Authentication bootstrap failed",
+          bootstrapError instanceof Error
+            ? bootstrapError.message
+            : String(bootstrapError),
         );
       }
     }
@@ -106,6 +118,26 @@ export default function App() {
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleDownload(fileId: string, filename: string) {
+    try {
+      setIsBusy(true);
+      const blob = await api.downloadFile(fileId);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setError(null);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Download failed");
     } finally {
       setIsBusy(false);
     }
@@ -165,6 +197,7 @@ export default function App() {
             <label className="stack">
               <span>File</span>
               <input
+                id="upload-file"
                 type="file"
                 onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
               />
@@ -172,6 +205,7 @@ export default function App() {
             <label className="stack">
               <span>Tags</span>
               <input
+                id="upload-tags"
                 type="text"
                 placeholder="math, notes, finals"
                 value={tagInput}
@@ -205,7 +239,13 @@ export default function App() {
                   <strong>{file.filename}</strong>
                   <p>{file.tags.join(", ") || "No tags"}</p>
                 </div>
-                <a href={`/api/files/${file.file_id}/download`}>Download</a>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void handleDownload(file.file_id, file.filename)}
+                >
+                  Download
+                </button>
               </div>
             ))}
           </div>
@@ -224,7 +264,13 @@ export default function App() {
                   <p>{file.mime_type} • {file.size} bytes</p>
                   <p>{formatDate(file.created_at)}</p>
                 </div>
-                <a href={`/api/files/${file.file_id}/download`}>Download</a>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void handleDownload(file.file_id, file.filename)}
+                >
+                  Download
+                </button>
               </div>
             ))}
           </div>

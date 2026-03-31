@@ -61,5 +61,7 @@ def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     yield
 
     _purge_app_modules()
+
+
 if str(COMMON_PATH) not in sys.path:
     sys.path.insert(0, str(COMMON_PATH))

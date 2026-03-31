@@ -42,4 +42,19 @@ export class ApiClient {
       body,
     });
   }
+
+  async downloadFile(fileId: string): Promise<Blob> {
+    const token = await this.getToken();
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(`/api/files/${fileId}/download`, { headers });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || `Request failed with status ${response.status}`);
+    }
+    return await response.blob();
+  }
 }

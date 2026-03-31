@@ -13,6 +13,8 @@ class ObjectStoreRepository(Protocol):
 
     def get(self, object_key: str) -> bytes: ...
 
+    def ping(self) -> None: ...
+
 
 class InMemoryObjectStoreRepository:
     def __init__(self) -> None:
@@ -23,6 +25,9 @@ class InMemoryObjectStoreRepository:
 
     def get(self, object_key: str) -> bytes:
         return self._objects[object_key]
+
+    def ping(self) -> None:
+        return None
 
 
 class S3ObjectStoreRepository:
@@ -48,6 +53,9 @@ class S3ObjectStoreRepository:
         existing = self.client.list_buckets().get("Buckets", [])
         if not any(bucket["Name"] == self.bucket_name for bucket in existing):
             self.client.create_bucket(Bucket=self.bucket_name)
+
+    def ping(self) -> None:
+        self.client.list_buckets()
 
     def store(self, file_record: FileRecord, content: bytes) -> None:
         self.client.put_object(

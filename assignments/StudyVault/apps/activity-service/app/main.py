@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 
 from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.startup import retry_startup
 
 from app.api.routes import build_router
 from app.core.config import get_settings
@@ -18,8 +19,10 @@ def create_app(repository=None) -> FastAPI:
 
     if repository is None:
         repository = MongoActivityRepository(settings.activity_mongodb_url, settings.activity_database_name)
+    if hasattr(repository, "ping"):
+        retry_startup(repository.ping)
     if hasattr(repository, "ensure_indexes"):
-        repository.ensure_indexes()
+        retry_startup(repository.ensure_indexes)
 
     service = ActivityService(repository)
     app = FastAPI(title="StudyVault Activity Service")

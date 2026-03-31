@@ -4,6 +4,7 @@ from .auth import AuthSettings, AuthenticatedUserDependency, build_auth_dependen
 from .http import JsonServiceClient, ServiceClientError
 from .logging import configure_logging, get_logger, install_request_logging
 from .models import ActivityRecord, AuthenticatedUser, FileRecord, UploadActivityEvent
+from .startup import retry_startup
 
 __all__ = [
     "ActivityRecord",
@@ -18,4 +19,5 @@ __all__ = [
     "configure_logging",
     "get_logger",
     "install_request_logging",
+    "retry_startup",
 ]
