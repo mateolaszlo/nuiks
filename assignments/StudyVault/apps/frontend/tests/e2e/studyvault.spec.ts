@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:8080";
-const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL ?? "http://127.0.0.1:9200";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8080";
+const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL ?? "http://localhost:9200";
 
 test("login, upload, search, activity, download, and log ingestion", async ({ page, request }) => {
   const uniqueId = Date.now().toString();
@@ -18,6 +18,8 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await page.goto(BASE_URL);
   await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
   await page.getByRole("button", { name: "Log In With Keycloak" }).click();
+  await expect(page).toHaveURL(/\/realms\/studyvault\//);
+  await expect(page.locator("#username")).toBeVisible();
 
   await page.locator("#username").fill("demo");
   await page.locator("#password").fill("demo123");
