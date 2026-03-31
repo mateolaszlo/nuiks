@@ -15,7 +15,7 @@ def build_router(service: ActivityService) -> APIRouter:
     current_user_dependency = build_auth_dependency(
         lambda: AuthSettings(
             issuer=settings.keycloak_issuer_url,
-            audience=settings.keycloak_client_id,
+            audience=None,
             jwks_url=settings.keycloak_jwks_url,
             auth_disabled=settings.auth_disabled,
         )

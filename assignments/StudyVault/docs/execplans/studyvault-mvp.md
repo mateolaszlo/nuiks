@@ -17,8 +17,8 @@ The repository started as a scaffold with empty service directories. This plan t
 - [x] 2026-03-31 10:25Z Chose the initial implementation defaults: real Keycloak for auth and synchronous HTTP fan-out from `file-service` to the other services.
 - [x] 2026-03-31 22:23Z Created shared backend helpers for auth, logging, HTTP clients, and shared schemas.
 - [x] 2026-03-31 22:23Z Implemented the four FastAPI services with health checks, business endpoints, and test doubles.
-- [ ] Add the React frontend, nginx routing, docker-compose stack, and local Keycloak realm bootstrap.
-- [ ] Add automated tests, CI, smoke validation, and commit milestone checkpoints on `testing`.
+- [x] 2026-03-31 23:02Z Added the React frontend, nginx routing, docker-compose stack, and local Keycloak realm bootstrap.
+- [x] 2026-03-31 23:02Z Added automated tests, CI, smoke validation, and milestone checkpoints on `testing`.
 
 ## Surprises & Discoveries
 
@@ -30,6 +30,12 @@ The repository started as a scaffold with empty service directories. This plan t
 
 - Observation: Import-time FastAPI app construction made tests try to contact MongoDB and MinIO before fakes could be injected.
   Evidence: The implementation required a `STUDYVAULT_SKIP_APP_BOOTSTRAP` environment flag so pytest could import service modules without eager external initialization.
+
+- Observation: The available Node runtime is `v16.17.1`, which is too old for current Vite 5 packages.
+  Evidence: `npm install` warned that `vite@5.4.21` and `rollup@4.60.1` require Node 18+, so the frontend toolchain was pinned to Node-16-compatible versions before the build.
+
+- Observation: The first nginx draft only routed the public `/api/*` paths, which would have broken the upload fan-out inside Docker Compose.
+  Evidence: `file-service` publishes to `/internal/catalog/*`, `/internal/search/*`, and `/internal/activity/*`, so explicit internal gateway routes had to be added before compose validation.
 
 ## Decision Log
 
@@ -49,7 +55,7 @@ The repository started as a scaffold with empty service directories. This plan t
 
 No milestone has completed yet. The initial outcome is that the repository now has a decision-complete direction and a living document that must be updated as code lands.
 
-The first milestone is now complete for the backend foundation. The repository has a shared Python package, four FastAPI services, and eight passing pytest cases covering unit, service, and upload-flow integration behavior. Frontend, infrastructure, and CI work remain.
+The project now includes the backend services, a React frontend, local container orchestration, a Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. The remaining gap is full live-stack execution proof against pulled container images; the checked-in code, frontend build, pytest suite, and compose configuration all validate successfully in this workspace.
 
 ## Context and Orientation
 
@@ -121,8 +127,28 @@ The most important commands to preserve during implementation are:
 Keep short transcripts of successful health checks and at least one upload request in this section once those milestones complete.
 
     $ PYTHONPATH=. .venv/bin/pytest -q
-    ........                                                                 [100%]
-    8 passed in 0.99s
+    .........                                                                [100%]
+    9 passed in 1.11s
+
+    $ npm run build
+    vite v4.5.5 building for production...
+    ✓ built in 1.68s
+
+    $ docker compose -f infra/docker/compose/docker-compose.yml config
+    services:
+      frontend:
+      gateway:
+      keycloak:
+      file-service:
+      catalog-service:
+      search-service:
+      activity-service:
+      postgres:
+      mongodb:
+      minio:
+      elasticsearch:
+      logstash:
+      kibana:
 
 ## Interfaces and Dependencies
 
@@ -148,4 +174,4 @@ The backend services may expose these internal routes for compose-only fan-out:
     POST /internal/search/index
     POST /internal/activity/events
 
-Update note: revised on 2026-03-31 after the backend milestone landed so the progress log, discoveries, and artifacts match the current repository state.
+Update note: revised on 2026-03-31 after the frontend, compose, smoke-test, and CI milestones landed so the plan matches the repository and recorded validation results.
