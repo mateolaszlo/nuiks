@@ -206,5 +206,29 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-#Agents
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Environment and local tooling
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# LLMs
+.AGENTS/
 AGENTS.md
+

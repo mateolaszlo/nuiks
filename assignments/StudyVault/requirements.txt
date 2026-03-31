@@ -1,0 +1,32 @@
+# Core API stack
+fastapi>=0.116,<1.0
+uvicorn[standard]>=0.35,<1.0
+pydantic>=2.11,<3.0
+pydantic-settings>=2.10,<3.0
+python-multipart>=0.0.20,<1.0
+httpx>=0.28,<1.0
+
+# Relational persistence for catalog-service
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.2,<4.0
+alembic>=1.16,<2.0
+
+# Document storage for search-service and activity-service
+motor>=3.7,<4.0
+pymongo>=4.13,<5.0
+
+# Object storage for file-service
+boto3>=1.40,<2.0
+
+# Auth and service resilience
+python-jose[cryptography]>=3.5,<4.0
+tenacity>=9.1,<10.0
+
+# Structured logging
+structlog>=25.4,<26.0
+python-json-logger>=3.3,<4.0
+
+# Test tooling
+pytest>=8.4,<9.0
+pytest-asyncio>=1.1,<2.0
+pytest-cov>=6.2,<7.0
