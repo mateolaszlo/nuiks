@@ -70,11 +70,29 @@ def assert_http_ok(url: str) -> None:
             raise RuntimeError(f"{url} returned HTTP {response.status}")
 
 
+def assert_kibana_data_view() -> None:
+    url = (
+        "http://127.0.0.1:5601/api/saved_objects/_find"
+        "?type=index-pattern&search_fields=title&search=studyvault-logs-*"
+    )
+    request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if payload.get("saved_objects"):
+            return
+        time.sleep(3)
+    raise RuntimeError("Kibana data view for studyvault-logs-* was not created")
+
+
 def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
     assert_http_ok("http://127.0.0.1:8080/realms/studyvault/.well-known/openid-configuration")
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
+    assert_http_ok("http://127.0.0.1:5601/api/status")
+    assert_kibana_data_view()
 
 
 if __name__ == "__main__":

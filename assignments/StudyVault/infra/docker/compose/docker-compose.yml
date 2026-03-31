@@ -284,6 +284,15 @@ services:
       timeout: 5s
       retries: 40
 
+  kibana-setup:
+    image: python:3.12-slim
+    command: ["python", "/app/bootstrap_kibana.py"]
+    volumes:
+      - ../../scripts/bootstrap_kibana.py:/app/bootstrap_kibana.py:ro
+    depends_on:
+      kibana:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   mongodb-data:

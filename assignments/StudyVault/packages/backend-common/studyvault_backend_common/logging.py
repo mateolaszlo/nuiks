@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 from contextvars import ContextVar
 from uuid import uuid4
 
@@ -47,10 +48,42 @@ def get_logger(name: str):
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        structlog.contextvars.clear_contextvars()
         request_id = request.headers.get("x-request-id", str(uuid4()))
         request_id_ctx.set(request_id)
-        structlog.contextvars.bind_contextvars(request_id=request_id, path=request.url.path)
-        response = await call_next(request)
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            path=request.url.path,
+            method=request.method,
+        )
+        logger = get_logger(__name__)
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            logger.exception(
+                "request failed",
+                event_name="request_failed",
+                event_category="request",
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                duration_ms=duration_ms,
+                error=str(exc),
+            )
+            raise
+
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+        logger.info(
+            "request completed",
+            event_name="request_completed",
+            event_category="request",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
         response.headers["x-request-id"] = request_id
         return response
 
