@@ -78,5 +78,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
 test("admin login shows admin indicator", async ({ page }) => {
   await loginAs(page, "admin", "admin123");
 
-  await expect(page.getByRole("heading", { name: "admin (Admin)" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
 });

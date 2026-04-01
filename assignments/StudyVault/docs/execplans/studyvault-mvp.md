@@ -20,6 +20,8 @@ The repository started as a scaffold with empty service directories. This plan t
 - [x] 2026-03-31 23:02Z Added the React frontend, nginx routing, docker-compose stack, and local Keycloak realm bootstrap.
 - [x] 2026-03-31 23:02Z Added automated tests, CI, smoke validation, and milestone checkpoints on `testing`.
 - [x] 2026-04-01 00:40Z Moved local Keycloak persistence from the embedded dev database to the shared PostgreSQL container with a dedicated `keycloak` database and fresh realm reimport.
+- [x] 2026-04-01 06:45Z Enabled Keycloak self-registration, seeded a StudyVault app admin, and added role-aware auth helpers.
+- [x] 2026-04-01 06:45Z Added an admin-only console with user management, audit/event views, service health, and error summaries backed by admin APIs.
 
 ## Surprises & Discoveries
 
@@ -41,6 +43,9 @@ The repository started as a scaffold with empty service directories. This plan t
 - Observation: Keycloak was initially using its embedded dev database, so auth state depended on container-local storage rather than the repo-defined infra stack.
   Evidence: The `keycloak` compose service only ran `start-dev --import-realm` and did not define any `KC_DB*` environment or Postgres dependency before this migration.
 
+- Observation: nginx served the frontend HTML for `/api/admin/*` even after the admin routes were added.
+  Evidence: `curl -i http://localhost:8080/api/admin/users` returned the Vite `index.html` until the proxy configuration was changed to pass `$request_uri` explicitly and give `/api/admin/` a dedicated `^~` location.
+
 ## Decision Log
 
 - Decision: Implement real Keycloak wiring rather than a frontend mock-auth shortcut.
@@ -59,11 +64,21 @@ The repository started as a scaffold with empty service directories. This plan t
   Rationale: This keeps local infrastructure simple while avoiding auth data mixing with the application metadata schema.
   Date/Author: 2026-04-01 / Codex
 
+- Decision: Route admins to a separate admin console instead of showing the normal user dashboard with extra controls.
+  Rationale: Admin workflows are operational, not personal-content-centric. A dedicated console makes audit, user management, health, and error views explicit and reduces accidental coupling with the normal user experience.
+  Date/Author: 2026-04-01 / Codex
+
+- Decision: Implement the admin API surface inside `activity-service` first, using Keycloak Admin APIs plus Elasticsearch-backed summaries.
+  Rationale: The activity service already owns user-scoped events, and extending it keeps the first admin cut small while still avoiding direct browser access to Keycloak Admin APIs or Elasticsearch.
+  Date/Author: 2026-04-01 / Codex
+
 ## Outcomes & Retrospective
 
 No milestone has completed yet. The initial outcome is that the repository now has a decision-complete direction and a living document that must be updated as code lands.
 
 The project now includes the backend services, a React frontend, local container orchestration, a PostgreSQL-backed Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. Existing local environments must reset Compose volumes before the new Keycloak Postgres init script takes effect.
+
+The current MVP also includes self-registration, a seeded `studyvault_admin` user, and a dedicated admin console. Admins can list users, enable or disable accounts, grant or revoke the StudyVault admin role, trigger temporary-password resets, inspect audit events, review service health, and see recent application errors.
 
 ## Context and Orientation
 
@@ -86,6 +101,8 @@ Next, implement each backend service. `catalog-service` stores metadata in Postg
 
 Then, create the frontend with a single authenticated dashboard page. It must use Keycloak for login, call nginx-routed API endpoints, show upload/search/activity sections, and offer download links. Add nginx config to proxy frontend assets, the four API prefixes, and the Keycloak realm paths.
 
+Extend that foundation with role-aware frontend routing and a dedicated admin console. The admin console must call app-owned admin APIs, not raw Elasticsearch or Keycloak Admin APIs from the browser, and it must expose user management, audit visibility, health summaries, and recent error information.
+
 Finally, create the docker-compose stack, local realm import, logstash and kibana configuration, smoke and integration tests, and a GitHub Actions workflow. Keep commits focused on milestones and update this plan after each milestone.
 
 ## Concrete Steps
@@ -106,6 +123,8 @@ Work from `assignments/StudyVault`.
 
 Expected acceptance includes `/health` responses from all services, a working Keycloak login, a successful upload, file listing, search hits, activity records, and visible JSON logs in Kibana.
 
+Admin acceptance includes a working admin login, a separate admin landing experience, a visible user list, working enable/disable and role-grant actions, and an admin health summary backed by live services.
+
 ## Validation and Acceptance
 
 The implementation is complete when these behaviors are true:
@@ -115,9 +134,11 @@ The implementation is complete when these behaviors are true:
 - `docker compose ... config` validates successfully.
 - Starting the compose stack exposes the frontend on `http://localhost:8080/`.
 - Logging in with the seeded demo user reaches the dashboard.
+- Logging in with the seeded admin user reaches the admin console instead of the normal user dashboard.
 - Uploading a file produces a file list entry, a search hit, and an activity record for the same authenticated user.
 - Downloading the file returns the original content.
 - Kibana can show upload and search logs for the session.
+- Admin APIs can list users, return service health, and expose audit/error summaries for the session.
 
 ## Idempotence and Recovery
 
@@ -181,5 +202,17 @@ The backend services may expose these internal routes for compose-only fan-out:
     GET /internal/catalog/files/{file_id}
     POST /internal/search/index
     POST /internal/activity/events
+
+The gateway-facing admin surface now also includes:
+
+    GET /api/admin/users
+    POST /api/admin/users/{user_id}/enable
+    POST /api/admin/users/{user_id}/disable
+    POST /api/admin/users/{user_id}/grant-admin
+    POST /api/admin/users/{user_id}/revoke-admin
+    POST /api/admin/users/{user_id}/reset-password
+    GET /api/admin/audit
+    GET /api/admin/health
+    GET /api/admin/errors
 
 Update note: revised on 2026-03-31 after the frontend, compose, smoke-test, and CI milestones landed so the plan matches the repository and recorded validation results.

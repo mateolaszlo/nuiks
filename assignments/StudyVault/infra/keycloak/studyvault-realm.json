@@ -8,6 +8,16 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "verifyEmail": false,
+  "eventsEnabled": true,
+  "eventsListeners": [
+    "jboss-logging"
+  ],
+  "enabledEventTypes": [
+    "REGISTER",
+    "LOGIN"
+  ],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
   "roles": {
     "realm": [
       {

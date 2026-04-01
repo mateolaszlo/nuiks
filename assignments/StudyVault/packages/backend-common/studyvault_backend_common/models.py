@@ -76,3 +76,67 @@ class UploadActivityEvent(BaseModel):
 class ApiErrorResponse(BaseModel):
     detail: str
     extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminUserSummary(BaseModel):
+    user_id: str
+    username: str
+    email: str | None = None
+    enabled: bool = True
+    email_verified: bool = False
+    roles: list[str] = Field(default_factory=list)
+    created_at: datetime | None = None
+
+    @property
+    def is_admin(self) -> bool:
+        return STUDYVAULT_ADMIN_ROLE in self.roles
+
+
+class AdminPasswordResetResult(BaseModel):
+    user_id: str
+    username: str
+    temporary_password: str
+
+
+class AdminAuditEvent(BaseModel):
+    event_id: str
+    event_type: str
+    category: str
+    actor_user_id: str | None = None
+    actor_username: str | None = None
+    target_user_id: str | None = None
+    target_username: str | None = None
+    file_id: str | None = None
+    filename: str | None = None
+    status: str | None = None
+    service: str | None = None
+    message: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class AdminServiceHealth(BaseModel):
+    service: str
+    status: str
+    detail: str | None = None
+
+
+class AdminHealthSummary(BaseModel):
+    total_users: int
+    enabled_users: int
+    admin_users: int
+    recent_uploads: int
+    recent_downloads: int
+    recent_searches: int
+    recent_errors: int
+    services: list[AdminServiceHealth] = Field(default_factory=list)
+
+
+class AdminErrorRecord(BaseModel):
+    event_id: str
+    service: str
+    message: str
+    request_id: str | None = None
+    event_name: str | None = None
+    status: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)

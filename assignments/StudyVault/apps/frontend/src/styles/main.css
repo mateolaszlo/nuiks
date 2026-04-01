@@ -21,6 +21,10 @@ input {
   font: inherit;
 }
 
+code {
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
 a {
   color: #0d3b66;
 }
@@ -72,6 +76,13 @@ a {
   gap: 0.85rem;
 }
 
+.action-row,
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 .primary-button,
 .secondary-button {
   border: 0;
@@ -113,6 +124,49 @@ a {
   background: rgba(241, 245, 249, 0.9);
 }
 
+.admin-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.admin-main-grid {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.summary-number {
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: #0d3b66;
+}
+
+.notice-card {
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: rgba(217, 119, 6, 0.12);
+  margin-bottom: 1rem;
+}
+
+.admin-user-card {
+  align-items: flex-start;
+}
+
+.status-ok,
+.status-bad {
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.status-ok {
+  background: rgba(34, 197, 94, 0.15);
+  color: #166534;
+}
+
+.status-bad {
+  background: rgba(244, 63, 94, 0.15);
+  color: #9f1239;
+}
+
 .muted {
   color: #53627c;
 }
@@ -141,5 +195,9 @@ input[type="file"] {
   .result-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .admin-main-grid {
+    grid-template-columns: 1fr;
   }
 }

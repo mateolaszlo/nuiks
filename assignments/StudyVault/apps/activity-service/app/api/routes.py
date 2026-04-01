@@ -3,13 +3,23 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.models import ActivityRecord, AuthenticatedUser, UploadActivityEvent
+from studyvault_backend_common.models import (
+    ActivityRecord,
+    AdminAuditEvent,
+    AdminErrorRecord,
+    AdminHealthSummary,
+    AdminPasswordResetResult,
+    AdminUserSummary,
+    AuthenticatedUser,
+    UploadActivityEvent,
+)
 
 from app.core.config import get_settings
+from app.services.admin import AdminService
 from app.services.activity import ActivityService
 
 
-def build_router(service: ActivityService) -> APIRouter:
+def build_router(service: ActivityService, admin_service: AdminService) -> APIRouter:
     router = APIRouter()
     settings = get_settings()
     current_user_dependency = build_auth_dependency(
@@ -42,5 +52,66 @@ def build_router(service: ActivityService) -> APIRouter:
     )
     async def create_activity(event: UploadActivityEvent) -> ActivityRecord:
         return service.record_upload(event)
+
+    @router.get("/api/admin/users", response_model=list[AdminUserSummary])
+    async def list_admin_users(
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> list[AdminUserSummary]:
+        return await admin_service.list_users(user)
+
+    @router.post("/api/admin/users/{user_id}/disable", response_model=AdminUserSummary)
+    async def disable_user(
+        user_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminUserSummary:
+        return await admin_service.set_user_enabled(user, user_id, False)
+
+    @router.post("/api/admin/users/{user_id}/enable", response_model=AdminUserSummary)
+    async def enable_user(
+        user_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminUserSummary:
+        return await admin_service.set_user_enabled(user, user_id, True)
+
+    @router.post("/api/admin/users/{user_id}/grant-admin", response_model=AdminUserSummary)
+    async def grant_admin(
+        user_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminUserSummary:
+        return await admin_service.set_admin_role(user, user_id, True)
+
+    @router.post("/api/admin/users/{user_id}/revoke-admin", response_model=AdminUserSummary)
+    async def revoke_admin(
+        user_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminUserSummary:
+        return await admin_service.set_admin_role(user, user_id, False)
+
+    @router.post("/api/admin/users/{user_id}/reset-password", response_model=AdminPasswordResetResult)
+    async def reset_password(
+        user_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminPasswordResetResult:
+        return await admin_service.reset_password(user, user_id)
+
+    @router.get("/api/admin/audit", response_model=list[AdminAuditEvent])
+    async def list_audit(
+        limit: int = 100,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> list[AdminAuditEvent]:
+        return await admin_service.list_audit_events(user, limit=limit)
+
+    @router.get("/api/admin/health", response_model=AdminHealthSummary)
+    async def admin_health(
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminHealthSummary:
+        return await admin_service.health_summary(user)
+
+    @router.get("/api/admin/errors", response_model=list[AdminErrorRecord])
+    async def admin_errors(
+        limit: int = 50,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> list[AdminErrorRecord]:
+        return await admin_service.recent_errors(user, limit=limit)
 
     return router

@@ -1,7 +1,15 @@
 import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
 
 import { ApiClient } from "./api/client";
-import type { ActivityRecord, FileRecord } from "./api/types";
+import type {
+  ActivityRecord,
+  AdminAuditEvent,
+  AdminErrorRecord,
+  AdminHealthSummary,
+  AdminPasswordResetResult,
+  AdminUserSummary,
+  FileRecord,
+} from "./api/types";
 import {
   getAccessToken,
   getProfileSummary,
@@ -9,13 +17,16 @@ import {
   isAdmin,
   isAuthenticated,
   login,
-  register,
   logout,
+  register,
 } from "./auth/keycloak";
 
 type LoadState = "loading" | "ready" | "error";
 
-function formatDate(value: string): string {
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "Unknown";
+  }
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -32,20 +43,37 @@ export default function App() {
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
+  const [adminAudit, setAdminAudit] = useState<AdminAuditEvent[]>([]);
+  const [adminErrors, setAdminErrors] = useState<AdminErrorRecord[]>([]);
+  const [adminHealth, setAdminHealth] = useState<AdminHealthSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [isBusy, setIsBusy] = useState(false);
+  const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
 
   async function refreshDashboard() {
-    const [filePayload, activityPayload] = await Promise.all([
-      api.listFiles(),
-      api.listActivity(),
-    ]);
+    const [filePayload, activityPayload] = await Promise.all([api.listFiles(), api.listActivity()]);
     startTransition(() => {
       setFiles(filePayload);
       setSearchResults(filePayload);
       setActivities(activityPayload);
+    });
+  }
+
+  async function refreshAdminPanel() {
+    const [usersPayload, auditPayload, healthPayload, errorsPayload] = await Promise.all([
+      api.listAdminUsers(),
+      api.listAdminAudit(),
+      api.getAdminHealth(),
+      api.listAdminErrors(),
+    ]);
+    startTransition(() => {
+      setAdminUsers(usersPayload);
+      setAdminAudit(auditPayload);
+      setAdminHealth(healthPayload);
+      setAdminErrors(errorsPayload);
     });
   }
 
@@ -54,28 +82,29 @@ export default function App() {
       try {
         const loggedIn = await initializeAuth();
         const authReady = loggedIn || isAuthenticated();
+        const adminReady = isAdmin();
         setAuthenticated(authReady);
         setProfileLabel(getProfileSummary());
-        setAdminUser(isAdmin());
+        setAdminUser(adminReady);
         setAuthState("ready");
         setError(null);
         if (authReady) {
           try {
-            await refreshDashboard();
+            if (adminReady) {
+              await refreshAdminPanel();
+            } else {
+              await refreshDashboard();
+            }
           } catch (dashboardError) {
             setError(
-              dashboardError instanceof Error
-                ? dashboardError.message
-                : String(dashboardError),
+              dashboardError instanceof Error ? dashboardError.message : String(dashboardError),
             );
           }
         }
       } catch (bootstrapError) {
         setAuthState("error");
         setError(
-          bootstrapError instanceof Error
-            ? bootstrapError.message
-            : String(bootstrapError),
+          bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError),
         );
       }
     }
@@ -147,8 +176,40 @@ export default function App() {
     }
   }
 
+  async function handleAdminAction(action: () => Promise<unknown>) {
+    try {
+      setIsBusy(true);
+      setPasswordResetResult(null);
+      await action();
+      await refreshAdminPanel();
+      setError(null);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Admin action failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handlePasswordReset(userId: string) {
+    try {
+      setIsBusy(true);
+      const result = await api.resetPassword(userId);
+      setPasswordResetResult(result);
+      await refreshAdminPanel();
+      setError(null);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Password reset failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   if (authState === "loading") {
-    return <main className="shell"><section className="hero-card">Loading StudyVault…</section></main>;
+    return (
+      <main className="shell">
+        <section className="hero-card">Loading StudyVault…</section>
+      </main>
+    );
   }
 
   if (authState === "error") {
@@ -173,13 +234,181 @@ export default function App() {
             Sign in to upload study materials, review your file catalog, search metadata,
             and inspect recent activity.
           </p>
-          <button className="primary-button" onClick={() => void login()}>
-            Log In With Keycloak
-          </button>
-          <button className="secondary-button" onClick={() => void register()}>
-            Create Account
-          </button>
+          <div className="action-row">
+            <button className="primary-button" onClick={() => void login()}>
+              Log In With Keycloak
+            </button>
+            <button className="secondary-button" onClick={() => void register()}>
+              Create Account
+            </button>
+          </div>
         </section>
+      </main>
+    );
+  }
+
+  if (adminUser) {
+    return (
+      <main className="shell">
+        <section className="hero-card">
+          <div>
+            <p className="eyebrow">Admin Console</p>
+            <h1>{profileLabel}</h1>
+            <p>
+              Oversee StudyVault users, audit activity, password resets, and operational
+              health from a dedicated admin-only workspace.
+            </p>
+          </div>
+          <div className="action-row">
+            <button className="secondary-button" onClick={() => void refreshAdminPanel()} disabled={isBusy}>
+              Refresh
+            </button>
+            <button className="secondary-button" onClick={() => void logout()}>
+              Log Out
+            </button>
+          </div>
+        </section>
+
+        <section className="grid admin-summary-grid">
+          <article className="panel">
+            <h2>Users</h2>
+            <div className="summary-number">{adminHealth?.total_users ?? adminUsers.length}</div>
+            <p className="muted">
+              {adminHealth?.enabled_users ?? 0} enabled, {adminHealth?.admin_users ?? 0} admins
+            </p>
+          </article>
+          <article className="panel">
+            <h2>Recent Activity</h2>
+            <div className="summary-number">{adminHealth?.recent_uploads ?? 0}</div>
+            <p className="muted">
+              Uploads. Downloads: {adminHealth?.recent_downloads ?? 0}. Searches:{" "}
+              {adminHealth?.recent_searches ?? 0}
+            </p>
+          </article>
+          <article className="panel">
+            <h2>Recent Errors</h2>
+            <div className="summary-number">{adminHealth?.recent_errors ?? adminErrors.length}</div>
+            <p className="muted">Captured from application logs and failure events.</p>
+          </article>
+        </section>
+
+        <section className="grid admin-main-grid">
+          <article className="panel admin-panel-wide">
+            <h2>Users</h2>
+            {passwordResetResult ? (
+              <div className="notice-card">
+                Temporary password for <strong>{passwordResetResult.username}</strong>:{" "}
+                <code>{passwordResetResult.temporary_password}</code>
+              </div>
+            ) : null}
+            <div className="results">
+              {adminUsers.map((user) => (
+                <div className="result-card admin-user-card" key={user.user_id}>
+                  <div>
+                    <strong>{user.username}</strong>
+                    <p>{user.email || "No email"}</p>
+                    <p>
+                      {user.enabled ? "Enabled" : "Disabled"} • Created {formatDate(user.created_at)}
+                    </p>
+                    <p>{user.roles.join(", ") || "No roles"}</p>
+                  </div>
+                  <div className="admin-actions">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void handleAdminAction(() => (user.enabled ? api.disableUser(user.user_id) : api.enableUser(user.user_id)))}
+                    >
+                      {user.enabled ? "Disable" : "Enable"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        void handleAdminAction(() =>
+                          user.roles.includes("studyvault_admin")
+                            ? api.revokeAdmin(user.user_id)
+                            : api.grantAdmin(user.user_id),
+                        )
+                      }
+                    >
+                      {user.roles.includes("studyvault_admin") ? "Revoke Admin" : "Grant Admin"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void handlePasswordReset(user.user_id)}
+                    >
+                      Reset Password
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <h2>System Health</h2>
+            <div className="results">
+              {(adminHealth?.services ?? []).map((service) => (
+                <div className="result-card" key={service.service}>
+                  <div>
+                    <strong>{service.service}</strong>
+                    <p>{service.detail || "No detail"}</p>
+                  </div>
+                  <span className={service.status === "healthy" ? "status-ok" : "status-bad"}>
+                    {service.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="grid admin-main-grid">
+          <article className="panel">
+            <h2>Audit Events</h2>
+            <div className="results">
+              {adminAudit.map((event) => (
+                <div className="result-card" key={event.event_id}>
+                  <div>
+                    <strong>{event.event_type}</strong>
+                    <p>{event.message}</p>
+                    <p>
+                      {event.actor_username || event.target_username || "Unknown user"}
+                      {event.filename ? ` • ${event.filename}` : ""}
+                    </p>
+                  </div>
+                  <span>{formatDate(event.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <h2>Errors / Low-Level Info</h2>
+            <div className="results">
+              {adminErrors.length === 0 ? <p className="muted">No recent errors detected.</p> : null}
+              {adminErrors.map((record) => (
+                <div className="result-card" key={record.event_id}>
+                  <div>
+                    <strong>{record.service}</strong>
+                    <p>{record.message}</p>
+                    <p>
+                      {record.event_name || "application_error"}
+                      {record.request_id ? ` • ${record.request_id}` : ""}
+                    </p>
+                  </div>
+                  <span>{formatDate(record.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        {error ? <p className="error-text">{error}</p> : null}
       </main>
     );
   }
@@ -189,7 +418,7 @@ export default function App() {
       <section className="hero-card">
         <div>
           <p className="eyebrow">Signed in</p>
-          <h1>{profileLabel}{adminUser ? " (Admin)" : ""}</h1>
+          <h1>{profileLabel}</h1>
           <p>Upload files, search by tag or filename, and verify the MVP flow end to end.</p>
         </div>
         <button className="secondary-button" onClick={() => void logout()}>

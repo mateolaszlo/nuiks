@@ -1,4 +1,12 @@
-import type { ActivityRecord, FileRecord } from "./types";
+import type {
+  ActivityRecord,
+  AdminAuditEvent,
+  AdminErrorRecord,
+  AdminHealthSummary,
+  AdminPasswordResetResult,
+  AdminUserSummary,
+  FileRecord,
+} from "./types";
 
 export class ApiClient {
   constructor(private readonly getToken: () => Promise<string | undefined>) {}
@@ -56,5 +64,43 @@ export class ApiClient {
       throw new Error(detail || `Request failed with status ${response.status}`);
     }
     return await response.blob();
+  }
+
+  listAdminUsers(): Promise<AdminUserSummary[]> {
+    return this.request<AdminUserSummary[]>("/api/admin/users");
+  }
+
+  disableUser(userId: string): Promise<AdminUserSummary> {
+    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/disable`, { method: "POST" });
+  }
+
+  enableUser(userId: string): Promise<AdminUserSummary> {
+    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/enable`, { method: "POST" });
+  }
+
+  grantAdmin(userId: string): Promise<AdminUserSummary> {
+    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/grant-admin`, { method: "POST" });
+  }
+
+  revokeAdmin(userId: string): Promise<AdminUserSummary> {
+    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/revoke-admin`, { method: "POST" });
+  }
+
+  resetPassword(userId: string): Promise<AdminPasswordResetResult> {
+    return this.request<AdminPasswordResetResult>(`/api/admin/users/${userId}/reset-password`, {
+      method: "POST",
+    });
+  }
+
+  listAdminAudit(limit = 100): Promise<AdminAuditEvent[]> {
+    return this.request<AdminAuditEvent[]>(`/api/admin/audit?limit=${limit}`);
+  }
+
+  getAdminHealth(): Promise<AdminHealthSummary> {
+    return this.request<AdminHealthSummary>("/api/admin/health");
+  }
+
+  listAdminErrors(limit = 50): Promise<AdminErrorRecord[]> {
+    return this.request<AdminErrorRecord[]>(`/api/admin/errors?limit=${limit}`);
   }
 }
