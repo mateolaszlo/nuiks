@@ -19,6 +19,7 @@ The repository started as a scaffold with empty service directories. This plan t
 - [x] 2026-03-31 22:23Z Implemented the four FastAPI services with health checks, business endpoints, and test doubles.
 - [x] 2026-03-31 23:02Z Added the React frontend, nginx routing, docker-compose stack, and local Keycloak realm bootstrap.
 - [x] 2026-03-31 23:02Z Added automated tests, CI, smoke validation, and milestone checkpoints on `testing`.
+- [x] 2026-04-01 00:40Z Moved local Keycloak persistence from the embedded dev database to the shared PostgreSQL container with a dedicated `keycloak` database and fresh realm reimport.
 
 ## Surprises & Discoveries
 
@@ -37,6 +38,9 @@ The repository started as a scaffold with empty service directories. This plan t
 - Observation: The first nginx draft only routed the public `/api/*` paths, which would have broken the upload fan-out inside Docker Compose.
   Evidence: `file-service` publishes to `/internal/catalog/*`, `/internal/search/*`, and `/internal/activity/*`, so explicit internal gateway routes had to be added before compose validation.
 
+- Observation: Keycloak was initially using its embedded dev database, so auth state depended on container-local storage rather than the repo-defined infra stack.
+  Evidence: The `keycloak` compose service only ran `start-dev --import-realm` and did not define any `KC_DB*` environment or Postgres dependency before this migration.
+
 ## Decision Log
 
 - Decision: Implement real Keycloak wiring rather than a frontend mock-auth shortcut.
@@ -51,11 +55,15 @@ The repository started as a scaffold with empty service directories. This plan t
   Rationale: The repository policy forbids real credentials and asks for mocking and structural validation where possible.
   Date/Author: 2026-03-31 / Codex
 
+- Decision: Reuse the shared PostgreSQL container for Keycloak, but isolate it in its own `keycloak` database and user.
+  Rationale: This keeps local infrastructure simple while avoiding auth data mixing with the application metadata schema.
+  Date/Author: 2026-04-01 / Codex
+
 ## Outcomes & Retrospective
 
 No milestone has completed yet. The initial outcome is that the repository now has a decision-complete direction and a living document that must be updated as code lands.
 
-The project now includes the backend services, a React frontend, local container orchestration, a Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. The remaining gap is full live-stack execution proof against pulled container images; the checked-in code, frontend build, pytest suite, and compose configuration all validate successfully in this workspace.
+The project now includes the backend services, a React frontend, local container orchestration, a PostgreSQL-backed Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. Existing local environments must reset Compose volumes before the new Keycloak Postgres init script takes effect.
 
 ## Context and Orientation
 

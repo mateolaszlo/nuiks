@@ -33,3 +33,7 @@ def test_docker_compose_config_contains_required_services() -> None:
         "kibana",
     ]:
         assert f"{service_name}:" in result.stdout
+    assert "KC_DB: postgres" in result.stdout
+    assert "KC_DB_URL_DATABASE: keycloak" in result.stdout
+    assert "KC_DB_USERNAME: keycloak" in result.stdout
+    assert "/docker-entrypoint-initdb.d" in result.stdout

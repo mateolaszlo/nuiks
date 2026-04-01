@@ -71,6 +71,30 @@ def assert_http_ok(url: str) -> None:
             raise RuntimeError(f"{url} returned HTTP {response.status}")
 
 
+def assert_keycloak_database_exists() -> None:
+    command = compose_command(
+        "exec",
+        "-T",
+        "postgres",
+        "psql",
+        "-U",
+        "studyvault",
+        "-d",
+        "studyvault",
+        "-tAc",
+        "SELECT 1 FROM pg_database WHERE datname = 'keycloak';",
+    )
+    result = subprocess.run(
+        command,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or result.stdout.strip() != "1":
+        raise RuntimeError("Keycloak PostgreSQL database was not created")
+
+
 def assert_kibana_data_view() -> None:
     url = (
         "http://127.0.0.1:5601/api/saved_objects/_find"
@@ -105,6 +129,7 @@ def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
     assert_http_ok("http://127.0.0.1:8080/realms/studyvault/.well-known/openid-configuration")
+    assert_keycloak_database_exists()
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
     assert_http_ok("http://127.0.0.1:5601/api/status")
     assert_kibana_data_view()
