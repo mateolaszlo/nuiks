@@ -112,6 +112,22 @@ def assert_kibana_data_view(title: str) -> None:
     raise RuntimeError(f"Kibana data view for {title} was not created")
 
 
+def assert_kibana_dashboard(title: str) -> None:
+    url = (
+        "http://127.0.0.1:5601/api/saved_objects/_find"
+        f"?type=dashboard&search_fields=title&search={quote(title, safe='*')}"
+    )
+    request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if payload.get("saved_objects"):
+            return
+        time.sleep(3)
+    raise RuntimeError(f"Kibana dashboard {title} was not created")
+
+
 def assert_backend_logs_indexed() -> None:
     query = quote('service:(file-service OR catalog-service OR search-service OR activity-service)', safe="():*")
     url = f"http://127.0.0.1:9200/studyvault-logs-*/_search?q={query}&size=5&sort=@timestamp:desc"
@@ -158,6 +174,15 @@ def main() -> None:
     assert_ilm_policy_exists("metricbeat-policy")
     assert_kibana_data_view("studyvault-logs-*")
     assert_kibana_data_view("metricbeat*")
+    for title in [
+        "StudyVault Executive Overview",
+        "StudyVault Request Health",
+        "StudyVault Upload Pipeline",
+        "StudyVault Search Analytics",
+        "StudyVault Errors and Failures",
+        "StudyVault Infrastructure Metrics",
+    ]:
+        assert_kibana_dashboard(title)
     assert_backend_logs_indexed()
     assert_metricbeat_documents_indexed()
 

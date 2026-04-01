@@ -41,6 +41,7 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "metricbeat.yml" in result.stdout
     assert "/usr/share/metricbeat/metricbeat.yml" in result.stdout
     assert "bootstrap_kibana.py" in result.stdout
+    assert "/app/kibana" in result.stdout
 
 
 def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
@@ -55,3 +56,11 @@ def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
     assert "- load" not in contents
     assert "- diskio" not in contents
     assert "- info" not in contents
+
+
+def test_kibana_saved_object_bundle_exists() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+
+    assert bundle.exists()
+    assert "StudyVault Executive Overview" in bundle.read_text()

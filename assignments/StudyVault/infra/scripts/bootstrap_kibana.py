@@ -5,10 +5,13 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
+from uuid import uuid4
 
 
 KIBANA_URL = "http://kibana:5601"
 ELASTICSEARCH_URL = "http://elasticsearch:9200"
+DASHBOARD_EXPORT_DIR = Path("/app/kibana")
 DATA_VIEWS = [
     {
         "id": "studyvault-logs",
@@ -39,6 +42,9 @@ ILM_POLICIES = {
         }
     },
 }
+SAVED_OBJECT_EXPORTS = [
+    DASHBOARD_EXPORT_DIR / "studyvault-observability.ndjson",
+]
 
 
 def request_json(
@@ -193,6 +199,44 @@ def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
         raise RuntimeError(f"Failed to create Kibana data view for {title}: HTTP {status}")
 
 
+def import_saved_objects(export_path: Path) -> None:
+    if not export_path.exists():
+        raise RuntimeError(f"Saved object export not found: {export_path}")
+
+    boundary = f"----studyvault-kibana-{uuid4().hex}"
+    file_bytes = export_path.read_bytes()
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode("utf-8"),
+            (
+                f'Content-Disposition: form-data; name="file"; filename="{export_path.name}"\r\n'
+                "Content-Type: application/x-ndjson\r\n\r\n"
+            ).encode("utf-8"),
+            file_bytes,
+            b"\r\n",
+            f"--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    request = urllib.request.Request(
+        f"{KIBANA_URL}/api/saved_objects/_import?overwrite=true",
+        data=body,
+        method="POST",
+        headers={
+            "kbn-xsrf": "true",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        raise RuntimeError(f"Failed to import Kibana saved objects from {export_path.name}: HTTP {exc.code} {body}") from exc
+
+    if payload.get("success") is not True or payload.get("errors"):
+        raise RuntimeError(f"Failed to import Kibana saved objects from {export_path.name}: {payload}")
+
+
 def main() -> None:
     wait_for_elasticsearch()
     for policy_name, payload in ILM_POLICIES.items():
@@ -202,6 +246,8 @@ def main() -> None:
     wait_for_kibana()
     for view in DATA_VIEWS:
         ensure_data_view(view["id"], view["title"], view["time_field"])
+    for export_path in SAVED_OBJECT_EXPORTS:
+        import_saved_objects(export_path)
 
 
 if __name__ == "__main__":

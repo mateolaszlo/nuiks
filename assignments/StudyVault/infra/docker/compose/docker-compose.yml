@@ -320,6 +320,7 @@ services:
     command: ["python", "/app/bootstrap_kibana.py"]
     volumes:
       - ../../scripts/bootstrap_kibana.py:/app/bootstrap_kibana.py:ro
+      - ../../kibana:/app/kibana:ro
     depends_on:
       elasticsearch:
         condition: service_healthy
