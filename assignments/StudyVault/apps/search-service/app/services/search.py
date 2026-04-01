@@ -38,6 +38,8 @@ class SearchService:
             event_name="search_executed",
             event_category="search",
             owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
             query=normalized_query,
             query_length=len(normalized_query),
             result_count=len(results),

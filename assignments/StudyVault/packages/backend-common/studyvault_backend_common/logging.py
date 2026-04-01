@@ -51,6 +51,20 @@ def get_logger(name: str):
     return structlog.get_logger(name)
 
 
+def bind_authenticated_user(
+    *,
+    user_id: str,
+    username: str | None = None,
+    email: str | None = None,
+) -> None:
+    values = {"user_id": user_id}
+    if username:
+        values["username"] = username
+    if email:
+        values["email"] = email
+    structlog.contextvars.bind_contextvars(**values)
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         structlog.contextvars.clear_contextvars()

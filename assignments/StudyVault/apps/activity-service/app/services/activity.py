@@ -42,6 +42,8 @@ class ActivityService:
             event_name="activity_list_requested",
             event_category="activity",
             owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
             result_count=len(records),
             status="succeeded",
         )

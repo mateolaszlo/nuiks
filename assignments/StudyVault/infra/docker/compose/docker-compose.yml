@@ -294,6 +294,27 @@ services:
       timeout: 5s
       retries: 40
 
+  metricbeat:
+    image: docker.elastic.co/beats/metricbeat:8.15.3
+    user: root
+    command: ["metricbeat", "-e", "-strict.perms=false"]
+    volumes:
+      - ../../observability/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/hostfs/proc:ro
+      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
+      - /:/hostfs:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5066/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+
   kibana-setup:
     image: python:3.12-slim
     command: ["python", "/app/bootstrap_kibana.py"]
@@ -301,6 +322,8 @@ services:
       - ../../scripts/bootstrap_kibana.py:/app/bootstrap_kibana.py:ro
     depends_on:
       kibana:
+        condition: service_healthy
+      metricbeat:
         condition: service_healthy
 
 volumes:

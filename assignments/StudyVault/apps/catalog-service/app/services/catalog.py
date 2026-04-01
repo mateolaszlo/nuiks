@@ -38,6 +38,8 @@ class CatalogService:
             event_name="catalog_list_requested",
             event_category="catalog",
             owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
             result_count=len(records),
             status="succeeded",
         )
@@ -51,6 +53,8 @@ class CatalogService:
                 event_name="catalog_file_lookup_failed",
                 event_category="catalog",
                 owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
                 file_id=file_id,
                 status="not_found",
             )
@@ -60,6 +64,8 @@ class CatalogService:
             event_name="catalog_file_fetched",
             event_category="catalog",
             owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
             file_id=file_id,
             filename=record.filename,
             status="succeeded",

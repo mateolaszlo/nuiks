@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from pydantic import BaseModel
 
+from .logging import bind_authenticated_user
 from .models import AuthenticatedUser
 
 
@@ -61,13 +62,15 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
     ) -> AuthenticatedUser:
         settings = settings_provider()
         if settings.auth_disabled:
-            return AuthenticatedUser(
+            user = AuthenticatedUser(
                 subject="test-user",
                 email="test@example.com",
                 username="test-user",
                 roles=["user"],
                 token="disabled-auth-token",
             )
+            bind_authenticated_user(user_id=user.subject, username=user.username, email=user.email)
+            return user
 
         if credentials is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
@@ -92,7 +95,9 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
         except Exception as exc:  # pragma: no cover - exact library exception is not important
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
-        return _build_user(claims, token)
+        user = _build_user(claims, token)
+        bind_authenticated_user(user_id=user.subject, username=user.username, email=user.email)
+        return user
 
     return dependency
 

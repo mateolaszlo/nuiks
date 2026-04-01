@@ -56,6 +56,7 @@ def wait_for_compose_health(timeout_seconds: int = 300) -> None:
             "elasticsearch",
             "logstash",
             "kibana",
+            "metricbeat",
         }
         statuses = {service["Service"]: service.get("Health", "") for service in services}
         if required.issubset(statuses.keys()) and all(statuses[name] == "healthy" for name in required):
@@ -95,10 +96,10 @@ def assert_keycloak_database_exists() -> None:
         raise RuntimeError("Keycloak PostgreSQL database was not created")
 
 
-def assert_kibana_data_view() -> None:
+def assert_kibana_data_view(title: str) -> None:
     url = (
         "http://127.0.0.1:5601/api/saved_objects/_find"
-        "?type=index-pattern&search_fields=title&search=studyvault-logs-*"
+        f"?type=index-pattern&search_fields=title&search={quote(title, safe='*')}"
     )
     request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
     deadline = time.time() + 120
@@ -108,7 +109,7 @@ def assert_kibana_data_view() -> None:
         if payload.get("saved_objects"):
             return
         time.sleep(3)
-    raise RuntimeError("Kibana data view for studyvault-logs-* was not created")
+    raise RuntimeError(f"Kibana data view for {title} was not created")
 
 
 def assert_backend_logs_indexed() -> None:
@@ -125,6 +126,19 @@ def assert_backend_logs_indexed() -> None:
     raise RuntimeError("Backend service logs with structured fields were not indexed")
 
 
+def assert_metricbeat_documents_indexed() -> None:
+    url = "http://127.0.0.1:9200/metricbeat-*/_search?size=5&sort=@timestamp:desc"
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        hits = payload.get("hits", {}).get("hits", [])
+        if hits:
+            return
+        time.sleep(3)
+    raise RuntimeError("Metricbeat documents were not indexed")
+
+
 def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
@@ -132,8 +146,10 @@ def main() -> None:
     assert_keycloak_database_exists()
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
     assert_http_ok("http://127.0.0.1:5601/api/status")
-    assert_kibana_data_view()
+    assert_kibana_data_view("studyvault-logs-*")
+    assert_kibana_data_view("metricbeat-*")
     assert_backend_logs_indexed()
+    assert_metricbeat_documents_indexed()
 
 
 if __name__ == "__main__":

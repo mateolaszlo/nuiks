@@ -8,8 +8,18 @@ import urllib.request
 
 
 KIBANA_URL = "http://kibana:5601"
-DATA_VIEW_ID = "studyvault-logs"
-DATA_VIEW_TITLE = "studyvault-logs-*"
+DATA_VIEWS = [
+    {
+        "id": "studyvault-logs",
+        "title": "studyvault-logs-*",
+        "time_field": "@timestamp",
+    },
+    {
+        "id": "metricbeat",
+        "title": "metricbeat-*",
+        "time_field": "@timestamp",
+    },
+]
 
 
 def request_json(path: str, method: str = "GET", payload: dict | None = None) -> tuple[int, dict]:
@@ -46,37 +56,38 @@ def wait_for_kibana(timeout_seconds: int = 300) -> None:
     raise RuntimeError("Kibana did not become ready in time")
 
 
-def ensure_data_view() -> None:
+def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
     params = urllib.parse.urlencode(
         {
             "type": "index-pattern",
             "search_fields": "title",
-            "search": DATA_VIEW_TITLE,
+            "search": title,
         }
     )
     status, payload = request_json(f"/api/saved_objects/_find?{params}")
     if status == 200:
         for saved_object in payload.get("saved_objects", []):
-            if saved_object.get("attributes", {}).get("title") == DATA_VIEW_TITLE:
+            if saved_object.get("attributes", {}).get("title") == title:
                 return
 
     status, _ = request_json(
-        f"/api/saved_objects/index-pattern/{DATA_VIEW_ID}",
+        f"/api/saved_objects/index-pattern/{view_id}",
         method="POST",
         payload={
             "attributes": {
-                "title": DATA_VIEW_TITLE,
-                "timeFieldName": "@timestamp",
+                "title": title,
+                "timeFieldName": time_field,
             }
         },
     )
     if status not in {200, 201, 409}:
-        raise RuntimeError(f"Failed to create Kibana data view: HTTP {status}")
+        raise RuntimeError(f"Failed to create Kibana data view for {title}: HTTP {status}")
 
 
 def main() -> None:
     wait_for_kibana()
-    ensure_data_view()
+    for view in DATA_VIEWS:
+        ensure_data_view(view["id"], view["title"], view["time_field"])
 
 
 if __name__ == "__main__":

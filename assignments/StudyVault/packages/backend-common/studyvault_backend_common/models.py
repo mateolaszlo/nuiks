@@ -104,8 +104,12 @@ class AdminAuditEvent(BaseModel):
     category: str
     actor_user_id: str | None = None
     actor_username: str | None = None
+    actor_email: str | None = None
     target_user_id: str | None = None
     target_username: str | None = None
+    target_email: str | None = None
+    owner_username: str | None = None
+    owner_email: str | None = None
     file_id: str | None = None
     filename: str | None = None
     status: str | None = None

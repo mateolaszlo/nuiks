@@ -40,8 +40,12 @@ export type AdminAuditEvent = {
   category: string;
   actor_user_id: string | null;
   actor_username: string | null;
+  actor_email: string | null;
   target_user_id: string | null;
   target_username: string | null;
+  target_email: string | null;
+  owner_username: string | null;
+  owner_email: string | null;
   file_id: string | null;
   filename: string | null;
   status: string | null;

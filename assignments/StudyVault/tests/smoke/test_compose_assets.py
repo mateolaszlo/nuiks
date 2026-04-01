@@ -31,9 +31,12 @@ def test_docker_compose_config_contains_required_services() -> None:
         "elasticsearch",
         "logstash",
         "kibana",
+        "metricbeat",
     ]:
         assert f"{service_name}:" in result.stdout
     assert "KC_DB: postgres" in result.stdout
     assert "KC_DB_URL_DATABASE: keycloak" in result.stdout
     assert "KC_DB_USERNAME: keycloak" in result.stdout
     assert "/docker-entrypoint-initdb.d" in result.stdout
+    assert "metricbeat.yml" in result.stdout
+    assert "/usr/share/metricbeat/metricbeat.yml" in result.stdout

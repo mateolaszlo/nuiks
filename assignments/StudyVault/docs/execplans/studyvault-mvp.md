@@ -22,6 +22,7 @@ The repository started as a scaffold with empty service directories. This plan t
 - [x] 2026-04-01 00:40Z Moved local Keycloak persistence from the embedded dev database to the shared PostgreSQL container with a dedicated `keycloak` database and fresh realm reimport.
 - [x] 2026-04-01 06:45Z Enabled Keycloak self-registration, seeded a StudyVault app admin, and added role-aware auth helpers.
 - [x] 2026-04-01 06:45Z Added an admin-only console with user management, audit/event views, service health, and error summaries backed by admin APIs.
+- [x] 2026-04-01 10:55Z Enriched logs with username/email identity fields and added Metricbeat-based host/container metrics plus a Kibana metrics data view.
 
 ## Surprises & Discoveries
 
@@ -79,6 +80,8 @@ No milestone has completed yet. The initial outcome is that the repository now h
 The project now includes the backend services, a React frontend, local container orchestration, a PostgreSQL-backed Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. Existing local environments must reset Compose volumes before the new Keycloak Postgres init script takes effect.
 
 The current MVP also includes self-registration, a seeded `studyvault_admin` user, and a dedicated admin console. Admins can list users, enable or disable accounts, grant or revoke the StudyVault admin role, trigger temporary-password resets, inspect audit events, review service health, and see recent application errors.
+
+Observability now includes structured request and business-event logs with user-friendly identity fields where available, plus Metricbeat-fed host and container resource metrics exposed through a separate `metricbeat-*` Kibana data view.
 
 ## Context and Orientation
 

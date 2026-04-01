@@ -111,3 +111,40 @@ def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -
 
     assert user.roles == ["user", STUDYVAULT_ADMIN_ROLE]
     assert user.is_admin is True
+
+
+def test_auth_dependency_binds_identity_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    bound_values: dict[str, str | None] = {}
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.bind_authenticated_user",
+        lambda **kwargs: bound_values.update(kwargs),
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "user-42",
+            "email": "demo@example.com",
+            "preferred_username": "demo",
+            "realm_access": {"roles": ["user"]},
+        },
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "demo-token"})()))
+
+    assert bound_values["user_id"] == "user-42"
+    assert bound_values["username"] == "demo"
+    assert bound_values["email"] == "demo@example.com"

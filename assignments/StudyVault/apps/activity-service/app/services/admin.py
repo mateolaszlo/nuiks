@@ -51,8 +51,10 @@ class AdminService:
             event_category="admin",
             actor_user_id=actor.subject,
             actor_username=actor.username,
+            actor_email=actor.email,
             target_user_id=updated.user_id,
             target_username=updated.username,
+            target_email=updated.email,
             status="succeeded",
             metadata={"enabled": enabled},
         )
@@ -67,8 +69,10 @@ class AdminService:
             event_category="admin",
             actor_user_id=actor.subject,
             actor_username=actor.username,
+            actor_email=actor.email,
             target_user_id=updated.user_id,
             target_username=updated.username,
+            target_email=updated.email,
             status="succeeded",
             metadata={"role": STUDYVAULT_ADMIN_ROLE, "granted": make_admin},
         )
@@ -83,8 +87,10 @@ class AdminService:
             event_category="admin",
             actor_user_id=actor.subject,
             actor_username=actor.username,
+            actor_email=actor.email,
             target_user_id=result.user_id,
             target_username=result.username,
+            target_email=None,
             status="succeeded",
         )
         return result
