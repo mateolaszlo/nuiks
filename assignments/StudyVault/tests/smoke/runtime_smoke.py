@@ -127,7 +127,7 @@ def assert_backend_logs_indexed() -> None:
 
 
 def assert_metricbeat_documents_indexed() -> None:
-    url = "http://127.0.0.1:9200/metricbeat-*/_search?size=5&sort=@timestamp:desc"
+    url = "http://127.0.0.1:9200/metricbeat*/_search?size=5&sort=@timestamp:desc"
     deadline = time.time() + 120
     while time.time() < deadline:
         with urllib.request.urlopen(url, timeout=20) as response:
@@ -147,7 +147,7 @@ def main() -> None:
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
     assert_http_ok("http://127.0.0.1:5601/api/status")
     assert_kibana_data_view("studyvault-logs-*")
-    assert_kibana_data_view("metricbeat-*")
+    assert_kibana_data_view("metricbeat*")
     assert_backend_logs_indexed()
     assert_metricbeat_documents_indexed()
 

@@ -16,7 +16,7 @@ DATA_VIEWS = [
     },
     {
         "id": "metricbeat",
-        "title": "metricbeat-*",
+        "title": "metricbeat*",
         "time_field": "@timestamp",
     },
 ]
@@ -57,6 +57,25 @@ def wait_for_kibana(timeout_seconds: int = 300) -> None:
 
 
 def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
+    status, payload = request_json(f"/api/saved_objects/index-pattern/{view_id}")
+    if status == 200:
+        attributes = payload.get("attributes", {})
+        if attributes.get("title") == title and attributes.get("timeFieldName") == time_field:
+            return
+        status, _ = request_json(
+            f"/api/saved_objects/index-pattern/{view_id}",
+            method="PUT",
+            payload={
+                "attributes": {
+                    "title": title,
+                    "timeFieldName": time_field,
+                }
+            },
+        )
+        if status not in {200, 201}:
+            raise RuntimeError(f"Failed to update Kibana data view for {title}: HTTP {status}")
+        return
+
     params = urllib.parse.urlencode(
         {
             "type": "index-pattern",

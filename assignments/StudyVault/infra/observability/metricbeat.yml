@@ -35,12 +35,10 @@ processors:
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "metricbeat-%{[agent.version]}-%{+yyyy.MM.dd}"
 
-setup.ilm.enabled: false
 setup.template.enabled: true
 setup.template.name: "metricbeat"
-setup.template.pattern: "metricbeat-*"
+setup.template.pattern: "metricbeat*"
 setup.template.overwrite: true
 
 http.enabled: true
