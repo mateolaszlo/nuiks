@@ -1,12 +1,21 @@
 # Infrastructure
 
-Infrastructure and local-environment assets live here.
+This directory contains the local runtime and deployment-support assets for StudyVault.
 
-- `docker/compose/` Docker Compose definitions
-- `nginx/` gateway config
-- `keycloak/` realm and bootstrap config
-- `postgres/` Postgres init scripts for local multi-database bootstrap
-- `observability/` logging stack config
-- `scripts/` helper scripts for local setup and CI
+## Contents
 
-Keycloak now persists to PostgreSQL in local development. The shared `postgres` container creates both the `studyvault` and `keycloak` databases on a fresh volume bootstrap.
+- `docker/compose/` full local stack definition
+- `nginx/` gateway routing config
+- `keycloak/` realm bootstrap with self-registration, seeded users, and role definitions
+- `postgres/` init scripts that create both the `studyvault` and `keycloak` databases on a fresh volume
+- `observability/` Logstash and ELK pipeline config
+- `scripts/` helper scripts such as Kibana bootstrap
+
+## Local Stack Highlights
+
+- Keycloak persists to PostgreSQL, not the embedded dev database
+- the gateway is exposed on `http://localhost:8080`
+- Kibana is exposed on `http://localhost:5601`
+- logs are shipped with Docker GELF into Logstash and indexed in Elasticsearch
+
+If you change the Keycloak database bootstrap or similar infra assumptions, reset compose volumes before expecting a fresh local import.

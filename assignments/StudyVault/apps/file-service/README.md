@@ -1,14 +1,14 @@
 # File Service
 
-FastAPI service responsible for file uploads, object storage integration, and upload-related orchestration.
+`file-service` handles the file binary workflow.
 
-Expected app layout:
+## Responsibilities
 
-- `app/api/` HTTP routes
-- `app/core/` config, logging, and auth wiring
-- `app/models/` domain models
-- `app/schemas/` request and response schemas
-- `app/services/` business logic
-- `app/repositories/` persistence adapters
-- `tests/` service-local tests
+- accept authenticated uploads through `POST /api/files`
+- store file content in MinIO
+- fan out file metadata to catalog, search, and activity services
+- serve authenticated downloads from `GET /api/files/{file_id}/download`
 
+## Flow
+
+For uploads, the service stores the object in MinIO first and then synchronously calls the downstream internal endpoints. Partial downstream failures are surfaced as errors and remain visible in logs rather than being silently rolled back.

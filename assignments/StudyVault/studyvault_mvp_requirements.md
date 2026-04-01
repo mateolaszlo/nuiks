@@ -48,7 +48,7 @@ Funkcionalnosti, ki jih je smiselno pustiti za kasneje:
 - obvestila
 - napredno filtriranje
 - predogled dokumentov
-- administrativni dashboard
+- napredne administrativne funkcionalnosti nad osnovnim admin panelom
 - masovni reindex
 
 ---

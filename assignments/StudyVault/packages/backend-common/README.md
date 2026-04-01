@@ -1,9 +1,17 @@
 # Backend Common
 
-Shared Python package for:
+`backend-common` is the shared Python package used across the FastAPI services.
 
-- Keycloak/JWT auth helpers
-- structured logging setup
-- environment-based settings
-- shared event and API models
+## Shared Capabilities
 
+- Keycloak JWT validation and auth dependency helpers
+- request-aware structured logging
+- environment-backed settings patterns
+- shared data models for files, activity, authenticated users, and admin responses
+- internal HTTP helper utilities for service-to-service calls
+
+## Current Auth Contract
+
+- authenticated principals include `subject`, optional `email`, optional `username`, and `roles`
+- the StudyVault admin role constant is `studyvault_admin`
+- services can use the shared `is_admin` behavior on authenticated users and admin user summaries

@@ -1,4 +1,5 @@
 # Frontend Common
 
-Reserved for shared frontend utilities or UI/auth helpers if duplication appears across frontend modules.
+This package directory is currently reserved and is not part of the active StudyVault runtime.
 
+If shared frontend utilities become necessary later, move genuinely reusable code here instead of duplicating it across multiple frontend entrypoints.
