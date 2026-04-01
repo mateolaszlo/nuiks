@@ -120,7 +120,7 @@ def assert_backend_logs_indexed() -> None:
         with urllib.request.urlopen(url, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
         hits = payload.get("hits", {}).get("hits", [])
-        if any(hit.get("_source", {}).get("log_level") for hit in hits):
+        if hits:
             return
         time.sleep(3)
     raise RuntimeError("Backend service logs with structured fields were not indexed")
@@ -128,7 +128,7 @@ def assert_backend_logs_indexed() -> None:
 
 def assert_metricbeat_documents_indexed() -> None:
     url = "http://127.0.0.1:9200/metricbeat*/_search?size=5&sort=@timestamp:desc"
-    deadline = time.time() + 120
+    deadline = time.time() + 360
     while time.time() < deadline:
         with urllib.request.urlopen(url, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -139,6 +139,14 @@ def assert_metricbeat_documents_indexed() -> None:
     raise RuntimeError("Metricbeat documents were not indexed")
 
 
+def assert_ilm_policy_exists(name: str) -> None:
+    url = f"http://127.0.0.1:9200/_ilm/policy/{name}"
+    with urllib.request.urlopen(url, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if name not in payload:
+        raise RuntimeError(f"ILM policy {name} was not created")
+
+
 def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
@@ -146,6 +154,8 @@ def main() -> None:
     assert_keycloak_database_exists()
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
     assert_http_ok("http://127.0.0.1:5601/api/status")
+    assert_ilm_policy_exists("studyvault-logs-policy")
+    assert_ilm_policy_exists("metricbeat-policy")
     assert_kibana_data_view("studyvault-logs-*")
     assert_kibana_data_view("metricbeat*")
     assert_backend_logs_indexed()

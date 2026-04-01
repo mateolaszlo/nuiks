@@ -1,32 +1,24 @@
 metricbeat.modules:
   - module: system
-    period: 10s
+    period: 5m
     metricsets:
       - cpu
-      - load
       - memory
-      - network
-      - process
-      - process_summary
       - filesystem
       - fsstat
       - uptime
-    processes: [".*"]
     cpu.metrics: ["percentages", "normalized_percentages"]
     core.metrics: ["percentages"]
     hostfs: /hostfs
 
   - module: docker
-    period: 10s
+    period: 5m
     hosts: ["unix:///var/run/docker.sock"]
     metricsets:
       - container
       - cpu
-      - diskio
       - healthcheck
-      - info
       - memory
-      - network
 
 processors:
   - add_host_metadata: ~

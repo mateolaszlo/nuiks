@@ -40,3 +40,18 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "/docker-entrypoint-initdb.d" in result.stdout
     assert "metricbeat.yml" in result.stdout
     assert "/usr/share/metricbeat/metricbeat.yml" in result.stdout
+    assert "bootstrap_kibana.py" in result.stdout
+
+
+def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    metricbeat_config = project_root / "infra" / "observability" / "metricbeat.yml"
+    contents = metricbeat_config.read_text()
+
+    assert "period: 5m" in contents
+    assert "- process" not in contents
+    assert "- process_summary" not in contents
+    assert "- network" not in contents
+    assert "- load" not in contents
+    assert "- diskio" not in contents
+    assert "- info" not in contents

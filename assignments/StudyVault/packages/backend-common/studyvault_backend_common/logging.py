@@ -15,6 +15,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 service_name_ctx: ContextVar[str] = ContextVar("service_name", default="unknown-service")
 configured_service_name = "unknown-service"
+SLOW_REQUEST_THRESHOLD_MS = 250.0
+SUPPRESSED_SUCCESS_PATHS = {"/health"}
 
 
 def configure_logging(service_name: str) -> None:
@@ -65,6 +67,14 @@ def bind_authenticated_user(
     structlog.contextvars.bind_contextvars(**values)
 
 
+def should_log_request(*, path: str, status_code: int, duration_ms: float) -> bool:
+    if status_code >= 400:
+        return True
+    if path in SUPPRESSED_SUCCESS_PATHS:
+        return False
+    return duration_ms >= SLOW_REQUEST_THRESHOLD_MS
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         structlog.contextvars.clear_contextvars()
@@ -95,15 +105,20 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
 
         duration_ms = round((time.perf_counter() - start) * 1000, 2)
-        logger.info(
-            "request completed",
-            event_name="request_completed",
-            event_category="request",
-            method=request.method,
+        if should_log_request(
             path=request.url.path,
             status_code=response.status_code,
             duration_ms=duration_ms,
-        )
+        ):
+            logger.info(
+                "request completed",
+                event_name="request_completed",
+                event_category="request",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
         response.headers["x-request-id"] = request_id
         return response
 
