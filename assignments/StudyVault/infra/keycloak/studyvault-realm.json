@@ -1,8 +1,21 @@
 {
   "realm": "studyvault",
   "enabled": true,
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "rememberMe": true,
+  "registrationEmailAsUsername": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "verifyEmail": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "studyvault_admin",
+        "description": "StudyVault application administrator"
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "studyvault-frontend",
@@ -39,6 +52,25 @@
       "realmRoles": [
         "offline_access",
         "uma_authorization"
+      ]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@studyvault.local",
+      "firstName": "StudyVault",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "offline_access",
+        "uma_authorization",
+        "studyvault_admin"
       ]
     }
   ]

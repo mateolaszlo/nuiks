@@ -1,10 +1,21 @@
 import Keycloak from "keycloak-js";
 
+const STUDYVAULT_ADMIN_ROLE = "studyvault_admin";
+
 const keycloak = new Keycloak({
   url: import.meta.env.VITE_KEYCLOAK_URL ?? "http://localhost:8080",
   realm: import.meta.env.VITE_KEYCLOAK_REALM ?? "studyvault",
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? "studyvault-frontend",
 });
+
+type KeycloakTokenPayload = {
+  email?: string;
+  preferred_username?: string;
+  realm_access?: {
+    roles?: string[];
+  };
+  sub?: string;
+};
 
 export async function initializeAuth(): Promise<boolean> {
   return keycloak.init({
@@ -30,6 +41,12 @@ export function login(): Promise<void> {
   });
 }
 
+export function register(): Promise<void> {
+  return keycloak.register({
+    redirectUri: window.location.origin,
+  });
+}
+
 export function logout(): Promise<void> {
   return keycloak.logout({
     redirectUri: window.location.origin,
@@ -40,8 +57,16 @@ export function getProfileSummary(): string {
   if (!keycloak.tokenParsed) {
     return "Anonymous";
   }
-  const parsed = keycloak.tokenParsed as Record<string, string>;
+  const parsed = keycloak.tokenParsed as KeycloakTokenPayload;
   return parsed.preferred_username ?? parsed.email ?? parsed.sub ?? "Authenticated user";
+}
+
+export function isAdmin(): boolean {
+  if (!keycloak.tokenParsed) {
+    return false;
+  }
+  const parsed = keycloak.tokenParsed as KeycloakTokenPayload;
+  return Boolean(parsed.realm_access?.roles?.includes(STUDYVAULT_ADMIN_ROLE));
 }
 
 export function isAuthenticated(): boolean {

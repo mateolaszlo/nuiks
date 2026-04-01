@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.models import STUDYVAULT_ADMIN_ROLE
 
 
 class FakeJwksCache:
@@ -51,6 +52,7 @@ def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.Monke
 
     assert response.status_code == 200
     assert response.json()["subject"] == "user-1"
+    assert response.json()["roles"] == ["user"]
 
 
 def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,3 +80,34 @@ def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
 
     assert exc.value.status_code == 401
+
+
+def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "admin-1",
+            "email": "admin@example.com",
+            "preferred_username": "admin",
+            "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
+        },
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    user = asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "admin-token"})()))
+
+    assert user.roles == ["user", STUDYVAULT_ADMIN_ROLE]
+    assert user.is_admin is True

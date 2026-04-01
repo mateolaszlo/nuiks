@@ -1,7 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8080";
 const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL ?? "http://localhost:9200";
+
+async function loginAs(page: Page, username: string, password: string) {
+  await page.goto(BASE_URL);
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
+  await page.getByRole("button", { name: "Log In With Keycloak" }).click();
+  await expect(page).toHaveURL(/\/realms\/studyvault\//);
+  await expect(page.locator("#username")).toBeVisible();
+  await page.locator("#username").fill(username);
+  await page.locator("#password").fill(password);
+  await page.getByRole("button", { name: /sign in/i }).click();
+}
 
 test("login, upload, search, activity, download, and log ingestion", async ({ page, request }) => {
   const uniqueId = Date.now().toString();
@@ -15,15 +27,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
     .filter({ has: page.getByRole("heading", { name: "Recent Activity" }) });
   const activityRow = activityPanel.locator(".result-card").filter({ hasText: filename });
 
-  await page.goto(BASE_URL);
-  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
-  await page.getByRole("button", { name: "Log In With Keycloak" }).click();
-  await expect(page).toHaveURL(/\/realms\/studyvault\//);
-  await expect(page.locator("#username")).toBeVisible();
-
-  await page.locator("#username").fill("demo");
-  await page.locator("#password").fill("demo123");
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await loginAs(page, "demo", "demo123");
 
   await expect(page.getByRole("heading", { name: "demo" })).toBeVisible({ timeout: 60_000 });
 
@@ -69,4 +73,10 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
       { timeout: 60_000, intervals: [1000, 2000, 5000] },
     )
     .toContain("POST /api/files");
+});
+
+test("admin login shows admin indicator", async ({ page }) => {
+  await loginAs(page, "admin", "admin123");
+
+  await expect(page.getByRole("heading", { name: "admin (Admin)" })).toBeVisible({ timeout: 60_000 });
 });

@@ -6,8 +6,10 @@ import {
   getAccessToken,
   getProfileSummary,
   initializeAuth,
+  isAdmin,
   isAuthenticated,
   login,
+  register,
   logout,
 } from "./auth/keycloak";
 
@@ -26,6 +28,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [profileLabel, setProfileLabel] = useState("Anonymous");
+  const [adminUser, setAdminUser] = useState(false);
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
@@ -53,6 +56,7 @@ export default function App() {
         const authReady = loggedIn || isAuthenticated();
         setAuthenticated(authReady);
         setProfileLabel(getProfileSummary());
+        setAdminUser(isAdmin());
         setAuthState("ready");
         setError(null);
         if (authReady) {
@@ -172,6 +176,9 @@ export default function App() {
           <button className="primary-button" onClick={() => void login()}>
             Log In With Keycloak
           </button>
+          <button className="secondary-button" onClick={() => void register()}>
+            Create Account
+          </button>
         </section>
       </main>
     );
@@ -182,7 +189,7 @@ export default function App() {
       <section className="hero-card">
         <div>
           <p className="eyebrow">Signed in</p>
-          <h1>{profileLabel}</h1>
+          <h1>{profileLabel}{adminUser ? " (Admin)" : ""}</h1>
           <p>Upload files, search by tag or filename, and verify the MVP flow end to end.</p>
         </div>
         <button className="secondary-button" onClick={() => void logout()}>

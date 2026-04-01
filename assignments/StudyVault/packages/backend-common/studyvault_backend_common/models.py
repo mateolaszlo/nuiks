@@ -7,6 +7,9 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
+STUDYVAULT_ADMIN_ROLE = "studyvault_admin"
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -17,6 +20,10 @@ class AuthenticatedUser(BaseModel):
     username: str | None = None
     roles: list[str] = Field(default_factory=list)
     token: str | None = None
+
+    @property
+    def is_admin(self) -> bool:
+        return STUDYVAULT_ADMIN_ROLE in self.roles
 
 
 class FileRecord(BaseModel):
