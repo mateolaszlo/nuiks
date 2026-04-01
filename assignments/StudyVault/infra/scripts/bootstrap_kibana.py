@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from uuid import uuid4
@@ -151,48 +150,29 @@ def ensure_metricbeat_index_template() -> None:
 
 
 def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
-    status, payload = request_json(KIBANA_URL, f"/api/saved_objects/index-pattern/{view_id}")
+    status, payload = request_json(KIBANA_URL, f"/api/data_views/data_view/{view_id}")
     if status == 200:
-        attributes = payload.get("attributes", {})
-        if attributes.get("title") == title and attributes.get("timeFieldName") == time_field:
-            return
         status, _ = request_json(
             KIBANA_URL,
-            f"/api/saved_objects/index-pattern/{view_id}",
-            method="PUT",
-            payload={
-                "attributes": {
-                    "title": title,
-                    "timeFieldName": time_field,
-                }
-            },
+            f"/api/data_views/data_view/{view_id}",
+            method="DELETE",
         )
-        if status not in {200, 201}:
-            raise RuntimeError(f"Failed to update Kibana data view for {title}: HTTP {status}")
-        return
-
-    params = urllib.parse.urlencode(
-        {
-            "type": "index-pattern",
-            "search_fields": "title",
-            "search": title,
-        }
-    )
-    status, payload = request_json(KIBANA_URL, f"/api/saved_objects/_find?{params}")
-    if status == 200:
-        for saved_object in payload.get("saved_objects", []):
-            if saved_object.get("attributes", {}).get("title") == title:
-                return
+        if status not in {200, 204}:
+            raise RuntimeError(f"Failed to replace Kibana data view for {title}: HTTP {status}")
 
     status, _ = request_json(
         KIBANA_URL,
-        f"/api/saved_objects/index-pattern/{view_id}",
+        "/api/data_views/data_view",
         method="POST",
         payload={
-            "attributes": {
+            "data_view": {
+                "id": view_id,
                 "title": title,
                 "timeFieldName": time_field,
-            }
+                "name": title,
+            },
+            "override": True,
+            "refresh_fields": True,
         },
     )
     if status not in {200, 201, 409}:
