@@ -5,6 +5,7 @@ import subprocess
 import time
 import urllib.request
 from pathlib import Path
+from urllib.parse import quote
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +87,20 @@ def assert_kibana_data_view() -> None:
     raise RuntimeError("Kibana data view for studyvault-logs-* was not created")
 
 
+def assert_backend_logs_indexed() -> None:
+    query = quote('service:(file-service OR catalog-service OR search-service OR activity-service)', safe="():*")
+    url = f"http://127.0.0.1:9200/studyvault-logs-*/_search?q={query}&size=5&sort=@timestamp:desc"
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        hits = payload.get("hits", {}).get("hits", [])
+        if any(hit.get("_source", {}).get("log_level") for hit in hits):
+            return
+        time.sleep(3)
+    raise RuntimeError("Backend service logs with structured fields were not indexed")
+
+
 def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
@@ -93,6 +108,7 @@ def main() -> None:
     assert_http_ok("http://127.0.0.1:9200/_cluster/health")
     assert_http_ok("http://127.0.0.1:5601/api/status")
     assert_kibana_data_view()
+    assert_backend_logs_indexed()
 
 
 if __name__ == "__main__":

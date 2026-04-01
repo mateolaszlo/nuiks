@@ -13,9 +13,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
+service_name_ctx: ContextVar[str] = ContextVar("service_name", default="unknown-service")
+configured_service_name = "unknown-service"
 
 
 def configure_logging(service_name: str) -> None:
+    global configured_service_name
+    configured_service_name = service_name
+    service_name_ctx.set(service_name)
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         JsonFormatter(
@@ -52,6 +57,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = request.headers.get("x-request-id", str(uuid4()))
         request_id_ctx.set(request_id)
         structlog.contextvars.bind_contextvars(
+            service=configured_service_name,
             request_id=request_id,
             path=request.url.path,
             method=request.method,
