@@ -15,6 +15,7 @@ from .models import AuthenticatedUser
 
 
 security = HTTPBearer(auto_error=False)
+ALLOWED_JWT_ALGORITHMS = ("RS256",)
 
 
 class AuthSettings(BaseModel):
@@ -77,6 +78,9 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
 
         token = credentials.credentials
         unverified_header = jwt.get_unverified_header(token)
+        if unverified_header.get("alg") not in ALLOWED_JWT_ALGORITHMS:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
         jwks = await get_jwks_cache().get(settings.jwks_url)
         keys = jwks.get("keys", [])
         key = next((candidate for candidate in keys if candidate.get("kid") == unverified_header.get("kid")), None)
@@ -87,7 +91,7 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
             claims = jwt.decode(
                 token,
                 key,
-                algorithms=[unverified_header.get("alg", "RS256")],
+                algorithms=list(ALLOWED_JWT_ALGORITHMS),
                 issuer=settings.issuer,
                 options={"verify_aud": settings.audience is not None},
                 audience=settings.audience,

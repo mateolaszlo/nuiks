@@ -17,20 +17,23 @@ class FakeJwksCache:
 
 
 def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.MonkeyPatch) -> None:
+    decode_calls: dict[str, Any] = {}
     monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
     monkeypatch.setattr(
         "studyvault_backend_common.auth.jwt.get_unverified_header",
         lambda token: {"kid": "test-kid", "alg": "RS256"},
     )
-    monkeypatch.setattr(
-        "studyvault_backend_common.auth.jwt.decode",
-        lambda *args, **kwargs: {
+    
+    def fake_decode(*args, **kwargs):
+        decode_calls["kwargs"] = kwargs
+        return {
             "sub": "user-1",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user"]},
-        },
-    )
+        }
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
 
     dependency = build_auth_dependency(
         lambda: AuthSettings(
@@ -53,6 +56,7 @@ def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.Monke
     assert response.status_code == 200
     assert response.json()["subject"] == "user-1"
     assert response.json()["roles"] == ["user"]
+    assert decode_calls["kwargs"]["algorithms"] == ["RS256"]
 
 
 def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,6 +84,39 @@ def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
 
     assert exc.value.status_code == 401
+
+
+def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "HS256"},
+    )
+
+    decode_called = False
+
+    def fake_decode(*args, **kwargs):
+        nonlocal decode_called
+        decode_called = True
+        return {}
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-alg-token"})()))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid token"
+    assert decode_called is False
 
 
 def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -> None:

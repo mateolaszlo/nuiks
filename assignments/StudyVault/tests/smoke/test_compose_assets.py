@@ -138,3 +138,13 @@ def test_bootstrap_declares_float_metricbeat_docker_cpu_fields() -> None:
         "reset_metricbeat_data_streams",
     ]:
         assert field_name in contents
+
+
+def test_frontend_keycloak_uses_same_origin_default() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    auth_source = (project_root / "apps" / "frontend" / "src" / "auth" / "keycloak.ts").read_text()
+    compose_contents = (project_root / "infra" / "docker" / "compose" / "docker-compose.yml").read_text()
+
+    assert 'window.location.origin' in auth_source
+    assert "http://localhost:8080" not in auth_source
+    assert "VITE_KEYCLOAK_URL" not in compose_contents

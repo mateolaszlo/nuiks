@@ -4,7 +4,6 @@ services:
       context: ../../..
       dockerfile: apps/frontend/Dockerfile
     environment:
-      VITE_KEYCLOAK_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
       VITE_KEYCLOAK_REALM: studyvault
       VITE_KEYCLOAK_CLIENT_ID: studyvault-frontend
     depends_on:

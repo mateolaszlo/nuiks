@@ -1,9 +1,10 @@
 import Keycloak from "keycloak-js";
 
 const STUDYVAULT_ADMIN_ROLE = "studyvault_admin";
+const keycloakBaseUrl = import.meta.env.VITE_KEYCLOAK_URL ?? window.location.origin;
 
 const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL ?? "http://localhost:8080",
+  url: keycloakBaseUrl,
   realm: import.meta.env.VITE_KEYCLOAK_REALM ?? "studyvault",
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? "studyvault-frontend",
 });

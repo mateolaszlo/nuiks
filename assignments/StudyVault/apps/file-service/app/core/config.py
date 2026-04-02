@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     keycloak_issuer_url: str = "http://localhost:8080/realms/studyvault"
     keycloak_jwks_url: str = "http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs"
     keycloak_client_id: str = "studyvault-frontend"
-    internal_base_url: str = "http://nginx"
+    internal_base_url: str = "http://gateway"
     internal_token: str = "internal-demo-token"
     file_s3_endpoint: str = "http://minio:9000"
     file_s3_access_key: str = "minioadmin"
@@ -27,6 +27,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=os.environ.get("STUDYVAULT_AUTH_DISABLED", "false").lower() == "true",
-        internal_base_url=os.environ.get("STUDYVAULT_INTERNAL_BASE_URL", "http://nginx"),
+        internal_base_url=os.environ.get("STUDYVAULT_INTERNAL_BASE_URL", "http://gateway"),
         internal_token=os.environ.get("STUDYVAULT_INTERNAL_TOKEN", "internal-demo-token"),
     )
