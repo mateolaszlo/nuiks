@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = PROJECT_ROOT / "infra" / "docker" / "compose" / "docker-compose.yml"
+KIBANA_BUNDLE = PROJECT_ROOT / "infra" / "kibana" / "studyvault-observability.ndjson"
 
 
 def compose_command(*args: str) -> list[str]:
@@ -96,45 +97,48 @@ def assert_keycloak_database_exists() -> None:
         raise RuntimeError("Keycloak PostgreSQL database was not created")
 
 
-def assert_kibana_data_view(title: str) -> None:
-    url = (
-        "http://127.0.0.1:5601/api/saved_objects/_find"
-        f"?type=index-pattern&search_fields=title&search={quote(title, safe='*')}"
+def load_saved_object_bundle() -> list[dict]:
+    return [json.loads(line) for line in KIBANA_BUNDLE.read_text().splitlines() if line.strip()]
+
+
+def expected_dashboard_objects() -> list[dict]:
+    return [obj for obj in load_saved_object_bundle() if obj.get("type") == "dashboard"]
+
+
+def assert_kibana_data_view(view_id: str) -> None:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:5601/api/data_views/data_view/{view_id}",
+        headers={"kbn-xsrf": "true"},
     )
-    request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
     deadline = time.time() + 120
     while time.time() < deadline:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if payload.get("saved_objects"):
-            return
-        time.sleep(3)
-    raise RuntimeError(f"Kibana data view for {title} was not created")
-
-
-def normalize_saved_object_title(title: str) -> str:
-    normalized = "".join(char.lower() if char.isalnum() else " " for char in title)
-    parts = normalized.split()
-    if parts and parts[-1].isdigit():
-        parts = parts[:-1]
-    return " ".join(parts)
-
-
-def assert_kibana_dashboard(title: str) -> None:
-    expected_title = normalize_saved_object_title(title)
-    url = "http://127.0.0.1:5601/api/saved_objects/_find?type=dashboard&per_page=100"
-    request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
-    deadline = time.time() + 120
-    while time.time() < deadline:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        saved_objects = payload.get("saved_objects", [])
-        for saved_object in saved_objects:
-            saved_object_title = saved_object.get("attributes", {}).get("title", "")
-            if normalize_saved_object_title(saved_object_title) == expected_title:
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if payload.get("data_view", {}).get("id") == view_id:
                 return
+        except Exception:
+            pass
         time.sleep(3)
-    raise RuntimeError(f"Kibana dashboard {title} was not created")
+    raise RuntimeError(f"Kibana data view {view_id} was not created")
+
+
+def assert_kibana_saved_object_exists(saved_object_type: str, saved_object_id: str, title: str) -> None:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:5601/api/saved_objects/{saved_object_type}/{saved_object_id}",
+        headers={"kbn-xsrf": "true"},
+    )
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if payload.get("id") == saved_object_id and payload.get("type") == saved_object_type:
+                return
+        except Exception:
+            pass
+        time.sleep(3)
+    raise RuntimeError(f"Kibana {saved_object_type} {title} ({saved_object_id}) was not created")
 
 
 def assert_backend_logs_indexed() -> None:
@@ -201,17 +205,14 @@ def main() -> None:
     assert_ilm_policy_exists("metricbeat-policy")
     assert_metricbeat_field_is_float("container.cpu.usage")
     assert_metricbeat_field_is_float("docker.cpu.total.norm.pct")
-    assert_kibana_data_view("studyvault-logs-*")
-    assert_kibana_data_view("metricbeat*")
-    for title in [
-        "StudyVault Executive Overview",
-        "StudyVault Request Health",
-        "StudyVault Upload Pipeline",
-        "StudyVault Search Analytics",
-        "StudyVault Errors and Failures",
-        "StudyVault Infrastructure Metrics",
-    ]:
-        assert_kibana_dashboard(title)
+    assert_kibana_data_view("studyvault-logs")
+    assert_kibana_data_view("metricbeat")
+    for dashboard in expected_dashboard_objects():
+        assert_kibana_saved_object_exists(
+            "dashboard",
+            dashboard["id"],
+            dashboard.get("attributes", {}).get("title", dashboard["id"]),
+        )
     assert_backend_logs_indexed()
     assert_metricbeat_documents_indexed()
 

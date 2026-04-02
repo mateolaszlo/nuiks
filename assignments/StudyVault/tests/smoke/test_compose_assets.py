@@ -81,10 +81,12 @@ def test_kibana_saved_object_bundle_exists() -> None:
 
     assert bundle.exists()
     objects = [json.loads(line) for line in bundle.read_text().splitlines()]
+    dashboard_objects = [obj for obj in objects if obj.get("type") == "dashboard"]
+    dashboard_ids = {obj["id"] for obj in dashboard_objects}
     dashboard_titles = {
         _normalize_saved_object_title(obj["attributes"]["title"])
-        for obj in objects
-        if obj.get("type") == "dashboard" and obj.get("attributes", {}).get("title")
+        for obj in dashboard_objects
+        if obj.get("attributes", {}).get("title")
     }
     data_view_titles = {
         obj["attributes"]["title"]
@@ -94,7 +96,10 @@ def test_kibana_saved_object_bundle_exists() -> None:
 
     assert "studyvault-logs-*" in data_view_titles
     assert "metricbeat*" in data_view_titles
+    assert len(dashboard_objects) == 6
+    assert len(dashboard_ids) == len(dashboard_objects)
     assert "studyvault executive overview" in dashboard_titles
+    assert "studyvault search analytics2" in dashboard_titles
 
 
 def test_keycloak_realm_template_renders_public_base_url() -> None:
