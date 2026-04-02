@@ -15,8 +15,16 @@ StudyVault keeps most cross-service and environment validation in the top-level 
 From `assignments/StudyVault`:
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 PYTHONPATH=. .venv/bin/pytest -q
 python3 tests/smoke/runtime_smoke.py
+```
+
+From the repo root:
+
+```bash
+cd assignments/StudyVault && PYTHONPATH=. .venv/bin/pytest -q
 ```
 
 Frontend browser coverage lives in `apps/frontend/tests/e2e/` and is run with Playwright from the frontend package.

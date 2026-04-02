@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
+
+
+def _normalize_saved_object_title(title: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else " " for char in title)
+    parts = normalized.split()
+    if parts and parts[-1].isdigit():
+        parts = parts[:-1]
+    return " ".join(parts)
 
 
 def test_docker_compose_config_contains_required_services() -> None:
@@ -63,4 +72,18 @@ def test_kibana_saved_object_bundle_exists() -> None:
     bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
 
     assert bundle.exists()
-    assert "StudyVault Executive Overview" in bundle.read_text()
+    objects = [json.loads(line) for line in bundle.read_text().splitlines()]
+    dashboard_titles = {
+        _normalize_saved_object_title(obj["attributes"]["title"])
+        for obj in objects
+        if obj.get("type") == "dashboard" and obj.get("attributes", {}).get("title")
+    }
+    data_view_titles = {
+        obj["attributes"]["title"]
+        for obj in objects
+        if obj.get("type") == "index-pattern" and obj.get("attributes", {}).get("title")
+    }
+
+    assert "studyvault-logs-*" in data_view_titles
+    assert "metricbeat*" in data_view_titles
+    assert "studyvault executive overview" in dashboard_titles

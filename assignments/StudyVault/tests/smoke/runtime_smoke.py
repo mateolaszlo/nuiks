@@ -112,18 +112,27 @@ def assert_kibana_data_view(title: str) -> None:
     raise RuntimeError(f"Kibana data view for {title} was not created")
 
 
+def normalize_saved_object_title(title: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else " " for char in title)
+    parts = normalized.split()
+    if parts and parts[-1].isdigit():
+        parts = parts[:-1]
+    return " ".join(parts)
+
+
 def assert_kibana_dashboard(title: str) -> None:
-    url = (
-        "http://127.0.0.1:5601/api/saved_objects/_find"
-        f"?type=dashboard&search_fields=title&search={quote(title, safe='*')}"
-    )
+    expected_title = normalize_saved_object_title(title)
+    url = "http://127.0.0.1:5601/api/saved_objects/_find?type=dashboard&per_page=100"
     request = urllib.request.Request(url, headers={"kbn-xsrf": "true"})
     deadline = time.time() + 120
     while time.time() < deadline:
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        if payload.get("saved_objects"):
-            return
+        saved_objects = payload.get("saved_objects", [])
+        for saved_object in saved_objects:
+            saved_object_title = saved_object.get("attributes", {}).get("title", "")
+            if normalize_saved_object_title(saved_object_title) == expected_title:
+                return
         time.sleep(3)
     raise RuntimeError(f"Kibana dashboard {title} was not created")
 

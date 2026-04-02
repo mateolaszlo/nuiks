@@ -31,6 +31,8 @@ Self-registration is enabled through Keycloak. New users can create accounts fro
 From `assignments/StudyVault`:
 
 ```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
@@ -41,6 +43,12 @@ PYTHONPATH=. .venv/bin/pytest -q
 npm run build --prefix apps/frontend
 python3 tests/smoke/runtime_smoke.py
 docker compose -f infra/docker/compose/docker-compose.yml config
+```
+
+From the repo root, use the StudyVault-local virtualenv explicitly:
+
+```bash
+cd assignments/StudyVault && PYTHONPATH=. .venv/bin/pytest -q
 ```
 
 Frontend browser E2E is available, but Playwright requires Node 18+:
