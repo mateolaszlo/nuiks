@@ -2,6 +2,8 @@
 
 StudyVault is a runnable microservice MVP for managing study files. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
 
+For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
+
 ## What It Does
 
 - normal users can register, sign in, upload files, list their files, search metadata, review activity, and download files

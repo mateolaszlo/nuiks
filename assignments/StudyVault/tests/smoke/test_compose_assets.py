@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 
@@ -51,6 +53,8 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "/usr/share/metricbeat/metricbeat.yml" in result.stdout
     assert "bootstrap_kibana.py" in result.stdout
     assert "/app/kibana" in result.stdout
+    assert "render_studyvault_realm.sh" in result.stdout
+    assert "studyvault-realm.template.json" in result.stdout
 
 
 def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
@@ -87,3 +91,27 @@ def test_kibana_saved_object_bundle_exists() -> None:
     assert "studyvault-logs-*" in data_view_titles
     assert "metricbeat*" in data_view_titles
     assert "studyvault executive overview" in dashboard_titles
+
+
+def test_keycloak_realm_template_renders_public_base_url() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    render_script = project_root / "infra" / "scripts" / "render_studyvault_realm.sh"
+    template = project_root / "infra" / "keycloak" / "studyvault-realm.template.json"
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output = Path(temp_dir) / "studyvault-realm.json"
+        result = subprocess.run(
+            ["sh", str(render_script), str(template), str(output)],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "STUDYVAULT_PUBLIC_BASE_URL": "https://studyvault.example.com"},
+        )
+
+        assert result.returncode == 0, result.stderr
+        contents = output.read_text()
+
+    assert "https://studyvault.example.com/*" in contents
+    assert '"webOrigins": [' in contents
+    assert "__STUDYVAULT_" not in contents

@@ -2,7 +2,7 @@
 
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-This document follows [/.AGENTS/PLANS.md](/home/ubuntu/developer/nuiks/.AGENTS/PLANS.md). Anyone continuing this work must keep this file current as implementation progresses.
+This document follows `.AGENTS/PLANS.md` from the repository root. Anyone continuing this work must keep this file current as implementation progresses.
 
 ## Purpose / Big Picture
 

@@ -4,7 +4,7 @@ services:
       context: ../../..
       dockerfile: apps/frontend/Dockerfile
     environment:
-      VITE_KEYCLOAK_URL: http://localhost:8080
+      VITE_KEYCLOAK_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
       VITE_KEYCLOAK_REALM: studyvault
       VITE_KEYCLOAK_CLIENT_ID: studyvault-frontend
     depends_on:
@@ -24,7 +24,7 @@ services:
   gateway:
     image: nginx:1.27-alpine
     ports:
-      - "8080:80"
+      - "${STUDYVAULT_GATEWAY_BIND_ADDRESS:-0.0.0.0}:8080:80"
     volumes:
       - ../../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -58,7 +58,7 @@ services:
       POSTGRES_USER: studyvault
       POSTGRES_PASSWORD: studyvault
     ports:
-      - "5432:5432"
+      - "${STUDYVAULT_DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../../postgres/initdb:/docker-entrypoint-initdb.d:ro
@@ -71,7 +71,7 @@ services:
   mongodb:
     image: mongo:7
     ports:
-      - "27017:27017"
+      - "${STUDYVAULT_DB_BIND_ADDRESS:-127.0.0.1}:27017:27017"
     volumes:
       - mongodb-data:/data/db
     healthcheck:
@@ -87,8 +87,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:9000:9000"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:9001:9001"
     volumes:
       - minio-data:/data
     healthcheck:
@@ -99,7 +99,14 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
-    command: start-dev --import-realm
+    command:
+      - /bin/sh
+      - -lc
+      - >
+        sh /opt/keycloak/bin/render_studyvault_realm.sh
+        /opt/keycloak/data/import/studyvault-realm.template.json
+        /opt/keycloak/data/import/studyvault-realm.json
+        && exec /opt/keycloak/bin/kc.sh start-dev --import-realm
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
@@ -110,12 +117,14 @@ services:
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
       KC_PROXY_HEADERS: xforwarded
-      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
       KC_HOSTNAME_STRICT: "false"
+      STUDYVAULT_PUBLIC_BASE_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
     ports:
-      - "8081:8080"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:8081:8080"
     volumes:
-      - ../../keycloak/studyvault-realm.json:/opt/keycloak/data/import/studyvault-realm.json:ro
+      - ../../keycloak/studyvault-realm.template.json:/opt/keycloak/data/import/studyvault-realm.template.json:ro
+      - ../../scripts/render_studyvault_realm.sh:/opt/keycloak/bin/render_studyvault_realm.sh:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -136,7 +145,7 @@ services:
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
       STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
-      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/studyvault
+      KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       CATALOG_DATABASE_URL: postgresql+psycopg://studyvault:studyvault@postgres:5432/studyvault
     depends_on:
@@ -162,7 +171,7 @@ services:
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
       STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
-      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/studyvault
+      KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       SEARCH_MONGODB_URL: mongodb://mongodb:27017
     depends_on:
@@ -188,7 +197,7 @@ services:
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
       STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
-      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/studyvault
+      KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       ACTIVITY_MONGODB_URL: mongodb://mongodb:27017
     depends_on:
@@ -215,7 +224,7 @@ services:
       STUDYVAULT_AUTH_DISABLED: "false"
       STUDYVAULT_INTERNAL_BASE_URL: http://gateway
       STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
-      KEYCLOAK_ISSUER_URL: http://localhost:8080/realms/studyvault
+      KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       FILE_S3_ENDPOINT: http://minio:9000
       FILE_S3_ACCESS_KEY: minioadmin
@@ -250,7 +259,7 @@ services:
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
-      - "9200:9200"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:9200:9200"
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
@@ -262,8 +271,8 @@ services:
   logstash:
     image: docker.elastic.co/logstash/logstash:8.15.3
     ports:
-      - "5000:5000"
-      - "12201:12201/udp"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:5000:5000"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:12201:12201/udp"
     volumes:
       - ../../observability/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
     depends_on:
@@ -280,7 +289,7 @@ services:
     environment:
       ELASTICSEARCH_HOSTS: http://elasticsearch:9200
     ports:
-      - "5601:5601"
+      - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
