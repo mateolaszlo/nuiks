@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     keycloak_jwks_url: str = "http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs"
     keycloak_client_id: str = "studyvault-frontend"
     catalog_database_url: str = "postgresql+psycopg://studyvault:studyvault@postgres:5432/studyvault"
-    internal_token: str = "internal-demo-token"
+    internal_token: str = "studyvault-internal-token-change-me"
 
     model_config = SettingsConfigDict(
         env_prefix="",
@@ -27,5 +27,8 @@ def get_settings() -> Settings:
         auth_disabled=False
         if str(__import__("os").environ.get("STUDYVAULT_AUTH_DISABLED", "false")).lower() != "true"
         else True,
-        internal_token=__import__("os").environ.get("STUDYVAULT_INTERNAL_TOKEN", "internal-demo-token"),
+        internal_token=__import__("os").environ.get(
+            "STUDYVAULT_INTERNAL_TOKEN",
+            "studyvault-internal-token-change-me",
+        ),
     )

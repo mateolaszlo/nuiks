@@ -56,6 +56,8 @@ services:
       POSTGRES_DB: studyvault
       POSTGRES_USER: studyvault
       POSTGRES_PASSWORD: studyvault
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-studyvault-keycloak-db-password-change-me}
     ports:
       - "${STUDYVAULT_DB_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
@@ -108,8 +110,8 @@ services:
       KC_DB_URL_HOST: postgres
       KC_DB_URL_PORT: 5432
       KC_DB_URL_DATABASE: keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-studyvault-keycloak-db-password-change-me}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
       KC_HOSTNAME_STRICT: "false"
@@ -153,7 +155,7 @@ services:
       dockerfile: apps/catalog-service/Dockerfile
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
-      STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       CATALOG_DATABASE_URL: postgresql+psycopg://studyvault:studyvault@postgres:5432/studyvault
@@ -179,7 +181,7 @@ services:
       dockerfile: apps/search-service/Dockerfile
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
-      STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       SEARCH_MONGODB_URL: mongodb://mongodb:27017
@@ -205,7 +207,7 @@ services:
       dockerfile: apps/activity-service/Dockerfile
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
-      STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       ACTIVITY_MONGODB_URL: mongodb://mongodb:27017
@@ -231,8 +233,10 @@ services:
       dockerfile: apps/file-service/Dockerfile
     environment:
       STUDYVAULT_AUTH_DISABLED: "false"
-      STUDYVAULT_INTERNAL_BASE_URL: http://gateway
-      STUDYVAULT_INTERNAL_TOKEN: internal-demo-token
+      CATALOG_INTERNAL_URL: http://catalog-service:8000
+      SEARCH_INTERNAL_URL: http://search-service:8000
+      ACTIVITY_INTERNAL_URL: http://activity-service:8000
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       FILE_S3_ENDPOINT: http://minio:9000

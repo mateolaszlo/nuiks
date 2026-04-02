@@ -33,7 +33,9 @@ def create_app(object_store=None, downstream=None) -> FastAPI:
 
     if downstream is None:
         downstream = HttpDownstreamPublisher(
-            base_url=settings.internal_base_url,
+            catalog_url=settings.catalog_internal_url,
+            search_url=settings.search_internal_url,
+            activity_url=settings.activity_internal_url,
             internal_token=settings.internal_token,
         )
 

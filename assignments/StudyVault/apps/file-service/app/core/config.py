@@ -12,8 +12,10 @@ class Settings(BaseSettings):
     keycloak_issuer_url: str = "http://localhost:8080/realms/studyvault"
     keycloak_jwks_url: str = "http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs"
     keycloak_client_id: str = "studyvault-frontend"
-    internal_base_url: str = "http://gateway"
-    internal_token: str = "internal-demo-token"
+    catalog_internal_url: str = "http://catalog-service:8000"
+    search_internal_url: str = "http://search-service:8000"
+    activity_internal_url: str = "http://activity-service:8000"
+    internal_token: str = "studyvault-internal-token-change-me"
     file_s3_endpoint: str = "http://minio:9000"
     file_s3_access_key: str = "minioadmin"
     file_s3_secret_key: str = "minioadmin"
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=os.environ.get("STUDYVAULT_AUTH_DISABLED", "false").lower() == "true",
-        internal_base_url=os.environ.get("STUDYVAULT_INTERNAL_BASE_URL", "http://gateway"),
-        internal_token=os.environ.get("STUDYVAULT_INTERNAL_TOKEN", "internal-demo-token"),
+        catalog_internal_url=os.environ.get("CATALOG_INTERNAL_URL", "http://catalog-service:8000"),
+        search_internal_url=os.environ.get("SEARCH_INTERNAL_URL", "http://search-service:8000"),
+        activity_internal_url=os.environ.get("ACTIVITY_INTERNAL_URL", "http://activity-service:8000"),
+        internal_token=os.environ.get("STUDYVAULT_INTERNAL_TOKEN", "studyvault-internal-token-change-me"),
     )

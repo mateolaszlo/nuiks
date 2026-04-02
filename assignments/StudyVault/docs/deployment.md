@@ -67,6 +67,8 @@ Edit `.env` before starting the stack.
 
 StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` through the `keycloak-realm-render` helper service before Keycloak starts. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
 
+Keycloak now uses a dedicated PostgreSQL role created from `KEYCLOAK_DB_USER` and `KEYCLOAK_DB_PASSWORD`. Leave the username at `keycloak` unless you have a reason to change it, but set a non-default database password before any VM or shared-host deployment. The same values are consumed by both the Postgres init script and the Keycloak container, so they must stay in sync.
+
 ## Local Laptop or Single-Host Deployment
 
 Leave `.env` close to the defaults:
@@ -76,6 +78,8 @@ STUDYVAULT_PUBLIC_BASE_URL=http://localhost:8080
 STUDYVAULT_GATEWAY_BIND_ADDRESS=0.0.0.0
 STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
+KEYCLOAK_DB_USER=keycloak
+KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
 ```
 
 Start the full stack:
@@ -163,7 +167,11 @@ STUDYVAULT_PUBLIC_BASE_URL=https://studyvault.example.com
 STUDYVAULT_GATEWAY_BIND_ADDRESS=0.0.0.0
 STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
+KEYCLOAK_DB_USER=keycloak
+KEYCLOAK_DB_PASSWORD=replace-with-a-strong-secret
 ```
+
+Change `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` before exposing the stack outside your own machine.
 
 ### 2. Open Only the Ports You Need
 

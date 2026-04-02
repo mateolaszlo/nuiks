@@ -4,6 +4,8 @@ StudyVault is a runnable microservice MVP for managing study files. It includes 
 
 For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
 
+Before any non-local deployment, set `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` in `.env` to non-default secrets.
+
 ## What It Does
 
 - normal users can register, sign in, upload files, list their files, search metadata, review activity, and download files
@@ -35,6 +37,7 @@ From `assignments/StudyVault`:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+cp .env.example .env
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 

@@ -49,6 +49,9 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "KC_DB: postgres" in result.stdout
     assert "KC_DB_URL_DATABASE: keycloak" in result.stdout
     assert "KC_DB_USERNAME: keycloak" in result.stdout
+    assert "KC_DB_PASSWORD: keycloak" not in result.stdout
+    assert "KEYCLOAK_DB_USER: keycloak" in result.stdout
+    assert "KEYCLOAK_DB_PASSWORD: studyvault-keycloak-db-password-change-me" in result.stdout
     assert "/docker-entrypoint-initdb.d" in result.stdout
     assert "metricbeat.yml" in result.stdout
     assert "/usr/share/metricbeat/metricbeat.yml" in result.stdout
@@ -59,6 +62,10 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "- /bin/sh" in result.stdout
     assert "start-dev" in result.stdout
     assert "keycloak-import-data" in result.stdout
+    assert "CATALOG_INTERNAL_URL: http://catalog-service:8000" in result.stdout
+    assert "SEARCH_INTERNAL_URL: http://search-service:8000" in result.stdout
+    assert "ACTIVITY_INTERNAL_URL: http://activity-service:8000" in result.stdout
+    assert "internal-demo-token" not in result.stdout
 
 
 def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
@@ -148,3 +155,30 @@ def test_frontend_keycloak_uses_same_origin_default() -> None:
     assert 'window.location.origin' in auth_source
     assert "http://localhost:8080" not in auth_source
     assert "VITE_KEYCLOAK_URL" not in compose_contents
+
+
+def test_internal_fanout_is_not_exposed_through_gateway() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    downstream_contents = (project_root / "apps" / "file-service" / "app" / "services" / "downstream.py").read_text()
+    config_contents = (project_root / "apps" / "file-service" / "app" / "core" / "config.py").read_text()
+
+    assert "location /internal/catalog/" not in nginx_contents
+    assert "location /internal/search/" not in nginx_contents
+    assert "location /internal/activity/" not in nginx_contents
+    assert "base_url" not in downstream_contents
+    assert "catalog_url" in downstream_contents
+    assert "search_url" in downstream_contents
+    assert "activity_url" in downstream_contents
+    assert "STUDYVAULT_INTERNAL_BASE_URL" not in config_contents
+    assert "CATALOG_INTERNAL_URL" in config_contents or "catalog_internal_url" in config_contents
+
+
+def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    init_script = project_root / "infra" / "postgres" / "initdb" / "01-create-keycloak-db.sh"
+    contents = init_script.read_text()
+
+    assert "KEYCLOAK_DB_USER" in contents
+    assert "KEYCLOAK_DB_PASSWORD" in contents
+    assert "PASSWORD 'keycloak'" not in contents

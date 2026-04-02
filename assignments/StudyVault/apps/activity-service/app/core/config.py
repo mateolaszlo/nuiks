@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     file_service_url: str = "http://file-service:8000/health"
     activity_service_url: str = "http://activity-service:8000/health"
     keycloak_health_url: str = "http://keycloak:8080/realms/studyvault/.well-known/openid-configuration"
-    internal_token: str = "internal-demo-token"
+    internal_token: str = "studyvault-internal-token-change-me"
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
 
@@ -33,5 +33,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=os.environ.get("STUDYVAULT_AUTH_DISABLED", "false").lower() == "true",
-        internal_token=os.environ.get("STUDYVAULT_INTERNAL_TOKEN", "internal-demo-token"),
+        internal_token=os.environ.get(
+            "STUDYVAULT_INTERNAL_TOKEN",
+            "studyvault-internal-token-change-me",
+        ),
     )
