@@ -112,16 +112,19 @@ Finally, create the docker-compose stack, local realm import, logstash and kiban
 
 Work from `assignments/StudyVault`.
 
-1. Build the shared backend package and backend service code.
-2. Run:
+1. Create the local Python environment and install dependencies:
+      python3 -m venv .venv
+      .venv/bin/pip install -r requirements.txt
+2. Build the shared backend package and backend service code.
+3. Run:
       PYTHONPATH=. .venv/bin/pytest -q
-3. Build the frontend package and static checks.
-4. Run:
+4. Build the frontend package and static checks.
+5. Run:
       npm install
       npm run build
-5. Validate compose definitions:
+6. Validate compose definitions:
       docker compose -f infra/docker/compose/docker-compose.yml config
-6. Start the full stack and verify the demo flow:
+7. Start the full stack and verify the demo flow:
       docker compose -f infra/docker/compose/docker-compose.yml up --build
 
 Expected acceptance includes `/health` responses from all services, a working Keycloak login, a successful upload, file listing, search hits, activity records, and visible JSON logs in Kibana.
