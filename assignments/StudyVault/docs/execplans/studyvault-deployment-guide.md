@@ -38,7 +38,7 @@ After this change, a newcomer can deploy the full StudyVault stack without guess
   Rationale: this matches the desired public deployment posture while preserving easy local access on the same host.
   Date/Author: 2026-04-02 / Codex
 
-- Decision: render the Keycloak realm import from a template at container start rather than storing separate realm files for local and public modes.
+- Decision: render the Keycloak realm import from a template during stack startup rather than storing separate realm files for local and public modes.
   Rationale: this avoids config drift and keeps one source of truth for the realm definition.
   Date/Author: 2026-04-02 / Codex
 
@@ -92,7 +92,7 @@ Acceptance is reached when `docker compose ... config` succeeds, the smoke asset
 
 ## Idempotence and Recovery
 
-The render step is safe to repeat because it overwrites the generated realm import file each time the Keycloak container starts. Updating `.env` and restarting Docker Compose is safe. If stale Keycloak or database state preserves old URLs, the recovery path is `docker compose down -v` followed by a clean `up -d --build`.
+The render step is safe to repeat because the `keycloak-realm-render` helper service overwrites the generated realm import file each time the stack starts. Updating `.env` and restarting Docker Compose is safe. If stale Keycloak or database state preserves old URLs, the recovery path is `docker compose down -v` followed by a clean `up -d --build`.
 
 ## Artifacts and Notes
 

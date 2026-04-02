@@ -172,6 +172,24 @@ def assert_ilm_policy_exists(name: str) -> None:
         raise RuntimeError(f"ILM policy {name} was not created")
 
 
+def assert_metricbeat_field_is_float(field_path: str) -> None:
+    url = "http://127.0.0.1:9200/metricbeat*/_mapping"
+    with urllib.request.urlopen(url, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    for mapping in payload.values():
+        properties = mapping.get("mappings", {}).get("properties", {})
+        current = properties
+        for part in field_path.split("."):
+            current = current.get(part, {}).get("properties") if isinstance(current, dict) and part in current and "properties" in current.get(part, {}) else current.get(part)
+            if current is None:
+                break
+        if isinstance(current, dict) and current.get("type") == "float":
+            return
+
+    raise RuntimeError(f"Metricbeat field {field_path} is not mapped as float")
+
+
 def main() -> None:
     wait_for_compose_health()
     assert_http_ok("http://127.0.0.1:8080/")
@@ -181,6 +199,8 @@ def main() -> None:
     assert_http_ok("http://127.0.0.1:5601/api/status")
     assert_ilm_policy_exists("studyvault-logs-policy")
     assert_ilm_policy_exists("metricbeat-policy")
+    assert_metricbeat_field_is_float("container.cpu.usage")
+    assert_metricbeat_field_is_float("docker.cpu.total.norm.pct")
     assert_kibana_data_view("studyvault-logs-*")
     assert_kibana_data_view("metricbeat*")
     for title in [

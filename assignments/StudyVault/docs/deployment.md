@@ -65,7 +65,7 @@ Edit `.env` before starting the stack.
 - `STUDYVAULT_ADMIN_BIND_ADDRESS` controls raw Keycloak, Kibana, Elasticsearch, MinIO, and Logstash host exposure. Keep `127.0.0.1` unless you are intentionally opening troubleshooting access.
 - `STUDYVAULT_DB_BIND_ADDRESS` controls PostgreSQL and MongoDB host exposure. Keep `127.0.0.1`.
 
-StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` at container start. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
+StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` through the `keycloak-realm-render` helper service before Keycloak starts. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
 
 ## Local Laptop or Single-Host Deployment
 

@@ -43,6 +43,7 @@ def test_docker_compose_config_contains_required_services() -> None:
         "logstash",
         "kibana",
         "metricbeat",
+        "keycloak-realm-render",
     ]:
         assert f"{service_name}:" in result.stdout
     assert "KC_DB: postgres" in result.stdout
@@ -55,6 +56,9 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "/app/kibana" in result.stdout
     assert "render_studyvault_realm.sh" in result.stdout
     assert "studyvault-realm.template.json" in result.stdout
+    assert "- /bin/sh" in result.stdout
+    assert "start-dev" in result.stdout
+    assert "keycloak-import-data" in result.stdout
 
 
 def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
@@ -115,3 +119,17 @@ def test_keycloak_realm_template_renders_public_base_url() -> None:
     assert "https://studyvault.example.com/*" in contents
     assert '"webOrigins": [' in contents
     assert "__STUDYVAULT_" not in contents
+
+
+def test_bootstrap_declares_float_metricbeat_docker_cpu_fields() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
+    contents = bootstrap_script.read_text()
+
+    for field_name in [
+        '"usage": {"type": "float"}',
+        '"pct": {"type": "float"}',
+        "studyvault-metricbeat-overrides",
+        "reset_metricbeat_data_streams",
+    ]:
+        assert field_name in contents

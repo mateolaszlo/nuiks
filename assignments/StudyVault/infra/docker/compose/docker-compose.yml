@@ -100,13 +100,8 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command:
-      - /bin/sh
-      - -lc
-      - >
-        sh /opt/keycloak/bin/render_studyvault_realm.sh
-        /opt/keycloak/data/import/studyvault-realm.template.json
-        /opt/keycloak/data/import/studyvault-realm.json
-        && exec /opt/keycloak/bin/kc.sh start-dev --import-realm
+      - start-dev
+      - --import-realm
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
@@ -123,11 +118,12 @@ services:
     ports:
       - "${STUDYVAULT_ADMIN_BIND_ADDRESS:-127.0.0.1}:8081:8080"
     volumes:
-      - ../../keycloak/studyvault-realm.template.json:/opt/keycloak/data/import/studyvault-realm.template.json:ro
-      - ../../scripts/render_studyvault_realm.sh:/opt/keycloak/bin/render_studyvault_realm.sh:ro
+      - keycloak-import-data:/opt/keycloak/data/import
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-realm-render:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -137,6 +133,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+
+  keycloak-realm-render:
+    image: alpine:3.20
+    command:
+      - /bin/sh
+      - /app/render_studyvault_realm.sh
+      - /app/studyvault-realm.template.json
+      - /rendered/studyvault-realm.json
+    environment:
+      STUDYVAULT_PUBLIC_BASE_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
+    volumes:
+      - ../../keycloak/studyvault-realm.template.json:/app/studyvault-realm.template.json:ro
+      - ../../scripts/render_studyvault_realm.sh:/app/render_studyvault_realm.sh:ro
+      - keycloak-import-data:/rendered
 
   catalog-service:
     build:
@@ -341,3 +351,4 @@ volumes:
   mongodb-data:
   minio-data:
   elasticsearch-data:
+  keycloak-import-data:

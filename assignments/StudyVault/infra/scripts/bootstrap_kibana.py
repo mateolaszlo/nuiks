@@ -41,6 +41,54 @@ ILM_POLICIES = {
         }
     },
 }
+METRICBEAT_FLOAT_FIELDS = {
+    "container": {
+        "properties": {
+            "cpu": {
+                "properties": {
+                    "usage": {"type": "float"},
+                }
+            },
+            "memory": {
+                "properties": {
+                    "usage": {"type": "float"},
+                }
+            },
+        }
+    },
+    "docker": {
+        "properties": {
+            "cpu": {
+                "properties": {
+                    "kernel": {
+                        "properties": {
+                            "pct": {"type": "float"},
+                            "norm": {"properties": {"pct": {"type": "float"}}},
+                        }
+                    },
+                    "system": {
+                        "properties": {
+                            "pct": {"type": "float"},
+                            "norm": {"properties": {"pct": {"type": "float"}}},
+                        }
+                    },
+                    "total": {
+                        "properties": {
+                            "pct": {"type": "float"},
+                            "norm": {"properties": {"pct": {"type": "float"}}},
+                        }
+                    },
+                    "user": {
+                        "properties": {
+                            "pct": {"type": "float"},
+                            "norm": {"properties": {"pct": {"type": "float"}}},
+                        }
+                    },
+                }
+            }
+        }
+    },
+}
 SAVED_OBJECT_EXPORTS = [
     DASHBOARD_EXPORT_DIR / "studyvault-observability.ndjson",
 ]
@@ -132,21 +180,44 @@ def ensure_log_index_template() -> None:
 def ensure_metricbeat_index_template() -> None:
     status, _ = request_json(
         ELASTICSEARCH_URL,
-        "/_index_template/metricbeat-retention",
+        "/_index_template/studyvault-metricbeat-overrides",
         method="PUT",
         payload={
             "index_patterns": ["metricbeat*"],
-            "priority": 500,
+            "priority": 1000,
             "data_stream": {},
             "template": {
                 "settings": {
                     "index.lifecycle.name": "metricbeat-policy",
-                }
+                },
+                "mappings": {
+                    "properties": METRICBEAT_FLOAT_FIELDS,
+                },
             },
         },
     )
     if status not in {200, 201}:
         raise RuntimeError(f"Failed to create Metricbeat index template: HTTP {status}")
+
+
+def reset_metricbeat_data_streams() -> None:
+    status, payload = request_json(ELASTICSEARCH_URL, "/_data_stream/metricbeat*")
+    if status == 404:
+        return
+    if status != 200:
+        raise RuntimeError(f"Failed to inspect Metricbeat data streams: HTTP {status}")
+
+    for data_stream in payload.get("data_streams", []):
+        name = data_stream.get("name")
+        if not name:
+            continue
+        delete_status, _ = request_json(
+            ELASTICSEARCH_URL,
+            f"/_data_stream/{name}",
+            method="DELETE",
+        )
+        if delete_status not in {200, 204}:
+            raise RuntimeError(f"Failed to reset Metricbeat data stream {name}: HTTP {delete_status}")
 
 
 def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
@@ -223,6 +294,7 @@ def main() -> None:
         ensure_ilm_policy(policy_name, payload)
     ensure_log_index_template()
     ensure_metricbeat_index_template()
+    reset_metricbeat_data_streams()
     wait_for_kibana()
     for view in DATA_VIEWS:
         ensure_data_view(view["id"], view["title"], view["time_field"])
