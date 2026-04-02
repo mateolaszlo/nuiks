@@ -1,7 +1,5 @@
 # NUIKS Repository
 
-This repository contains coursework artifacts and the runnable `StudyVault` microservice MVP.
-
 ## StudyVault
 
 StudyVault is a full-stack file management demo built from a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO, Elasticsearch, Logstash, Kibana, and Metricbeat.
