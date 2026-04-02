@@ -2,6 +2,9 @@ name: StudyVault CI
 
 on:
   push:
+    branches:
+      - testing
+      - main
     paths:
       - "assignments/StudyVault/**"
       - ".github/workflows/studyvault-ci.yml"
@@ -11,7 +14,32 @@ on:
       - ".github/workflows/studyvault-ci.yml"
 
 jobs:
-  test:
+  pytest:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/testing'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: assignments/StudyVault
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create StudyVault virtualenv
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+
+      - name: Install Python dependencies
+        run: .venv/bin/pip install -r requirements.txt
+
+      - name: Run pytest
+        run: PYTHONPATH=. .venv/bin/pytest -q
+
+  full-test:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,3 +78,21 @@ jobs:
 
       - name: Validate Docker Compose
         run: docker compose -f infra/docker/compose/docker-compose.yml config
+
+      - name: Start StudyVault stack
+        run: docker compose -f infra/docker/compose/docker-compose.yml up -d --build
+
+      - name: Run runtime smoke test
+        run: .venv/bin/python tests/smoke/runtime_smoke.py
+
+      - name: Dump Compose status on failure
+        if: failure()
+        run: docker compose -f infra/docker/compose/docker-compose.yml ps
+
+      - name: Dump Compose logs on failure
+        if: failure()
+        run: docker compose -f infra/docker/compose/docker-compose.yml logs --no-color
+
+      - name: Stop StudyVault stack
+        if: always()
+        run: docker compose -f infra/docker/compose/docker-compose.yml down -v
