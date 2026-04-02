@@ -1,4 +1,4 @@
-# NUIKS Repository
+# NUIKS-Načrtovanje in upravljanje informacijsko-komunikacijskih sistemov
 
 ## StudyVault
 
