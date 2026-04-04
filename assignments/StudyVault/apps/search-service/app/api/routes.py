@@ -30,7 +30,7 @@ def build_router(service: SearchService) -> APIRouter:
         return {"status": "ok", "service": settings.service_name}
 
     @router.get("/api/search", response_model=list[FileRecord])
-    async def search_files(
+    def search_files(
         q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[FileRecord]:
@@ -41,7 +41,7 @@ def build_router(service: SearchService) -> APIRouter:
         response_model=FileRecord,
         dependencies=[Depends(require_internal_token)],
     )
-    async def index_file(file_record: FileRecord) -> FileRecord:
+    def index_file(file_record: FileRecord) -> FileRecord:
         return service.index_file(file_record)
 
     return router

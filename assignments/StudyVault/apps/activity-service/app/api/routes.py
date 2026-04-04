@@ -40,7 +40,7 @@ def build_router(service: ActivityService, admin_service: AdminService) -> APIRo
         return {"status": "ok", "service": settings.service_name}
 
     @router.get("/api/activity/me", response_model=list[ActivityRecord])
-    async def list_my_activity(
+    def list_my_activity(
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[ActivityRecord]:
         return service.list_user_events(user)
@@ -50,7 +50,7 @@ def build_router(service: ActivityService, admin_service: AdminService) -> APIRo
         response_model=ActivityRecord,
         dependencies=[Depends(require_internal_token)],
     )
-    async def create_activity(event: UploadActivityEvent) -> ActivityRecord:
+    def create_activity(event: UploadActivityEvent) -> ActivityRecord:
         return service.record_upload(event)
 
     @router.get("/api/admin/users", response_model=list[AdminUserSummary])

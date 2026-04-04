@@ -30,7 +30,7 @@ def build_router(service: CatalogService) -> APIRouter:
         return {"status": "ok", "service": settings.service_name}
 
     @router.get("/api/catalog/files", response_model=list[FileRecord])
-    async def list_files(user: AuthenticatedUser = Depends(current_user_dependency)) -> list[FileRecord]:
+    def list_files(user: AuthenticatedUser = Depends(current_user_dependency)) -> list[FileRecord]:
         return service.list_user_files(user)
 
     @router.post(
@@ -38,7 +38,7 @@ def build_router(service: CatalogService) -> APIRouter:
         response_model=FileRecord,
         dependencies=[Depends(require_internal_token)],
     )
-    async def create_file(file_record: FileRecord) -> FileRecord:
+    def create_file(file_record: FileRecord) -> FileRecord:
         return service.create_file(file_record)
 
     @router.get(
@@ -46,7 +46,7 @@ def build_router(service: CatalogService) -> APIRouter:
         response_model=FileRecord,
         dependencies=[Depends(require_internal_token)],
     )
-    async def get_file(
+    def get_file(
         file_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FileRecord:
