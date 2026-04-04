@@ -19,11 +19,21 @@ SLOW_REQUEST_THRESHOLD_MS = 250.0
 SUPPRESSED_SUCCESS_PATHS = {"/health"}
 
 
+class ContextDefaultsFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "service"):
+            record.service = service_name_ctx.get() or configured_service_name
+        if not hasattr(record, "request_id"):
+            record.request_id = request_id_ctx.get()
+        return True
+
+
 def configure_logging(service_name: str) -> None:
     global configured_service_name
     configured_service_name = service_name
     service_name_ctx.set(service_name)
     handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(ContextDefaultsFilter())
     handler.setFormatter(
         JsonFormatter(
             "%(asctime)s %(levelname)s %(name)s %(message)s %(service)s %(request_id)s"
