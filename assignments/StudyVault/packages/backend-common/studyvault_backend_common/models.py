@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 STUDYVAULT_ADMIN_ROLE = "studyvault_admin"
+MAX_FILENAME_LENGTH = 255
+MAX_TAG_COUNT = 20
+MAX_TAG_LENGTH = 64
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def has_control_chars(value: str) -> bool:
+    return bool(_CONTROL_CHARS_RE.search(value))
 
 
 class AuthenticatedUser(BaseModel):
@@ -36,6 +45,37 @@ class FileRecord(BaseModel):
     object_key: str
     created_at: datetime = Field(default_factory=utcnow)
 
+    @field_validator("filename")
+    @classmethod
+    def validate_filename(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Filename must not be empty")
+        if len(value) > MAX_FILENAME_LENGTH:
+            raise ValueError(f"Filename must be at most {MAX_FILENAME_LENGTH} characters")
+        if has_control_chars(value):
+            raise ValueError("Filename must not contain control characters")
+        if "/" in value or "\\" in value:
+            raise ValueError("Filename must not contain path separators")
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: list[str]) -> list[str]:
+        if len(value) > MAX_TAG_COUNT:
+            raise ValueError(f"Tags must contain at most {MAX_TAG_COUNT} items")
+
+        normalized_tags: list[str] = []
+        for tag in value:
+            normalized_tag = tag.strip()
+            if not normalized_tag:
+                raise ValueError("Tags must not be empty")
+            if len(normalized_tag) > MAX_TAG_LENGTH:
+                raise ValueError(f"Tags must be at most {MAX_TAG_LENGTH} characters")
+            if has_control_chars(normalized_tag):
+                raise ValueError("Tags must not contain control characters")
+            normalized_tags.append(normalized_tag)
+        return normalized_tags
+
     @classmethod
     def create(
         cls,
@@ -47,7 +87,7 @@ class FileRecord(BaseModel):
         tags: list[str] | None = None,
     ) -> "FileRecord":
         file_id = str(uuid4())
-        object_key = f"{owner_id}/{file_id}/{filename}"
+        object_key = f"{owner_id}/{file_id}"
         return cls(
             file_id=file_id,
             owner_id=owner_id,

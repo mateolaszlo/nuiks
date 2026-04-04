@@ -6,7 +6,15 @@ from fastapi import HTTPException, UploadFile, status
 
 from studyvault_backend_common.http import ServiceClientError
 from studyvault_backend_common.logging import get_logger
-from studyvault_backend_common.models import AuthenticatedUser, FileRecord, UploadActivityEvent
+from studyvault_backend_common.models import (
+    MAX_FILENAME_LENGTH,
+    MAX_TAG_COUNT,
+    MAX_TAG_LENGTH,
+    AuthenticatedUser,
+    FileRecord,
+    UploadActivityEvent,
+    has_control_chars,
+)
 
 from app.repositories.object_store import ObjectStoreRepository
 from app.services.downstream import DownstreamPublisher
@@ -28,6 +36,49 @@ class FileService:
         self.downstream = downstream
         self.max_upload_bytes = max_upload_bytes
 
+    @staticmethod
+    def _validate_upload_metadata(*, filename: str, tags: list[str]) -> list[str]:
+        if not filename.strip():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filename must not be empty")
+        if len(filename) > MAX_FILENAME_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Filename must be at most {MAX_FILENAME_LENGTH} characters",
+            )
+        if has_control_chars(filename):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Filename must not contain control characters",
+            )
+        if "/" in filename or "\\" in filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Filename must not contain path separators",
+            )
+        if len(tags) > MAX_TAG_COUNT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tags must contain at most {MAX_TAG_COUNT} items",
+            )
+
+        normalized_tags: list[str] = []
+        for tag in tags:
+            normalized_tag = tag.strip()
+            if not normalized_tag:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tags must not be empty")
+            if len(normalized_tag) > MAX_TAG_LENGTH:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tags must be at most {MAX_TAG_LENGTH} characters",
+                )
+            if has_control_chars(normalized_tag):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Tags must not contain control characters",
+                )
+            normalized_tags.append(normalized_tag)
+        return normalized_tags
+
     async def upload_file(
         self,
         *,
@@ -35,6 +86,8 @@ class FileService:
         upload: UploadFile,
         tags: list[str],
     ) -> FileRecord:
+        filename = upload.filename or "unnamed-file"
+        normalized_tags = self._validate_upload_metadata(filename=filename, tags=tags)
         try:
             with TemporaryFile() as buffered_upload:
                 total_size = 0
@@ -51,9 +104,9 @@ class FileService:
                             owner_id=user.subject,
                             owner_username=user.username,
                             owner_email=user.email,
-                            filename=upload.filename or "unnamed-file",
+                            filename=filename,
                             mime_type=upload.content_type or "application/octet-stream",
-                            tags_count=len(tags),
+                            tags_count=len(normalized_tags),
                             status="rejected",
                             error="Uploaded file exceeds the maximum allowed size",
                             max_upload_bytes=self.max_upload_bytes,
@@ -72,9 +125,9 @@ class FileService:
                         owner_id=user.subject,
                         owner_username=user.username,
                         owner_email=user.email,
-                        filename=upload.filename or "unnamed-file",
+                        filename=filename,
                         mime_type=upload.content_type or "application/octet-stream",
-                        tags_count=len(tags),
+                        tags_count=len(normalized_tags),
                         status="rejected",
                         error="Uploaded file is empty",
                     )
@@ -83,10 +136,10 @@ class FileService:
                 buffered_upload.seek(0)
                 file_record = FileRecord.create(
                     owner_id=user.subject,
-                    filename=upload.filename or "unnamed-file",
+                    filename=filename,
                     mime_type=upload.content_type or "application/octet-stream",
                     size=total_size,
-                    tags=tags,
+                    tags=normalized_tags,
                 )
                 logger.info(
                     "file upload started",

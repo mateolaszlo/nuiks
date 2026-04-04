@@ -93,6 +93,94 @@ def test_file_upload_rejects_oversize_content() -> None:
     assert object_store._objects == {}
 
 
+def test_file_upload_rejects_filename_with_path_separator() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("nested/lecture.txt", b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Filename must not contain path separators"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_rejects_filename_longer_than_maximum() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+    long_filename = f"{'a' * 256}.txt"
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": (long_filename, b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Filename must be at most 255 characters"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_rejects_too_many_tags() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+    multipart_payload = [("file", ("lecture.txt", b"hello studyvault", "text/plain"))]
+    multipart_payload.extend(("tags", (None, f"tag-{index}")) for index in range(21))
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files=multipart_payload,
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Tags must contain at most 20 items"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_rejects_overlong_tag() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"tags": "x" * 65},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Tags must be at most 64 characters"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
 def test_file_download_streams_content_from_object_store() -> None:
     module = load_service_module("file")
     object_store = module.InMemoryObjectStoreRepository()
@@ -123,18 +211,27 @@ def test_file_download_streams_content_from_object_store() -> None:
 def test_file_download_sanitizes_unsafe_filename_in_content_disposition() -> None:
     module = load_service_module("file")
     object_store = module.InMemoryObjectStoreRepository()
-    downstream = FakeDownstream()
+    legacy_record = FileRecord.model_construct(
+        file_id="legacy-file",
+        owner_id="test-user",
+        filename='bad"\r\nname.txt',
+        mime_type="text/plain",
+        size=len(b"hello studyvault"),
+        tags=[],
+        object_key="test-user/legacy-file",
+    )
+
+    class LegacyDownstream(FakeDownstream):
+        async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
+            return legacy_record
+
+    downstream = LegacyDownstream()
+    object_store._objects[legacy_record.object_key] = b"hello studyvault"
     app = module.create_app(object_store=object_store, downstream=downstream)
 
     with TestClient(app) as client:
-        upload_response = client.post(
-            "/api/files",
-            headers={"authorization": "Bearer fake"},
-            files={"file": ('bad"\r\nname.txt', b"hello studyvault", "text/plain")},
-        )
-        file_id = upload_response.json()["file_id"]
         download_response = client.get(
-            f"/api/files/{file_id}/download",
+            "/api/files/legacy-file/download",
             headers={"authorization": "Bearer fake"},
         )
 
