@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
+from studyvault_backend_common.responses import build_attachment_content_disposition
 
 from app.core.config import get_settings
 from app.services.files import FileService
@@ -44,7 +45,7 @@ def build_router(service: FileService) -> APIRouter:
             iter([content]),
             media_type=file_record.mime_type,
             headers={
-                "content-disposition": f'attachment; filename="{file_record.filename}"',
+                "content-disposition": build_attachment_content_disposition(file_record.filename),
             },
         )
 

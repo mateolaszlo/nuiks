@@ -16,6 +16,7 @@ from .models import (
     STUDYVAULT_ADMIN_ROLE,
     UploadActivityEvent,
 )
+from .responses import build_attachment_content_disposition
 from .startup import retry_startup
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "STUDYVAULT_ADMIN_ROLE",
     "UploadActivityEvent",
     "build_auth_dependency",
+    "build_attachment_content_disposition",
     "configure_logging",
     "get_logger",
     "install_request_logging",
