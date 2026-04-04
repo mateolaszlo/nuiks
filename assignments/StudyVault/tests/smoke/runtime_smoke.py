@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import quote
@@ -141,18 +142,48 @@ def assert_kibana_saved_object_exists(saved_object_type: str, saved_object_id: s
     raise RuntimeError(f"Kibana {saved_object_type} {title} ({saved_object_id}) was not created")
 
 
+def trigger_backend_requests() -> None:
+    urls = [
+        "http://127.0.0.1:8080/api/catalog/files",
+        "http://127.0.0.1:8080/api/search?q=smoke",
+        "http://127.0.0.1:8080/api/activity/me",
+        "http://127.0.0.1:8080/api/files/smoke/download",
+    ]
+    for url in urls:
+        try:
+            with urllib.request.urlopen(url, timeout=20):
+                pass
+        except urllib.error.HTTPError:
+            # Auth errors are expected here and still produce structured request logs.
+            pass
+
+
 def assert_backend_logs_indexed() -> None:
-    query = quote('service:(file-service OR catalog-service OR search-service OR activity-service)', safe="():*")
-    url = f"http://127.0.0.1:9200/studyvault-logs-*/_search?q={query}&size=5&sort=@timestamp:desc"
-    deadline = time.time() + 120
+    pending_services = {
+        "file-service",
+        "catalog-service",
+        "search-service",
+        "activity-service",
+    }
+    deadline = time.time() + 180
     while time.time() < deadline:
-        with urllib.request.urlopen(url, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        hits = payload.get("hits", {}).get("hits", [])
-        if hits:
+        resolved = set()
+        for service in pending_services:
+            query = quote(f"service:{service}", safe="():*")
+            url = f"http://127.0.0.1:9200/studyvault-logs-*/_search?q={query}&size=1&sort=@timestamp:desc"
+            with urllib.request.urlopen(url, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            hits = payload.get("hits", {}).get("hits", [])
+            if hits:
+                resolved.add(service)
+        pending_services -= resolved
+        if not pending_services:
             return
         time.sleep(3)
-    raise RuntimeError("Backend service logs with structured fields were not indexed")
+    raise RuntimeError(
+        "Backend service logs with structured fields were not indexed for: "
+        + ", ".join(sorted(pending_services))
+    )
 
 
 def assert_metricbeat_documents_indexed() -> None:
@@ -213,6 +244,7 @@ def main() -> None:
             dashboard["id"],
             dashboard.get("attributes", {}).get("title", dashboard["id"]),
         )
+    trigger_backend_requests()
     assert_backend_logs_indexed()
     assert_metricbeat_documents_indexed()
 
