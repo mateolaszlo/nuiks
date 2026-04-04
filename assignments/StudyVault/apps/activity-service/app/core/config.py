@@ -29,6 +29,22 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
 
 
+def _resolve_keycloak_admin_username() -> str:
+    return (
+        os.environ.get("KEYCLOAK_ADMIN_USERNAME")
+        or os.environ.get("KC_BOOTSTRAP_ADMIN_USERNAME")
+        or "admin"
+    )
+
+
+def _resolve_keycloak_admin_password() -> str:
+    return (
+        os.environ.get("KEYCLOAK_ADMIN_PASSWORD")
+        or os.environ.get("KC_BOOTSTRAP_ADMIN_PASSWORD")
+        or "admin"
+    )
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
@@ -37,4 +53,6 @@ def get_settings() -> Settings:
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",
         ),
+        keycloak_admin_username=_resolve_keycloak_admin_username(),
+        keycloak_admin_password=_resolve_keycloak_admin_password(),
     )

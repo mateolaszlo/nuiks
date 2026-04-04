@@ -69,6 +69,8 @@ StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-rea
 
 Keycloak now uses a dedicated PostgreSQL role created from `KEYCLOAK_DB_USER` and `KEYCLOAK_DB_PASSWORD`. Leave the username at `keycloak` unless you have a reason to change it, but set a non-default database password before any VM or shared-host deployment. The same values are consumed by both the Postgres init script and the Keycloak container, so they must stay in sync.
 
+The activity-service admin APIs authenticate to Keycloak with `KEYCLOAK_ADMIN_USERNAME` and `KEYCLOAK_ADMIN_PASSWORD`. If those are unset, StudyVault falls back to `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD`, so the example environment keeps them aligned by default.
+
 ## Local Laptop or Single-Host Deployment
 
 Leave `.env` close to the defaults:
@@ -171,7 +173,7 @@ KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=replace-with-a-strong-secret
 ```
 
-Change `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` before exposing the stack outside your own machine.
+Change `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` before exposing the stack outside your own machine.
 
 ### 2. Open Only the Ports You Need
 
