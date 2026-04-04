@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 import boto3
 
@@ -9,7 +9,7 @@ from studyvault_backend_common.models import FileRecord
 
 
 class ObjectStoreRepository(Protocol):
-    def store(self, file_record: FileRecord, content: bytes) -> None: ...
+    def store(self, file_record: FileRecord, stream: BinaryIO, size: int) -> None: ...
 
     def get(self, object_key: str) -> bytes: ...
 
@@ -20,8 +20,8 @@ class InMemoryObjectStoreRepository:
     def __init__(self) -> None:
         self._objects: dict[str, bytes] = {}
 
-    def store(self, file_record: FileRecord, content: bytes) -> None:
-        self._objects[file_record.object_key] = content
+    def store(self, file_record: FileRecord, stream: BinaryIO, size: int) -> None:
+        self._objects[file_record.object_key] = stream.read(size)
 
     def get(self, object_key: str) -> bytes:
         return self._objects[object_key]
@@ -57,11 +57,12 @@ class S3ObjectStoreRepository:
     def ping(self) -> None:
         self.client.list_buckets()
 
-    def store(self, file_record: FileRecord, content: bytes) -> None:
+    def store(self, file_record: FileRecord, stream: BinaryIO, size: int) -> None:
         self.client.put_object(
             Bucket=self.bucket_name,
             Key=file_record.object_key,
-            Body=content,
+            Body=stream,
+            ContentLength=size,
             ContentType=file_record.mime_type,
         )
 

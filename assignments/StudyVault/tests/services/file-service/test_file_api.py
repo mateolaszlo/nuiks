@@ -51,6 +51,48 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     assert downstream.activity_file_ids == [payload["file_id"]]
 
 
+def test_file_upload_rejects_empty_content() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("empty.txt", b"", "text/plain")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Uploaded file is empty"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_rejects_oversize_content() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream, max_upload_bytes=100)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("large.txt", b"x" * 101, "text/plain")},
+        )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Uploaded file exceeds the maximum allowed size"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
 def test_file_download_streams_content_from_object_store() -> None:
     module = load_service_module("file")
     object_store = module.InMemoryObjectStoreRepository()

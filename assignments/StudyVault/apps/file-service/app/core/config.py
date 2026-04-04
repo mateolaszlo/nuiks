@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     file_s3_secret_key: str = "minioadmin"
     file_s3_bucket: str = "studyvault-files"
     file_s3_region: str = "us-east-1"
+    file_max_upload_bytes: int = 104857600
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
 
@@ -33,4 +34,5 @@ def get_settings() -> Settings:
         search_internal_url=os.environ.get("SEARCH_INTERNAL_URL", "http://search-service:8000"),
         activity_internal_url=os.environ.get("ACTIVITY_INTERNAL_URL", "http://activity-service:8000"),
         internal_token=os.environ.get("STUDYVAULT_INTERNAL_TOKEN", "studyvault-internal-token-change-me"),
+        file_max_upload_bytes=int(os.environ.get("FILE_MAX_UPLOAD_BYTES", "104857600")),
     )

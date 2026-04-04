@@ -14,7 +14,7 @@ from app.services.downstream import HttpDownstreamPublisher
 from app.services.files import FileService
 
 
-def create_app(object_store=None, downstream=None) -> FastAPI:
+def create_app(object_store=None, downstream=None, max_upload_bytes: int | None = None) -> FastAPI:
     settings = get_settings()
     configure_logging(settings.service_name)
 
@@ -39,7 +39,11 @@ def create_app(object_store=None, downstream=None) -> FastAPI:
             internal_token=settings.internal_token,
         )
 
-    service = FileService(object_store=object_store, downstream=downstream)
+    service = FileService(
+        object_store=object_store,
+        downstream=downstream,
+        max_upload_bytes=max_upload_bytes or settings.file_max_upload_bytes,
+    )
     app = FastAPI(title="StudyVault File Service")
     install_request_logging(app)
     app.include_router(build_router(service))

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tempfile import TemporaryFile
+
 from fastapi import HTTPException, UploadFile, status
 
 from studyvault_backend_common.http import ServiceClientError
@@ -11,6 +13,7 @@ from app.services.downstream import DownstreamPublisher
 
 
 logger = get_logger(__name__)
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class FileService:
@@ -18,9 +21,12 @@ class FileService:
         self,
         object_store: ObjectStoreRepository,
         downstream: DownstreamPublisher,
+        *,
+        max_upload_bytes: int,
     ) -> None:
         self.object_store = object_store
         self.downstream = downstream
+        self.max_upload_bytes = max_upload_bytes
 
     async def upload_file(
         self,
@@ -29,45 +35,76 @@ class FileService:
         upload: UploadFile,
         tags: list[str],
     ) -> FileRecord:
-        content = await upload.read()
-        if not content:
-            logger.warning(
-                "file upload rejected: empty content",
-                event_name="file_upload_failed",
-                event_category="file",
-                owner_id=user.subject,
-                owner_username=user.username,
-                owner_email=user.email,
-                filename=upload.filename or "unnamed-file",
-                mime_type=upload.content_type or "application/octet-stream",
-                tags_count=len(tags),
-                status="rejected",
-                error="Uploaded file is empty",
-            )
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+        try:
+            with TemporaryFile() as buffered_upload:
+                total_size = 0
+                while True:
+                    chunk = await upload.read(UPLOAD_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    total_size += len(chunk)
+                    if total_size > self.max_upload_bytes:
+                        logger.warning(
+                            "file upload rejected: size limit exceeded",
+                            event_name="file_upload_failed",
+                            event_category="file",
+                            owner_id=user.subject,
+                            owner_username=user.username,
+                            owner_email=user.email,
+                            filename=upload.filename or "unnamed-file",
+                            mime_type=upload.content_type or "application/octet-stream",
+                            tags_count=len(tags),
+                            status="rejected",
+                            error="Uploaded file exceeds the maximum allowed size",
+                            max_upload_bytes=self.max_upload_bytes,
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                            detail="Uploaded file exceeds the maximum allowed size",
+                        )
+                    buffered_upload.write(chunk)
 
-        file_record = FileRecord.create(
-            owner_id=user.subject,
-            filename=upload.filename or "unnamed-file",
-            mime_type=upload.content_type or "application/octet-stream",
-            size=len(content),
-            tags=tags,
-        )
-        logger.info(
-            "file upload started",
-            event_name="file_upload_started",
-            event_category="file",
-            file_id=file_record.file_id,
-            owner_id=file_record.owner_id,
-            owner_username=user.username,
-            owner_email=user.email,
-            filename=file_record.filename,
-            mime_type=file_record.mime_type,
-            size=file_record.size,
-            tags_count=len(file_record.tags),
-            status="started",
-        )
-        self.object_store.store(file_record, content)
+                if total_size == 0:
+                    logger.warning(
+                        "file upload rejected: empty content",
+                        event_name="file_upload_failed",
+                        event_category="file",
+                        owner_id=user.subject,
+                        owner_username=user.username,
+                        owner_email=user.email,
+                        filename=upload.filename or "unnamed-file",
+                        mime_type=upload.content_type or "application/octet-stream",
+                        tags_count=len(tags),
+                        status="rejected",
+                        error="Uploaded file is empty",
+                    )
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+
+                buffered_upload.seek(0)
+                file_record = FileRecord.create(
+                    owner_id=user.subject,
+                    filename=upload.filename or "unnamed-file",
+                    mime_type=upload.content_type or "application/octet-stream",
+                    size=total_size,
+                    tags=tags,
+                )
+                logger.info(
+                    "file upload started",
+                    event_name="file_upload_started",
+                    event_category="file",
+                    file_id=file_record.file_id,
+                    owner_id=file_record.owner_id,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    filename=file_record.filename,
+                    mime_type=file_record.mime_type,
+                    size=file_record.size,
+                    tags_count=len(file_record.tags),
+                    status="started",
+                )
+                self.object_store.store(file_record, buffered_upload, total_size)
+        finally:
+            await upload.close()
 
         try:
             await self.downstream.publish_catalog(file_record, bearer_token=user.token or "")
