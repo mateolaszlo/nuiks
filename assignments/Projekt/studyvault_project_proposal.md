@@ -65,7 +65,7 @@ Build a cloud-native digital vault platform where users can upload, store, organ
 
 ## 5. Core features
 
-### MVP features
+### Core implementation features
 - user registration and login
 - upload file
 - list my files
@@ -376,7 +376,7 @@ Can be used for event-driven communication:
 - activity service consumes event and stores log
 - search service consumes event and updates search index
 
-This is a good bonus if there is enough time, but not required for MVP.
+This is a good bonus if there is enough time, but not required for the core implementation.
 
 ---
 
@@ -516,7 +516,7 @@ A realistic and fast stack would be:
 
 ---
 
-## 17. MVP scope
+## 17. Project scope
 
 ### Must have
 - authentication
@@ -641,7 +641,7 @@ A realistic and fast stack would be:
 ## 23. Risks and mitigation
 
 ### Risk: project becomes too large
-**Mitigation:** keep MVP focused on auth, upload, list, search, and activity.
+**Mitigation:** keep the project focused on auth, upload, list, search, and activity.
 
 ### Risk: search service becomes complex
 **Mitigation:** start with metadata search only, not full file content indexing.

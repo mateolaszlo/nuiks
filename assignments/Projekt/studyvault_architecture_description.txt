@@ -2,7 +2,7 @@ StudyVault - kratek opis aplikacije in arhitektura
 
 1. Kratek opis aplikacije
 
-StudyVault je spletna aplikacija za upravljanje studijskih datotek, zgrajena kot mikroservisni MVP sistem. Uporabnik se v aplikacijo prijavi prek spletnega vmesnika, nalozi datoteke, pregleduje svoj seznam gradiv, isce po metapodatkih, spremlja zgodovino aktivnosti in prenasa shranjene datoteke. Sistem vsebuje tudi administratorski del, kjer lahko skrbnik pregleduje uporabnike, upravlja njihove pravice, spremlja zdravje sistema in pregleduje napake.
+StudyVault je spletna aplikacija za upravljanje studijskih datotek, zgrajena kot mikroservisni sistem. Uporabnik se v aplikacijo prijavi prek spletnega vmesnika, nalozi datoteke, pregleduje svoj seznam gradiv, isce po metapodatkih, spremlja zgodovino aktivnosti in prenasa shranjene datoteke. Sistem vsebuje tudi administratorski del, kjer lahko skrbnik pregleduje uporabnike, upravlja njihove pravice, spremlja zdravje sistema in pregleduje napake.
 
 Aplikacija je zasnovana modularno. Predstavitveni sloj je locen od poslovne logike in podatkovnih shramb, posamezne odgovornosti pa so razdeljene med vec samostojnih storitev. Tak pristop omogoca boljso preglednost sistema, lazje vzdrzevanje, enostavnejse testiranje in moznost prihodnjih razsiritev.
 
@@ -139,17 +139,17 @@ Tak nacin zasnove aplikacije ima vec prednosti:
 - enostavnejsa razsirljivost v prihodnosti
 - boljsa podpora za opazovanje sistema in odpravljanje napak
 
-Za MVP projekt je taksna arhitektura dovolj modularna, da pokrije glavne funkcionalnosti, hkrati pa se vedno ostaja izvedljiva za razvoj in zagon v Docker Compose okolju.
+Za projekt je taksna arhitektura dovolj modularna, da pokrije glavne funkcionalnosti, hkrati pa se vedno ostaja izvedljiva za razvoj in zagon v Docker Compose okolju.
 
 7. Mozne prihodnje razsiritve
 
-V prejsnjih arhitekturnih skicah projekta so bile omenjene tudi dodatne komponente, kot sta RabbitMQ in Notification Service. Ti komponenti v trenutni implementaciji StudyVault nista del dejansko izvedenega MVP sistema, vendar predstavljata smiselno moznost za nadaljnji razvoj.
+V prejsnjih arhitekturnih skicah projekta so bile omenjene tudi dodatne komponente, kot sta RabbitMQ in Notification Service. Ti komponenti v trenutni implementaciji StudyVault nista del dejansko izvedenega sistema, vendar predstavljata smiselno moznost za nadaljnji razvoj.
 
 RabbitMQ bi lahko v prihodnje omogocal asinhrono komunikacijo med storitvami, kar bi zmanjsalo odvisnost od sinhronih klicev po uploadu datoteke. Notification Service pa bi lahko skrbel za obvescanje uporabnikov o pomembnih dogodkih, kot so zakljucek obdelave, spremembe dostopa ali sistemska opozorila.
 
 8. Zakljucek
 
-StudyVault je modularno zasnovana mikroservisna spletna aplikacija za upravljanje studijskih datotek. Njena arhitektura temelji na jasni razdelitvi odgovornosti med frontendom, gateway slojem, storitvami za datoteke, metapodatke, iskanje in aktivnosti ter specializiranimi podatkovnimi shrambami. Zaradi uporabe Keycloak za varnost, MinIO za binarne datoteke in ELK stacka za opazovanje sistema aplikacija predstavlja dober primer sodobne, pregledne in razsirljive arhitekture za MVP resitev.
+StudyVault je modularno zasnovana mikroservisna spletna aplikacija za upravljanje studijskih datotek. Njena arhitektura temelji na jasni razdelitvi odgovornosti med frontendom, gateway slojem, storitvami za datoteke, metapodatke, iskanje in aktivnosti ter specializiranimi podatkovnimi shrambami. Zaradi uporabe Keycloak za varnost, MinIO za binarne datoteke in ELK stacka za opazovanje sistema aplikacija predstavlja dober primer sodobne, pregledne in razsirljive arhitekture.
 
 9. Tekstovni diagram arhitekture
 

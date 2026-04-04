@@ -1,6 +1,6 @@
 # StudyVault
 
-StudyVault is a runnable microservice MVP for managing study files. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
+StudyVault is a runnable microservice application for managing study files. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
 
 For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
 
@@ -72,4 +72,4 @@ PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:920
 - `infra/` compose, nginx, Keycloak, Postgres bootstrap, and observability config
 - `tests/` unit, service, integration, fixtures, and smoke coverage
 - `docs/` supporting notes such as Cloudflare deployment guidance and the living ExecPlan
-- `studyvault_mvp_requirements.md` product requirements reference
+- product requirements reference at the StudyVault root

@@ -16,7 +16,7 @@ This report is code-and-config based. It distinguishes confirmed issues from low
 
 ## Executive Summary
 
-StudyVault has a reasonable basic structure for an MVP: JWT verification is pinned to `RS256`, internal `/internal/*` routes are no longer exposed through the public gateway, and the frontend renders user-controlled text through normal React JSX rather than raw HTML.
+StudyVault has a reasonable basic structure for this project: JWT verification is pinned to `RS256`, internal `/internal/*` routes are no longer exposed through the public gateway, and the frontend renders user-controlled text through normal React JSX rather than raw HTML.
 
 The main confirmed risks are input-handling and operational-hardening gaps:
 

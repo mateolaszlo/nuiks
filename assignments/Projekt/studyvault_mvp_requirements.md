@@ -1,10 +1,10 @@
-# StudyVault - minimalni izvedljivi projekt (MVP)
+# StudyVault - projektne zahteve
 
 ## Namen
 
-Ta dokument opisuje, kako bi lahko aplikacija **StudyVault** izgledala kot **minimalni izvedljivi projekt**, ki je se vedno dovolj dober za predmetne tehnicne zahteve.
+Ta dokument opisuje, kako naj bo aplikacija **StudyVault** zasnovana tako, da ostane izvedljiva in hkrati dovolj dobra za predmetne tehnicne zahteve.
 
-Cilj MVP ni izdelati vseh moznih funkcionalnosti, ampak pokazati:
+Cilj projekta ni izdelati vseh moznih funkcionalnosti, ampak pokazati:
 
 - delujoc frontend in backend
 - mikrostoritveno zasnovo
@@ -20,7 +20,7 @@ Cilj MVP ni izdelati vseh moznih funkcionalnosti, ampak pokazati:
 
 ## 1. Najmanjsi smiseln uporabniski scenarij
 
-MVP naj podpira eno jasno zgodbo:
+Projekt naj podpira eno jasno zgodbo:
 
 1. uporabnik se prijavi
 2. nalozi datoteko
@@ -34,7 +34,7 @@ To je dovolj, da projekt pokaze celotno pot od uporabniskega vmesnika do mikrost
 
 ## 2. Minimalne funkcionalnosti
 
-Obvezne funkcionalnosti MVP:
+Obvezne funkcionalnosti projekta:
 
 - prijava uporabnika prek `Keycloak`
 - upload datoteke
@@ -55,7 +55,7 @@ Funkcionalnosti, ki jih je smiselno pustiti za kasneje:
 
 ## 3. Minimalni nabor API klicev
 
-Za MVP zadosca najmanj **4 zunanje API klice**, ki jih lahko tudi jasno pokazete na predstavitvi.
+Za projekt zadosca najmanj **4 zunanje API klice**, ki jih lahko tudi jasno pokazete na predstavitvi.
 
 | Endpoint | Metoda | Namen |
 |---|---|---|
@@ -72,7 +72,7 @@ Priporocen dodatni peti klic:
 
 ---
 
-## 4. Predlagane mikrostoritve za MVP
+## 4. Predlagane mikrostoritve za projekt
 
 Da projekt ostane izvedljiv, zadostujejo naslednje storitve:
 
@@ -230,7 +230,7 @@ Ze tak pipeline zadostuje, da pokazete avtomatiziran razvojni tok.
 
 ## 10. Cloudflare minimum
 
-`Cloudflare` lahko v MVP uporabi samo naslednje funkcije:
+`Cloudflare` lahko v projektu uporabi samo naslednje funkcije:
 
 - `DNS`
 - `TLS`
@@ -240,9 +240,9 @@ To je dovolj, da izpolnite zahtevo po `Cloudflare account`, brez dodatnih komple
 
 ---
 
-## 11. Kako MVP pokrije vse zahteve predmeta
+## 11. Kako projekt pokrije vse zahteve predmeta
 
-| Zahteva | Kako jo izpolni MVP |
+| Zahteva | Kako jo izpolni projekt |
 |---|---|
 | Projekt na Git repozitoriju | celoten projekt je v `GitHub` repozitoriju |
 | frontend + backend | `React` frontend in `FastAPI` backend storitve |
@@ -269,5 +269,4 @@ Na zagovoru ali demonstraciji je dovolj pokazati naslednji tok:
 7. kratek pogled v `docker compose` storitve
 8. kratek pogled v `GitHub Actions` pipeline
 
-To je dovolj mocan in hkrati dovolj majhen MVP, da je realno izvedljiv v okviru studentskega projekta.
-
+To je dovolj mocan in hkrati dovolj osredotocen projekt, da je realno izvedljiv v okviru studentskega projekta.

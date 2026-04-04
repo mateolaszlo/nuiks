@@ -31,7 +31,7 @@ After this change, a newcomer can deploy the full StudyVault stack without guess
   Date/Author: 2026-04-02 / Codex
 
 - Decision: parameterize the externally visible URL through `STUDYVAULT_PUBLIC_BASE_URL` instead of introducing multiple partially overlapping hostname variables.
-  Rationale: one base URL is enough to drive frontend auth, backend issuer URLs, and Keycloak hostname behavior for this MVP.
+  Rationale: one base URL is enough to drive frontend auth, backend issuer URLs, and Keycloak hostname behavior for this project.
   Date/Author: 2026-04-02 / Codex
 
 - Decision: keep the gateway public by default and keep admin plus database ports bound to loopback by default.

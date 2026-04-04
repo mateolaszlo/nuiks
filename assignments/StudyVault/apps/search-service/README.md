@@ -10,4 +10,4 @@
 
 ## Search Behavior
 
-The current MVP performs case-insensitive matching across filename, MIME type, and tags for the current authenticated user.
+The current implementation performs case-insensitive matching across filename, MIME type, and tags for the current authenticated user.

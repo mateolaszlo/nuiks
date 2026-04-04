@@ -228,7 +228,7 @@ export default function App() {
     return (
       <main className="shell">
         <section className="hero-card">
-          <p className="eyebrow">Microservice MVP</p>
+          <p className="eyebrow">Microservice App</p>
           <h1>StudyVault</h1>
           <p>
             Sign in to upload study materials, review your file catalog, search metadata,
@@ -419,7 +419,7 @@ export default function App() {
         <div>
           <p className="eyebrow">Signed in</p>
           <h1>{profileLabel}</h1>
-          <p>Upload files, search by tag or filename, and verify the MVP flow end to end.</p>
+          <p>Upload files, search by tag or filename, and verify the full flow end to end.</p>
         </div>
         <button className="secondary-button" onClick={() => void logout()}>
           Log Out

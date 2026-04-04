@@ -170,7 +170,7 @@ graph TD
 - opcijsko `Cloudflare Access` za zascito administrativnih poti
 - opcijsko `geo load balancing`, ce bi bil sistem kasneje razporejen v vec regij
 
-V osnovnem projektu se kot obvezen del uporablja `DNS`, `TLS termination`, `DDoS protection` in osnovni `WAF`. `Geo balancing` in `Cloudflare Access` sta predstavljena kot mozna razsiritev, ne kot nujni MVP funkcionalnosti.
+V osnovnem projektu se kot obvezen del uporablja `DNS`, `TLS termination`, `DDoS protection` in osnovni `WAF`. `Geo balancing` in `Cloudflare Access` sta predstavljena kot mozna razsiritev, ne kot nujni funkcionalnosti osnovnega obsega.
 
 ---
 
@@ -315,7 +315,7 @@ Glavne odgovornosti storitve:
 - pripravljena predogledna vsebina
 - neuspesna obdelava datoteke
 
-Ta storitev ni nujna za najosnovnejsi MVP, je pa koristna za prikaz dodatne vrednosti mikrostoritvene arhitekture.
+Ta storitev ni nujna za najosnovnejsi obseg, je pa koristna za prikaz dodatne vrednosti mikrostoritvene arhitekture.
 
 ---
 

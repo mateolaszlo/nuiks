@@ -1,4 +1,4 @@
-# StudyVault MVP End-to-End Delivery
+# StudyVault End-to-End Delivery
 
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
@@ -6,13 +6,13 @@ This document follows `.AGENTS/PLANS.md` from the repository root. Anyone contin
 
 ## Purpose / Big Picture
 
-After this work, a developer can start StudyVault locally, log in through Keycloak, upload a file, see it in a personal file list, search for it, review recent activity, and inspect JSON logs in Kibana. The MVP is intentionally small, but it still demonstrates the required architecture: a frontend, an API gateway, four FastAPI services, PostgreSQL, MongoDB, MinIO, ELK, and CI automation.
+After this work, a developer can start StudyVault locally, log in through Keycloak, upload a file, see it in a personal file list, search for it, review recent activity, and inspect JSON logs in Kibana. The implementation is intentionally focused, but it still demonstrates the required architecture: a frontend, an API gateway, four FastAPI services, PostgreSQL, MongoDB, MinIO, ELK, and CI automation.
 
 The repository started as a scaffold with empty service directories. This plan turns that scaffold into a runnable project in clear milestones so another engineer can reproduce and extend it without guessing.
 
 ## Progress
 
-- [x] 2026-03-31 09:35Z Read the StudyVault MVP specification, repository instructions, and execution-plan requirements.
+- [x] 2026-03-31 09:35Z Read the StudyVault project specification, repository instructions, and execution-plan requirements.
 - [x] 2026-03-31 09:52Z Confirmed `assignments/StudyVault` is a scaffold-only project on branch `testing`.
 - [x] 2026-03-31 10:25Z Chose the initial implementation defaults: real Keycloak for auth and synchronous HTTP fan-out from `file-service` to the other services.
 - [x] 2026-03-31 22:23Z Created shared backend helpers for auth, logging, HTTP clients, and shared schemas.
@@ -50,11 +50,11 @@ The repository started as a scaffold with empty service directories. This plan t
 ## Decision Log
 
 - Decision: Implement real Keycloak wiring rather than a frontend mock-auth shortcut.
-  Rationale: The project requirements call out Keycloak as a mandatory MVP component, and the local compose stack can demonstrate it without external credentials.
+  Rationale: The project requirements call out Keycloak as a mandatory component, and the local compose stack can demonstrate it without external credentials.
   Date/Author: 2026-03-31 / Codex
 
 - Decision: Use synchronous HTTP fan-out from `file-service` to `catalog-service`, `search-service`, and `activity-service`.
-  Rationale: The requirements do not define a broker, and direct service calls are the smallest design that still preserves microservice boundaries for the MVP.
+  Rationale: The requirements do not define a broker, and direct service calls are the smallest design that still preserves microservice boundaries for the project.
   Date/Author: 2026-03-31 / Codex
 
 - Decision: Keep test suites primarily on in-memory fakes and dependency injection instead of requiring live PostgreSQL, MongoDB, and MinIO during unit and service tests.
@@ -79,7 +79,7 @@ No milestone has completed yet. The initial outcome is that the repository now h
 
 The project now includes the backend services, a React frontend, local container orchestration, a PostgreSQL-backed Keycloak realm bootstrap, smoke validation, and a GitHub Actions workflow. Existing local environments must reset Compose volumes before the new Keycloak Postgres init script takes effect.
 
-The current MVP also includes self-registration, a seeded `studyvault_admin` user, and a dedicated admin console. Admins can list users, enable or disable accounts, grant or revoke the StudyVault admin role, trigger temporary-password resets, inspect audit events, review service health, and see recent application errors.
+The current implementation also includes self-registration, a seeded `studyvault_admin` user, and a dedicated admin console. Admins can list users, enable or disable accounts, grant or revoke the StudyVault admin role, trigger temporary-password resets, inspect audit events, review service health, and see recent application errors.
 
 Observability now includes structured request and business-event logs with user-friendly identity fields where available, plus Metricbeat-fed host and container resource metrics exposed through a separate `metricbeat-*` Kibana data view.
 
@@ -148,7 +148,7 @@ The implementation is complete when these behaviors are true:
 
 ## Idempotence and Recovery
 
-All file-creation and service-start steps are additive. Re-running tests is safe. Re-running startup should recreate missing tables, missing Mongo indexes, and the MinIO bucket if needed. If a compose startup leaves stale state, remove containers and volumes with Docker Compose before retrying. If a downstream service call fails after MinIO upload, the system currently prefers a visible error and log evidence over compensating deletes; this is an MVP tradeoff and should be documented rather than hidden.
+All file-creation and service-start steps are additive. Re-running tests is safe. Re-running startup should recreate missing tables, missing Mongo indexes, and the MinIO bucket if needed. If a compose startup leaves stale state, remove containers and volumes with Docker Compose before retrying. If a downstream service call fails after MinIO upload, the system currently prefers a visible error and log evidence over compensating deletes; this is an implementation tradeoff and should be documented rather than hidden.
 
 ## Artifacts and Notes
 
