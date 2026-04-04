@@ -86,6 +86,48 @@ def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) 
     assert exc.value.status_code == 401
 
 
+def test_auth_dependency_rejects_malformed_token_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    jwks_called = False
+    decode_called = False
+
+    class TrackingJwksCache:
+        async def get(self, jwks_url: str) -> dict[str, Any]:
+            nonlocal jwks_called
+            jwks_called = True
+            return {"keys": []}
+
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: TrackingJwksCache())
+
+    def raise_bad_header(token: str) -> dict[str, Any]:
+        raise ValueError("bad header")
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.get_unverified_header", raise_bad_header)
+
+    def fake_decode(*args, **kwargs):
+        nonlocal decode_called
+        decode_called = True
+        return {}
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid token"
+    assert jwks_called is False
+    assert decode_called is False
+
+
 def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
     monkeypatch.setattr(

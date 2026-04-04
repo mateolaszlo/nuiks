@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import re
 from typing import Protocol
 
 from pymongo import DESCENDING, MongoClient
@@ -62,7 +63,7 @@ class MongoSearchRepository:
         return file_record
 
     def search(self, owner_id: str, query: str) -> list[FileRecord]:
-        regex = {"$regex": query, "$options": "i"}
+        regex = {"$regex": re.escape(query), "$options": "i"}
         cursor = self.collection.find(
             {
                 "owner_id": owner_id,

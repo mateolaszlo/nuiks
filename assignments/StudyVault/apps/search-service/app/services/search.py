@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi import HTTPException, status
+
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
@@ -7,6 +9,7 @@ from app.repositories.search import SearchRepository
 
 
 logger = get_logger(__name__)
+MAX_SEARCH_QUERY_LENGTH = 100
 
 
 class SearchService:
@@ -32,6 +35,11 @@ class SearchService:
         if not query.strip():
             return []
         normalized_query = query.strip()
+        if len(normalized_query) > MAX_SEARCH_QUERY_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Search query must be at most {MAX_SEARCH_QUERY_LENGTH} characters",
+            )
         results = self.repository.search(user.subject, normalized_query)
         logger.info(
             "search executed",

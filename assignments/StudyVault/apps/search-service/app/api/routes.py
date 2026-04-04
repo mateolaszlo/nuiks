@@ -6,7 +6,7 @@ from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
 from app.core.config import get_settings
-from app.services.search import SearchService
+from app.services.search import MAX_SEARCH_QUERY_LENGTH, SearchService
 
 
 def build_router(service: SearchService) -> APIRouter:
@@ -31,7 +31,7 @@ def build_router(service: SearchService) -> APIRouter:
 
     @router.get("/api/search", response_model=list[FileRecord])
     async def search_files(
-        q: str = Query(default=""),
+        q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[FileRecord]:
         return service.search(user, q)

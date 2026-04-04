@@ -77,7 +77,10 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
         token = credentials.credentials
-        unverified_header = jwt.get_unverified_header(token)
+        try:
+            unverified_header = jwt.get_unverified_header(token)
+        except Exception as exc:  # pragma: no cover - exact library exception is not important
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
         if unverified_header.get("alg") not in ALLOWED_JWT_ALGORITHMS:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
