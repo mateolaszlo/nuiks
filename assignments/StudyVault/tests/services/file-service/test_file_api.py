@@ -243,6 +243,57 @@ def test_file_download_sanitizes_unsafe_filename_in_content_disposition() -> Non
     assert "filename*=UTF-8''badname.txt" in header
 
 
+def test_file_download_returns_not_found_when_object_content_is_missing() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        upload_response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+        file_record = downstream.catalog_records[0]
+        object_store._objects.pop(file_record.object_key)
+        download_response = client.get(
+            f"/api/files/{upload_response.json()['file_id']}/download",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert download_response.status_code == 404
+    assert download_response.json()["detail"] == "File not found"
+
+
+def test_file_download_returns_bad_gateway_when_object_store_is_unavailable() -> None:
+    module = load_service_module("file")
+
+    class UnavailableObjectStore(module.InMemoryObjectStoreRepository):
+        def get(self, object_key: str) -> bytes:
+            raise module.ObjectStoreUnavailableError("backend down")
+
+    object_store = UnavailableObjectStore()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        upload_response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+        file_record = downstream.catalog_records[0]
+        object_store._objects[file_record.object_key] = b"hello studyvault"
+        download_response = client.get(
+            f"/api/files/{upload_response.json()['file_id']}/download",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert download_response.status_code == 502
+    assert download_response.json()["detail"] == "File storage unavailable"
+
+
 def test_file_download_emits_encoded_filename_for_non_ascii_name() -> None:
     module = load_service_module("file")
     object_store = module.InMemoryObjectStoreRepository()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from tempfile import TemporaryFile
 
 from fastapi import HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 
 from studyvault_backend_common.http import ServiceClientError
 from studyvault_backend_common.logging import get_logger
@@ -17,6 +18,7 @@ from studyvault_backend_common.models import (
 )
 
 from app.repositories.object_store import ObjectStoreRepository
+from app.repositories.object_store import ObjectStoreNotFoundError, ObjectStoreUnavailableError
 from app.services.downstream import DownstreamPublisher
 
 
@@ -155,7 +157,7 @@ class FileService:
                     tags_count=len(file_record.tags),
                     status="started",
                 )
-                self.object_store.store(file_record, buffered_upload, total_size)
+                await run_in_threadpool(self.object_store.store, file_record, buffered_upload, total_size)
         finally:
             await upload.close()
 
@@ -250,7 +252,37 @@ class FileService:
                 error="File owner mismatch",
             )
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="File owner mismatch")
-        content = self.object_store.get(file_record.object_key)
+        try:
+            content = await run_in_threadpool(self.object_store.get, file_record.object_key)
+        except ObjectStoreNotFoundError as exc:
+            logger.warning(
+                "file download failed: object missing",
+                event_name="file_download_failed",
+                event_category="file",
+                file_id=file_id,
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                status="not_found",
+                error="File content missing",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found") from exc
+        except ObjectStoreUnavailableError as exc:
+            logger.error(
+                "file download failed: object store unavailable",
+                event_name="file_download_failed",
+                event_category="file",
+                file_id=file_id,
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                status="failed",
+                error="File storage unavailable",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="File storage unavailable",
+            ) from exc
         logger.info(
             "file download succeeded",
             event_name="file_download_succeeded",

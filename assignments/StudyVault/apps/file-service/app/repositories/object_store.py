@@ -4,8 +4,17 @@ from collections.abc import Iterable
 from typing import BinaryIO, Protocol
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from studyvault_backend_common.models import FileRecord
+
+
+class ObjectStoreNotFoundError(FileNotFoundError):
+    """Raised when an object key does not exist in storage."""
+
+
+class ObjectStoreUnavailableError(RuntimeError):
+    """Raised when the backing object store cannot serve a request."""
 
 
 class ObjectStoreRepository(Protocol):
@@ -24,7 +33,10 @@ class InMemoryObjectStoreRepository:
         self._objects[file_record.object_key] = stream.read(size)
 
     def get(self, object_key: str) -> bytes:
-        return self._objects[object_key]
+        try:
+            return self._objects[object_key]
+        except KeyError as exc:
+            raise ObjectStoreNotFoundError(object_key) from exc
 
     def ping(self) -> None:
         return None
@@ -67,5 +79,13 @@ class S3ObjectStoreRepository:
         )
 
     def get(self, object_key: str) -> bytes:
-        response = self.client.get_object(Bucket=self.bucket_name, Key=object_key)
+        try:
+            response = self.client.get_object(Bucket=self.bucket_name, Key=object_key)
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code")
+            if error_code in {"NoSuchKey", "404", "NotFound"}:
+                raise ObjectStoreNotFoundError(object_key) from exc
+            raise ObjectStoreUnavailableError(f"Failed to fetch object {object_key}") from exc
+        except BotoCoreError as exc:
+            raise ObjectStoreUnavailableError(f"Failed to fetch object {object_key}") from exc
         return response["Body"].read()

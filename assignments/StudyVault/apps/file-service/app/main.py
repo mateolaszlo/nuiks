@@ -9,7 +9,12 @@ from studyvault_backend_common.startup import retry_startup
 
 from app.api.routes import build_router
 from app.core.config import get_settings
-from app.repositories.object_store import InMemoryObjectStoreRepository, S3ObjectStoreRepository
+from app.repositories.object_store import (
+    InMemoryObjectStoreRepository,
+    ObjectStoreNotFoundError,
+    ObjectStoreUnavailableError,
+    S3ObjectStoreRepository,
+)
 from app.services.downstream import HttpDownstreamPublisher
 from app.services.files import FileService
 
@@ -57,4 +62,10 @@ if os.environ.get("STUDYVAULT_SKIP_APP_BOOTSTRAP", "false").lower() != "true":
     app = create_app()
 
 
-__all__ = ["app", "create_app", "InMemoryObjectStoreRepository"]
+__all__ = [
+    "app",
+    "create_app",
+    "InMemoryObjectStoreRepository",
+    "ObjectStoreNotFoundError",
+    "ObjectStoreUnavailableError",
+]
