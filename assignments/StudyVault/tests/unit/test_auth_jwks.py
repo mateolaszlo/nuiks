@@ -128,6 +128,37 @@ def test_auth_dependency_rejects_malformed_token_header(monkeypatch: pytest.Monk
     assert decode_called is False
 
 
+def test_auth_dependency_rejects_token_missing_subject_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "email": "demo@example.com",
+            "preferred_username": "demo",
+            "realm_access": {"roles": ["user"]},
+        },
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "missing-sub-token"})()))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Invalid token"
+
+
 def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
     monkeypatch.setattr(

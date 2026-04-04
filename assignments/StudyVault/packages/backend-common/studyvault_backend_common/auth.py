@@ -46,10 +46,13 @@ def get_jwks_cache() -> JwksCache:
 
 
 def _build_user(claims: dict[str, Any], token: str | None = None) -> AuthenticatedUser:
+    subject = claims.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     realm_access = claims.get("realm_access", {})
     roles = realm_access.get("roles", []) if isinstance(realm_access, dict) else []
     return AuthenticatedUser(
-        subject=claims["sub"],
+        subject=subject,
         email=claims.get("email"),
         username=claims.get("preferred_username"),
         roles=roles,
