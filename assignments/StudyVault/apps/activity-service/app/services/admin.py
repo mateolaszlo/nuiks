@@ -19,6 +19,7 @@ from app.services.admin_integrations import AuditLogGateway, KeycloakAdminGatewa
 
 
 logger = get_logger(__name__)
+ADMIN_QUERY_LIMIT_MAX = 200
 
 
 class AdminService:
@@ -97,10 +98,11 @@ class AdminService:
 
     async def list_audit_events(self, actor: AuthenticatedUser, limit: int = 100) -> list[AdminAuditEvent]:
         self.require_admin(actor)
-        auth_events = await self.keycloak.list_auth_events(limit)
-        app_events = await self.audit_logs.list_app_audit_events(limit)
+        safe_limit = min(limit, ADMIN_QUERY_LIMIT_MAX)
+        auth_events = await self.keycloak.list_auth_events(safe_limit)
+        app_events = await self.audit_logs.list_app_audit_events(safe_limit)
         events = sorted(chain(auth_events, app_events), key=lambda item: item.created_at, reverse=True)
-        return list(events)[:limit]
+        return list(events)[:safe_limit]
 
     async def health_summary(self, actor: AuthenticatedUser) -> AdminHealthSummary:
         self.require_admin(actor)
@@ -120,4 +122,4 @@ class AdminService:
 
     async def recent_errors(self, actor: AuthenticatedUser, limit: int = 50) -> list[AdminErrorRecord]:
         self.require_admin(actor)
-        return await self.audit_logs.list_recent_errors(limit)
+        return await self.audit_logs.list_recent_errors(min(limit, ADMIN_QUERY_LIMIT_MAX))

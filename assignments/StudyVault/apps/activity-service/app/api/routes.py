@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import (
@@ -15,7 +15,7 @@ from studyvault_backend_common.models import (
 )
 
 from app.core.config import get_settings
-from app.services.admin import AdminService
+from app.services.admin import ADMIN_QUERY_LIMIT_MAX, AdminService
 from app.services.activity import ActivityService
 
 
@@ -96,7 +96,7 @@ def build_router(service: ActivityService, admin_service: AdminService) -> APIRo
 
     @router.get("/api/admin/audit", response_model=list[AdminAuditEvent])
     async def list_audit(
-        limit: int = 100,
+        limit: int = Query(default=100, ge=1, le=ADMIN_QUERY_LIMIT_MAX),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[AdminAuditEvent]:
         return await admin_service.list_audit_events(user, limit=limit)
@@ -109,7 +109,7 @@ def build_router(service: ActivityService, admin_service: AdminService) -> APIRo
 
     @router.get("/api/admin/errors", response_model=list[AdminErrorRecord])
     async def admin_errors(
-        limit: int = 50,
+        limit: int = Query(default=50, ge=1, le=ADMIN_QUERY_LIMIT_MAX),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[AdminErrorRecord]:
         return await admin_service.recent_errors(user, limit=limit)

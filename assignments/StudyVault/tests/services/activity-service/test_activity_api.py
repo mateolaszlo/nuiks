@@ -116,7 +116,8 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
     with TestClient(app) as client:
         users_response = client.get("/api/admin/users", headers={"authorization": "Bearer admin-token"})
         health_response = client.get("/api/admin/health", headers={"authorization": "Bearer admin-token"})
-        audit_response = client.get("/api/admin/audit", headers={"authorization": "Bearer admin-token"})
+        audit_response = client.get("/api/admin/audit?limit=2", headers={"authorization": "Bearer admin-token"})
+        errors_response = client.get("/api/admin/errors?limit=1", headers={"authorization": "Bearer admin-token"})
         disable_response = client.post(
             "/api/admin/users/user-1/disable",
             headers={"authorization": "Bearer admin-token"},
@@ -132,7 +133,83 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
     assert health_response.json()["recent_uploads"] == 3
     assert audit_response.status_code == 200
     assert audit_response.json()[0]["event_type"] == "file_upload_succeeded"
+    assert errors_response.status_code == 200
+    assert errors_response.json()[0]["event_id"] == "error-1"
     assert disable_response.status_code == 200
     assert disable_response.json()["enabled"] is False
     assert reset_response.status_code == 200
     assert reset_response.json()["temporary_password"] == "sv-test-reset"
+
+
+def test_admin_audit_rejects_limit_above_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
+
+    class FakeCache:
+        async def get(self, _: str):
+            return {"keys": [{"kid": "test-kid", "alg": "RS256", "kty": "RSA"}]}
+
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "admin-user",
+            "email": "admin@example.com",
+            "preferred_username": "admin",
+            "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
+        },
+    )
+
+    module = load_service_module("activity")
+    app = module.create_app(
+        repository=module.InMemoryActivityRepository(),
+        keycloak_client=module.InMemoryKeycloakAdminGateway(),
+        audit_client=module.InMemoryAuditLogGateway(),
+        health_client=module.InMemoryServiceHealthGateway(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/admin/audit?limit=201", headers={"authorization": "Bearer admin-token"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "limit"]
+
+
+def test_admin_errors_rejects_limit_below_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
+
+    class FakeCache:
+        async def get(self, _: str):
+            return {"keys": [{"kid": "test-kid", "alg": "RS256", "kty": "RSA"}]}
+
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "admin-user",
+            "email": "admin@example.com",
+            "preferred_username": "admin",
+            "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
+        },
+    )
+
+    module = load_service_module("activity")
+    app = module.create_app(
+        repository=module.InMemoryActivityRepository(),
+        keycloak_client=module.InMemoryKeycloakAdminGateway(),
+        audit_client=module.InMemoryAuditLogGateway(),
+        health_client=module.InMemoryServiceHealthGateway(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/admin/errors?limit=0", headers={"authorization": "Bearer admin-token"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["query", "limit"]
