@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,9 +26,9 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=False
-        if str(__import__("os").environ.get("STUDYVAULT_AUTH_DISABLED", "false")).lower() != "true"
+        if str(os.getenv("STUDYVAULT_AUTH_DISABLED", "false")).lower() != "true"
         else True,
-        internal_token=__import__("os").environ.get(
+        internal_token=os.getenv(
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",
         ),
