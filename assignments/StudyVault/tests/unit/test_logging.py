@@ -1,7 +1,12 @@
 import io
 import json
 import logging
+from uuid import UUID
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+import studyvault_backend_common.logging as logging_module
 from studyvault_backend_common.logging import configure_logging, request_id_ctx, should_log_request
 
 
@@ -34,6 +39,74 @@ def test_configure_logging_injects_request_context_for_stdlib_logs() -> None:
     assert payload["message"] == "with request id"
     assert payload["service"] == "search-service"
     assert payload["request_id"] == "req-123"
+
+
+def test_sanitize_request_id_preserves_valid_value() -> None:
+    assert logging_module.sanitize_request_id("req-123.test_value") == "req-123.test_value"
+
+
+def _find_request_completed_payload(stream: io.StringIO) -> dict[str, str]:
+    payloads = []
+    for line in stream.getvalue().splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        message = payload.get("message")
+        if isinstance(message, str) and message.startswith("{"):
+            try:
+                payload.update(json.loads(message))
+            except json.JSONDecodeError:
+                pass
+        payloads.append(payload)
+    return next(payload for payload in payloads if payload.get("event_name") == "request_completed")
+
+
+def test_request_logging_replaces_invalid_request_id_in_logs_and_response(monkeypatch) -> None:
+    configure_logging("gateway-service")
+    root_logger = logging.getLogger()
+    assert root_logger.handlers
+    stream = io.StringIO()
+    root_logger.handlers[0].stream = stream
+    monkeypatch.setattr(logging_module, "SLOW_REQUEST_THRESHOLD_MS", 0.0)
+
+    app = FastAPI()
+    logging_module.install_request_logging(app)
+
+    @app.get("/ok")
+    async def ok() -> dict[str, str]:
+        return {"status": "ok"}
+
+    with TestClient(app) as client:
+        response = client.get("/ok", headers={"x-request-id": "bad value"})
+
+    payload = _find_request_completed_payload(stream)
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == payload["request_id"]
+    UUID(response.headers["x-request-id"])
+
+
+def test_request_logging_replaces_oversized_request_id(monkeypatch) -> None:
+    configure_logging("gateway-service")
+    root_logger = logging.getLogger()
+    assert root_logger.handlers
+    stream = io.StringIO()
+    root_logger.handlers[0].stream = stream
+    monkeypatch.setattr(logging_module, "SLOW_REQUEST_THRESHOLD_MS", 0.0)
+
+    app = FastAPI()
+    logging_module.install_request_logging(app)
+
+    @app.get("/ok")
+    async def ok() -> dict[str, str]:
+        return {"status": "ok"}
+
+    with TestClient(app) as client:
+        response = client.get("/ok", headers={"x-request-id": "x" * 65})
+
+    payload = _find_request_completed_payload(stream)
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == payload["request_id"]
+    UUID(response.headers["x-request-id"])
 
 
 def test_should_log_request_for_failures() -> None:

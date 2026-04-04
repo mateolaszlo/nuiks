@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import time
 from contextvars import ContextVar
@@ -17,6 +18,8 @@ service_name_ctx: ContextVar[str] = ContextVar("service_name", default="unknown-
 configured_service_name = "unknown-service"
 SLOW_REQUEST_THRESHOLD_MS = 250.0
 SUPPRESSED_SUCCESS_PATHS = {"/health"}
+REQUEST_ID_MAX_LENGTH = 64
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 class ContextDefaultsFilter(logging.Filter):
@@ -85,10 +88,16 @@ def should_log_request(*, path: str, status_code: int, duration_ms: float) -> bo
     return duration_ms >= SLOW_REQUEST_THRESHOLD_MS
 
 
+def sanitize_request_id(value: str | None) -> str:
+    if value and len(value) <= REQUEST_ID_MAX_LENGTH and REQUEST_ID_PATTERN.fullmatch(value):
+        return value
+    return str(uuid4())
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         structlog.contextvars.clear_contextvars()
-        request_id = request.headers.get("x-request-id", str(uuid4()))
+        request_id = sanitize_request_id(request.headers.get("x-request-id"))
         request_id_ctx.set(request_id)
         structlog.contextvars.bind_contextvars(
             service=configured_service_name,
