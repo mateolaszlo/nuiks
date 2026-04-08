@@ -28,6 +28,8 @@ class CatalogRepository(Protocol):
 
     def list_folders(self, owner_id: str) -> list[FolderRecord]: ...
 
+    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]: ...
+
     def list_items(self, owner_id: str, parent_folder_id: str | None) -> list[DriveItem]: ...
 
     def list_trashed_items(self, owner_id: str) -> list[DriveItem]: ...
@@ -77,6 +79,16 @@ class InMemoryCatalogRepository:
     def list_folders(self, owner_id: str) -> list[FolderRecord]:
         records = [record for record in self._folders.values() if record.owner_id == owner_id]
         return sorted(records, key=lambda item: item.created_at, reverse=True)
+
+    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]:
+        records = [
+            record
+            for record in self._folders.values()
+            if record.owner_id == owner_id
+            and record.parent_folder_id == parent_folder_id
+            and record.trashed_at is None
+        ]
+        return sorted(records, key=lambda item: (item.normalized_name or item.name.casefold(), item.created_at))
 
     def list_items(self, owner_id: str, parent_folder_id: str | None) -> list[DriveItem]:
         folders = [
@@ -231,6 +243,19 @@ class SqlAlchemyCatalogRepository:
         with self.session_factory() as session:
             rows = session.scalars(
                 select(FolderRow).where(FolderRow.owner_id == owner_id).order_by(desc(FolderRow.created_at))
+            ).all()
+        return [self._to_folder_record(row) for row in rows]
+
+    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]:
+        with self.session_factory() as session:
+            rows = session.scalars(
+                select(FolderRow)
+                .where(
+                    FolderRow.owner_id == owner_id,
+                    FolderRow.parent_folder_id == parent_folder_id,
+                    FolderRow.trashed_at.is_(None),
+                )
+                .order_by(FolderRow.normalized_name, FolderRow.created_at, FolderRow.folder_id)
             ).all()
         return [self._to_folder_record(row) for row in rows]
 

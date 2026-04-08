@@ -520,3 +520,137 @@ def test_catalog_internal_expired_trash_rejects_invalid_limit() -> None:
 
     assert too_small.status_code == 422
     assert too_large.status_code == 422
+
+
+def test_catalog_creates_root_folder() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Projects", "parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["name"] == "Projects"
+    assert payload["parent_folder_id"] is None
+    assert payload["path_depth"] == 0
+    assert repository.get_folder("test-user", payload["folder_id"]) is not None
+
+
+def test_catalog_creates_nested_folder_with_parent_depth() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects", path_depth=2)
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Week 1", "parent_folder_id": parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["parent_folder_id"] == parent.folder_id
+    assert payload["path_depth"] == 3
+    assert payload["name"] == "Week 1"
+
+
+def test_catalog_create_folder_returns_not_found_for_unknown_parent() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Week 1", "parent_folder_id": "missing-folder"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_create_folder_rejects_trashed_parent() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Trash Parent")
+    parent.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Child", "parent_folder_id": parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Cannot create folder inside trashed folder"}
+
+
+def test_catalog_create_folder_rejects_duplicate_active_sibling_name() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    existing = FolderRecord.create(owner_id="test-user", name="Week 1", parent_folder_id=parent.folder_id, path_depth=1)
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, existing])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "week 1", "parent_folder_id": parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+
+
+def test_catalog_create_folder_allows_same_name_under_different_parent() -> None:
+    module = load_service_module("catalog")
+    first_parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    second_parent = FolderRecord.create(owner_id="test-user", name="Archives")
+    existing = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=first_parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[first_parent, second_parent, existing])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Week 1", "parent_folder_id": second_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["parent_folder_id"] == second_parent.folder_id
+
+
+def test_catalog_create_folder_hides_other_users_parent() -> None:
+    module = load_service_module("catalog")
+    other_user_parent = FolderRecord.create(owner_id="other-user", name="Private")
+    repository = module.InMemoryCatalogRepository(folder_seed=[other_user_parent])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Child", "parent_folder_id": other_user_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}

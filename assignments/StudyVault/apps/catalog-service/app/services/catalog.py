@@ -3,9 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 
 from studyvault_backend_common.logging import get_logger
-from studyvault_backend_common.models import AuthenticatedUser, BreadcrumbEntry, FileRecord
+from studyvault_backend_common.models import (
+    AuthenticatedUser,
+    BreadcrumbEntry,
+    CreateFolderRequest,
+    FileRecord,
+    FolderRecord,
+)
 
 from app.repositories.catalog import CatalogRepository
 from app.schemas.catalog import (
@@ -24,6 +31,97 @@ class CatalogService:
 
     def __init__(self, repository: CatalogRepository) -> None:
         self.repository = repository
+
+    def create_folder(self, user: AuthenticatedUser, request: CreateFolderRequest) -> FolderRecord:
+        parent: FolderRecord | None = None
+        if request.parent_folder_id is not None:
+            parent = self.repository.get_folder(user.subject, request.parent_folder_id)
+            if parent is None:
+                logger.warning(
+                    "catalog parent folder lookup failed",
+                    event_name="catalog_parent_folder_lookup_failed",
+                    event_category="catalog",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    parent_folder_id=request.parent_folder_id,
+                    status="not_found",
+                )
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            if parent.trashed_at is not None:
+                logger.warning(
+                    "catalog parent folder invalid",
+                    event_name="catalog_parent_folder_invalid",
+                    event_category="catalog",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    parent_folder_id=request.parent_folder_id,
+                    status="trashed",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot create folder inside trashed folder",
+                )
+
+        normalized_name = request.name.casefold()
+        siblings = self.repository.list_child_folders(user.subject, request.parent_folder_id)
+        if any((folder.normalized_name or folder.name.casefold()) == normalized_name for folder in siblings):
+            logger.warning(
+                "catalog folder create conflict",
+                event_name="catalog_folder_create_conflict",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                parent_folder_id=request.parent_folder_id,
+                folder_name=request.name,
+                status="conflict",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            )
+
+        folder_record = FolderRecord.create(
+            owner_id=user.subject,
+            name=request.name,
+            parent_folder_id=request.parent_folder_id,
+            path_depth=0 if parent is None else parent.path_depth + 1,
+        )
+        try:
+            created = self.repository.create_folder(folder_record)
+        except IntegrityError as exc:
+            logger.warning(
+                "catalog folder create conflict",
+                event_name="catalog_folder_create_conflict",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                parent_folder_id=request.parent_folder_id,
+                folder_name=request.name,
+                status="conflict",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            ) from exc
+
+        logger.info(
+            "catalog folder created",
+            event_name="catalog_folder_created",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=created.folder_id,
+            parent_folder_id=created.parent_folder_id,
+            folder_name=created.name,
+            path_depth=created.path_depth,
+            status="succeeded",
+        )
+        return created
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)
