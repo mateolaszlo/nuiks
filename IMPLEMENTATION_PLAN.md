@@ -1653,7 +1653,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add schema change for `folders`
 - [x] Add new `files` columns
 - [x] Add folder repository methods
-- [ ] Add item listing endpoint
+- [x] Add item listing endpoint
 - [ ] Add breadcrumbs endpoint
 - [ ] Add trash list endpoint
 - [ ] Add restore logic

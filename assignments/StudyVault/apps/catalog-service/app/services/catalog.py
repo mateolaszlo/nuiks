@@ -6,6 +6,7 @@ from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
 from app.repositories.catalog import CatalogRepository
+from app.schemas.catalog import CatalogItemsResponse
 
 
 logger = get_logger(__name__)
@@ -44,6 +45,50 @@ class CatalogService:
             status="succeeded",
         )
         return records
+
+    def list_items(
+        self,
+        user: AuthenticatedUser,
+        *,
+        parent_folder_id: str | None,
+        include_trashed: bool,
+    ) -> CatalogItemsResponse:
+        if include_trashed:
+            items = self.repository.list_trashed_items(user.subject)
+            response_parent_id = None
+            event_name = "catalog_trash_list_requested"
+        else:
+            if parent_folder_id is not None:
+                folder = self.repository.get_folder(user.subject, parent_folder_id)
+                if folder is None:
+                    logger.warning(
+                        "catalog folder lookup failed",
+                        event_name="catalog_folder_lookup_failed",
+                        event_category="catalog",
+                        owner_id=user.subject,
+                        owner_username=user.username,
+                        owner_email=user.email,
+                        folder_id=parent_folder_id,
+                        status="not_found",
+                    )
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            items = self.repository.list_items(user.subject, parent_folder_id)
+            response_parent_id = parent_folder_id
+            event_name = "catalog_items_list_requested"
+
+        logger.info(
+            "catalog items listed",
+            event_name=event_name,
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            parent_folder_id=response_parent_id,
+            include_trashed=include_trashed,
+            result_count=len(items),
+            status="succeeded",
+        )
+        return CatalogItemsResponse(parent_folder_id=response_parent_id, items=items)
 
     def get_user_file(self, user: AuthenticatedUser, file_id: str) -> FileRecord:
         record = self.repository.get_file(user.subject, file_id)

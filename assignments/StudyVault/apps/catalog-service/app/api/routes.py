@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
 from app.core.config import get_settings
+from app.schemas.catalog import CatalogItemsResponse
 from app.services.catalog import CatalogService
 
 
@@ -32,6 +33,18 @@ def build_router(service: CatalogService) -> APIRouter:
     @router.get("/api/catalog/files", response_model=list[FileRecord])
     def list_files(user: AuthenticatedUser = Depends(current_user_dependency)) -> list[FileRecord]:
         return service.list_user_files(user)
+
+    @router.get("/api/catalog/items", response_model=CatalogItemsResponse)
+    def list_items(
+        parent_id: str | None = Query(default=None),
+        include_trashed: bool = Query(default=False),
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> CatalogItemsResponse:
+        return service.list_items(
+            user,
+            parent_folder_id=parent_id,
+            include_trashed=include_trashed,
+        )
 
     @router.post(
         "/internal/catalog/files",
