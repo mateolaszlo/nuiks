@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
+from typing import Literal
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 STUDYVAULT_ADMIN_ROLE = "studyvault_admin"
-MAX_FILENAME_LENGTH = 255
+MAX_ITEM_NAME_LENGTH = 255
+MAX_FILENAME_LENGTH = MAX_ITEM_NAME_LENGTH
 MAX_TAG_COUNT = 20
 MAX_TAG_LENGTH = 64
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -21,6 +23,23 @@ def utcnow() -> datetime:
 
 def has_control_chars(value: str) -> bool:
     return bool(_CONTROL_CHARS_RE.search(value))
+
+
+def validate_item_name(value: str, *, field_name: str = "Name") -> str:
+    cleaned_value = value.strip()
+    if not cleaned_value:
+        raise ValueError(f"{field_name} must not be empty")
+    if len(cleaned_value) > MAX_ITEM_NAME_LENGTH:
+        raise ValueError(f"{field_name} must be at most {MAX_ITEM_NAME_LENGTH} characters")
+    if has_control_chars(cleaned_value):
+        raise ValueError(f"{field_name} must not contain control characters")
+    if "/" in cleaned_value or "\\" in cleaned_value:
+        raise ValueError(f"{field_name} must not contain path separators")
+    return cleaned_value
+
+
+def normalize_item_name(value: str) -> str:
+    return validate_item_name(value).casefold()
 
 
 class AuthenticatedUser(BaseModel):
@@ -44,19 +63,16 @@ class FileRecord(BaseModel):
     tags: list[str] = Field(default_factory=list)
     object_key: str
     created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    parent_folder_id: str | None = None
+    trashed_at: datetime | None = None
+    purge_after: datetime | None = None
+    original_parent_folder_id: str | None = None
 
     @field_validator("filename")
     @classmethod
     def validate_filename(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Filename must not be empty")
-        if len(value) > MAX_FILENAME_LENGTH:
-            raise ValueError(f"Filename must be at most {MAX_FILENAME_LENGTH} characters")
-        if has_control_chars(value):
-            raise ValueError("Filename must not contain control characters")
-        if "/" in value or "\\" in value:
-            raise ValueError("Filename must not contain path separators")
-        return value
+        return validate_item_name(value, field_name="Filename")
 
     @field_validator("tags")
     @classmethod
@@ -96,6 +112,151 @@ class FileRecord(BaseModel):
             size=size,
             tags=tags or [],
             object_key=object_key,
+        )
+
+
+class FolderRecord(BaseModel):
+    folder_id: str
+    owner_id: str
+    name: str
+    normalized_name: str | None = None
+    parent_folder_id: str | None = None
+    path_depth: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    trashed_at: datetime | None = None
+    purge_after: datetime | None = None
+    original_parent_folder_id: str | None = None
+    deleted_by_cascade: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return validate_item_name(value, field_name="Folder name")
+
+    @field_validator("normalized_name")
+    @classmethod
+    def validate_normalized_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not value:
+            raise ValueError("Normalized folder name must not be empty")
+        if has_control_chars(value):
+            raise ValueError("Normalized folder name must not contain control characters")
+        if "/" in value or "\\" in value:
+            raise ValueError("Normalized folder name must not contain path separators")
+        return value
+
+    @model_validator(mode="after")
+    def ensure_normalized_name(self) -> "FolderRecord":
+        if self.normalized_name is None:
+            self.normalized_name = normalize_item_name(self.name)
+        return self
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        owner_id: str,
+        name: str,
+        parent_folder_id: str | None = None,
+        path_depth: int = 0,
+    ) -> "FolderRecord":
+        return cls(
+            folder_id=str(uuid4()),
+            owner_id=owner_id,
+            name=name,
+            parent_folder_id=parent_folder_id,
+            path_depth=path_depth,
+        )
+
+
+class CreateFolderRequest(BaseModel):
+    name: str
+    parent_folder_id: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return validate_item_name(value, field_name="Folder name")
+
+
+class RenameItemRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return validate_item_name(value, field_name="Name")
+
+
+class MoveItemRequest(BaseModel):
+    parent_folder_id: str | None = None
+
+
+class RestoreItemRequest(BaseModel):
+    parent_folder_id: str | None = None
+
+
+class BreadcrumbEntry(BaseModel):
+    folder_id: str | None = None
+    name: str
+
+
+class DriveItem(BaseModel):
+    item_id: str
+    kind: Literal["file", "folder"]
+    owner_id: str
+    name: str
+    parent_folder_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    trashed_at: datetime | None = None
+    purge_after: datetime | None = None
+    size: int | None = None
+    mime_type: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    object_key: str | None = None
+    path_depth: int | None = None
+    deleted_by_cascade: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return validate_item_name(value)
+
+    @classmethod
+    def from_file(cls, record: FileRecord) -> "DriveItem":
+        return cls(
+            item_id=record.file_id,
+            kind="file",
+            owner_id=record.owner_id,
+            name=record.filename,
+            parent_folder_id=record.parent_folder_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            trashed_at=record.trashed_at,
+            purge_after=record.purge_after,
+            size=record.size,
+            mime_type=record.mime_type,
+            tags=record.tags,
+            object_key=record.object_key,
+        )
+
+    @classmethod
+    def from_folder(cls, record: FolderRecord) -> "DriveItem":
+        return cls(
+            item_id=record.folder_id,
+            kind="folder",
+            owner_id=record.owner_id,
+            name=record.name,
+            parent_folder_id=record.parent_folder_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            trashed_at=record.trashed_at,
+            purge_after=record.purge_after,
+            path_depth=record.path_depth,
+            deleted_by_cascade=record.deleted_by_cascade,
         )
 
 
