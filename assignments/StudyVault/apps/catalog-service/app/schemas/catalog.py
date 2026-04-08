@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from studyvault_backend_common.models import DriveItem
+from studyvault_backend_common.models import BreadcrumbEntry, DriveItem
 
 
 class CatalogItemsResponse(BaseModel):
@@ -10,4 +10,8 @@ class CatalogItemsResponse(BaseModel):
     items: list[DriveItem]
 
 
-__all__ = ["CatalogItemsResponse"]
+class CatalogBreadcrumbsResponse(BaseModel):
+    breadcrumbs: list[BreadcrumbEntry]
+
+
+__all__ = ["CatalogBreadcrumbsResponse", "CatalogItemsResponse"]

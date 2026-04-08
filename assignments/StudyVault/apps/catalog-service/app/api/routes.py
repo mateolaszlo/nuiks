@@ -6,7 +6,7 @@ from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
 from app.core.config import get_settings
-from app.schemas.catalog import CatalogItemsResponse
+from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse
 from app.services.catalog import CatalogService
 
 
@@ -45,6 +45,13 @@ def build_router(service: CatalogService) -> APIRouter:
             parent_folder_id=parent_id,
             include_trashed=include_trashed,
         )
+
+    @router.get("/api/catalog/breadcrumbs/{folder_id}", response_model=CatalogBreadcrumbsResponse)
+    def get_breadcrumbs(
+        folder_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> CatalogBreadcrumbsResponse:
+        return service.get_breadcrumbs(user, folder_id)
 
     @router.post(
         "/internal/catalog/files",

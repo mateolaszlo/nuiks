@@ -3,16 +3,18 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from studyvault_backend_common.logging import get_logger
-from studyvault_backend_common.models import AuthenticatedUser, FileRecord
+from studyvault_backend_common.models import AuthenticatedUser, BreadcrumbEntry, FileRecord
 
 from app.repositories.catalog import CatalogRepository
-from app.schemas.catalog import CatalogItemsResponse
+from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse
 
 
 logger = get_logger(__name__)
 
 
 class CatalogService:
+    ROOT_BREADCRUMB_NAME = "My Drive"
+
     def __init__(self, repository: CatalogRepository) -> None:
         self.repository = repository
 
@@ -89,6 +91,41 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogItemsResponse(parent_folder_id=response_parent_id, items=items)
+
+    def get_breadcrumbs(self, user: AuthenticatedUser, folder_id: str) -> CatalogBreadcrumbsResponse:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+
+        ancestors = self.repository.get_folder_ancestors(user.subject, folder_id)
+        breadcrumbs = [BreadcrumbEntry(name=self.ROOT_BREADCRUMB_NAME)]
+        breadcrumbs.extend(
+            BreadcrumbEntry(folder_id=ancestor.folder_id, name=ancestor.name) for ancestor in ancestors
+        )
+        breadcrumbs.append(BreadcrumbEntry(folder_id=folder.folder_id, name=folder.name))
+
+        logger.info(
+            "catalog breadcrumbs fetched",
+            event_name="catalog_breadcrumbs_fetched",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            breadcrumb_count=len(breadcrumbs),
+            status="succeeded",
+        )
+        return CatalogBreadcrumbsResponse(breadcrumbs=breadcrumbs)
 
     def get_user_file(self, user: AuthenticatedUser, file_id: str) -> FileRecord:
         record = self.repository.get_file(user.subject, file_id)
