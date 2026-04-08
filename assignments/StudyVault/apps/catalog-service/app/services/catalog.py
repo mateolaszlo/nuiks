@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import HTTPException, status
 
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import AuthenticatedUser, BreadcrumbEntry, FileRecord
 
 from app.repositories.catalog import CatalogRepository
-from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse, CatalogTrashResponse
+from app.schemas.catalog import (
+    CatalogBreadcrumbsResponse,
+    CatalogExpiredTrashResponse,
+    CatalogItemsResponse,
+    CatalogTrashResponse,
+)
 
 
 logger = get_logger(__name__)
@@ -105,6 +112,21 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogTrashResponse(items=items)
+
+    def list_expired_trash(self, *, before: datetime, limit: int) -> CatalogExpiredTrashResponse:
+        files = self.repository.list_expired_trashed_files(before)[:limit]
+        folders = self.repository.list_expired_trashed_folders(before)[:limit]
+        logger.info(
+            "catalog expired trash listed",
+            event_name="catalog_expired_trash_list_requested",
+            event_category="catalog",
+            before=before.isoformat(),
+            limit=limit,
+            expired_file_count=len(files),
+            expired_folder_count=len(folders),
+            status="succeeded",
+        )
+        return CatalogExpiredTrashResponse(files=files, folders=folders)
 
     def get_breadcrumbs(self, user: AuthenticatedUser, folder_id: str) -> CatalogBreadcrumbsResponse:
         folder = self.repository.get_folder(user.subject, folder_id)

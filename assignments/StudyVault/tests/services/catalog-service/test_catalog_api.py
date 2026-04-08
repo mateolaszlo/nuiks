@@ -63,6 +63,23 @@ def test_catalog_internal_create_requires_internal_token() -> None:
     assert repository.get_file("test-user", record.file_id) is not None
 
 
+def test_catalog_internal_expired_trash_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.get("/internal/catalog/trash/expired?before=2026-04-08T00:00:00Z")
+        authorized = client.get(
+            "/internal/catalog/trash/expired?before=2026-04-08T00:00:00Z",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json() == {"files": [], "folders": []}
+
+
 def test_catalog_lists_root_items_for_authenticated_user_only() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository(
@@ -364,3 +381,142 @@ def test_catalog_trash_returns_empty_list_when_no_trashed_items_exist() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"items": []}
+
+
+def test_catalog_internal_expired_trash_returns_only_expired_items() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository(
+        seed=[
+            FileRecord(
+                file_id="file-expired",
+                owner_id="test-user",
+                filename="expired.txt",
+                mime_type="text/plain",
+                size=5,
+                tags=[],
+                object_key="test-user/file-expired",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, tzinfo=timezone.utc),
+            ),
+            FileRecord(
+                file_id="file-fresh",
+                owner_id="test-user",
+                filename="fresh.txt",
+                mime_type="text/plain",
+                size=6,
+                tags=[],
+                object_key="test-user/file-fresh",
+                trashed_at=datetime(2026, 4, 7, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 9, tzinfo=timezone.utc),
+            ),
+        ],
+        folder_seed=[
+            FolderRecord(
+                folder_id="folder-expired",
+                owner_id="test-user",
+                name="Expired Folder",
+                normalized_name="expired folder",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, tzinfo=timezone.utc),
+            ),
+            FolderRecord(
+                folder_id="folder-fresh",
+                owner_id="test-user",
+                name="Fresh Folder",
+                normalized_name="fresh folder",
+                trashed_at=datetime(2026, 4, 7, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 9, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/catalog/trash/expired?before=2026-04-08T00:00:00Z&limit=10",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["file_id"] for item in payload["files"]] == ["file-expired"]
+    assert [item["folder_id"] for item in payload["folders"]] == ["folder-expired"]
+
+
+def test_catalog_internal_expired_trash_applies_limit_per_collection() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository(
+        seed=[
+            FileRecord(
+                file_id="file-1",
+                owner_id="test-user",
+                filename="a.txt",
+                mime_type="text/plain",
+                size=1,
+                tags=[],
+                object_key="test-user/file-1",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, 0, 0, tzinfo=timezone.utc),
+            ),
+            FileRecord(
+                file_id="file-2",
+                owner_id="test-user",
+                filename="b.txt",
+                mime_type="text/plain",
+                size=1,
+                tags=[],
+                object_key="test-user/file-2",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, 1, 0, tzinfo=timezone.utc),
+            ),
+        ],
+        folder_seed=[
+            FolderRecord(
+                folder_id="folder-1",
+                owner_id="test-user",
+                name="Folder One",
+                normalized_name="folder one",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, 0, 0, tzinfo=timezone.utc),
+            ),
+            FolderRecord(
+                folder_id="folder-2",
+                owner_id="test-user",
+                name="Folder Two",
+                normalized_name="folder two",
+                trashed_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                purge_after=datetime(2026, 4, 8, 1, 0, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/catalog/trash/expired?before=2026-04-09T00:00:00Z&limit=1",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["file_id"] for item in payload["files"]] == ["file-1"]
+    assert [item["folder_id"] for item in payload["folders"]] == ["folder-1"]
+
+
+def test_catalog_internal_expired_trash_rejects_invalid_limit() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        too_small = client.get(
+            "/internal/catalog/trash/expired?before=2026-04-08T00:00:00Z&limit=0",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+        too_large = client.get(
+            "/internal/catalog/trash/expired?before=2026-04-08T00:00:00Z&limit=501",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert too_small.status_code == 422
+    assert too_large.status_code == 422

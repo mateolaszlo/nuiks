@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, FileRecord
 
 from app.core.config import get_settings
-from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse, CatalogTrashResponse
+from app.schemas.catalog import (
+    CatalogBreadcrumbsResponse,
+    CatalogExpiredTrashResponse,
+    CatalogItemsResponse,
+    CatalogTrashResponse,
+)
 from app.services.catalog import CatalogService
 
 
@@ -58,6 +65,17 @@ def build_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> CatalogTrashResponse:
         return service.list_trash(user)
+
+    @router.get(
+        "/internal/catalog/trash/expired",
+        response_model=CatalogExpiredTrashResponse,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def list_expired_trash(
+        before: datetime = Query(...),
+        limit: int = Query(default=100, ge=1, le=500),
+    ) -> CatalogExpiredTrashResponse:
+        return service.list_expired_trash(before=before, limit=limit)
 
     @router.post(
         "/internal/catalog/files",

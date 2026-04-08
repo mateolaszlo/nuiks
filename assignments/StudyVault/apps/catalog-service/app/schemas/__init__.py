@@ -1,4 +1,15 @@
-from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse, CatalogTrashResponse
+from app.schemas.catalog import (
+    CatalogBreadcrumbsResponse,
+    CatalogExpiredTrashResponse,
+    CatalogItemsResponse,
+    CatalogTrashResponse,
+)
 from studyvault_backend_common.models import FileRecord
 
-__all__ = ["CatalogBreadcrumbsResponse", "CatalogItemsResponse", "CatalogTrashResponse", "FileRecord"]
+__all__ = [
+    "CatalogBreadcrumbsResponse",
+    "CatalogExpiredTrashResponse",
+    "CatalogItemsResponse",
+    "CatalogTrashResponse",
+    "FileRecord",
+]

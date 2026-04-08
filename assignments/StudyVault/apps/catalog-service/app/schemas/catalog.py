@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from studyvault_backend_common.models import BreadcrumbEntry, DriveItem
+from studyvault_backend_common.models import BreadcrumbEntry, DriveItem, FileRecord, FolderRecord
 
 
 class CatalogItemsResponse(BaseModel):
@@ -18,4 +18,14 @@ class CatalogTrashResponse(BaseModel):
     items: list[DriveItem]
 
 
-__all__ = ["CatalogBreadcrumbsResponse", "CatalogItemsResponse", "CatalogTrashResponse"]
+class CatalogExpiredTrashResponse(BaseModel):
+    files: list[FileRecord]
+    folders: list[FolderRecord]
+
+
+__all__ = [
+    "CatalogBreadcrumbsResponse",
+    "CatalogExpiredTrashResponse",
+    "CatalogItemsResponse",
+    "CatalogTrashResponse",
+]
