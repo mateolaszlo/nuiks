@@ -14,4 +14,8 @@ class CatalogBreadcrumbsResponse(BaseModel):
     breadcrumbs: list[BreadcrumbEntry]
 
 
-__all__ = ["CatalogBreadcrumbsResponse", "CatalogItemsResponse"]
+class CatalogTrashResponse(BaseModel):
+    items: list[DriveItem]
+
+
+__all__ = ["CatalogBreadcrumbsResponse", "CatalogItemsResponse", "CatalogTrashResponse"]

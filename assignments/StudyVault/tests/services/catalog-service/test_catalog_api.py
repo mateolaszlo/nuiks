@@ -294,3 +294,73 @@ def test_catalog_breadcrumbs_hide_other_users_folder() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_trash_lists_trashed_items_for_authenticated_user_only() -> None:
+    module = load_service_module("catalog")
+    active_folder = FolderRecord.create(owner_id="test-user", name="Active Folder")
+    trashed_folder = FolderRecord.create(owner_id="test-user", name="Folder Trash")
+    trashed_folder.trashed_at = datetime(2026, 4, 7, tzinfo=timezone.utc)
+    trashed_folder.purge_after = datetime(2026, 5, 7, tzinfo=timezone.utc)
+    active_file = FileRecord.create(
+        owner_id="test-user",
+        filename="active.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    trashed_file = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.docx",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        size=42111,
+        tags=[],
+    )
+    trashed_file.trashed_at = datetime(2026, 3, 11, 12, tzinfo=timezone.utc)
+    trashed_file.purge_after = datetime(2026, 4, 10, 12, tzinfo=timezone.utc)
+    other_user_trashed = FileRecord.create(
+        owner_id="other-user",
+        filename="secret.txt",
+        mime_type="text/plain",
+        size=1,
+        tags=[],
+    )
+    other_user_trashed.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(
+        seed=[active_file, trashed_file, other_user_trashed],
+        folder_seed=[active_folder, trashed_folder],
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/catalog/trash", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [(item["kind"], item["name"]) for item in payload["items"]] == [
+        ("file", "draft.docx"),
+        ("folder", "Folder Trash"),
+    ]
+
+
+def test_catalog_trash_returns_empty_list_when_no_trashed_items_exist() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository(
+        seed=[
+            FileRecord.create(
+                owner_id="test-user",
+                filename="notes.txt",
+                mime_type="text/plain",
+                size=5,
+                tags=[],
+            )
+        ],
+        folder_seed=[FolderRecord.create(owner_id="test-user", name="Projects")],
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/catalog/trash", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    assert response.json() == {"items": []}

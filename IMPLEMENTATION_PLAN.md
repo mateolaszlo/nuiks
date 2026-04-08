@@ -1655,7 +1655,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add folder repository methods
 - [x] Add item listing endpoint
 - [x] Add breadcrumbs endpoint
-- [ ] Add trash list endpoint
+- [x] Add trash list endpoint
 - [ ] Add restore logic
 - [ ] Add expired-trash internal endpoint
 

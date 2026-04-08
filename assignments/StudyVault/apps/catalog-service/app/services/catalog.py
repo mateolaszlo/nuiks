@@ -6,7 +6,7 @@ from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import AuthenticatedUser, BreadcrumbEntry, FileRecord
 
 from app.repositories.catalog import CatalogRepository
-from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse
+from app.schemas.catalog import CatalogBreadcrumbsResponse, CatalogItemsResponse, CatalogTrashResponse
 
 
 logger = get_logger(__name__)
@@ -91,6 +91,20 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogItemsResponse(parent_folder_id=response_parent_id, items=items)
+
+    def list_trash(self, user: AuthenticatedUser) -> CatalogTrashResponse:
+        items = self.repository.list_trashed_items(user.subject)
+        logger.info(
+            "catalog trash listed",
+            event_name="catalog_trash_list_requested",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            result_count=len(items),
+            status="succeeded",
+        )
+        return CatalogTrashResponse(items=items)
 
     def get_breadcrumbs(self, user: AuthenticatedUser, folder_id: str) -> CatalogBreadcrumbsResponse:
         folder = self.repository.get_folder(user.subject, folder_id)
