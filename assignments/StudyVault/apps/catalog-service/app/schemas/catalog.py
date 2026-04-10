@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from studyvault_backend_common.models import BreadcrumbEntry, DriveItem, FileRecord, FolderRecord
+from studyvault_backend_common.models import BreadcrumbEntry, DriveItem, FileRecord, FileRestoreResponse, FolderRecord
 
 
 class CatalogItemsResponse(BaseModel):
@@ -36,4 +36,5 @@ __all__ = [
     "CatalogItemsResponse",
     "CatalogRestoreResponse",
     "CatalogTrashResponse",
+    "FileRestoreResponse",
 ]

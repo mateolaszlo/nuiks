@@ -11,6 +11,7 @@ from studyvault_backend_common.models import (
     BreadcrumbEntry,
     CreateFolderRequest,
     FileRecord,
+    FileRestoreResponse,
     FolderRecord,
     MoveItemRequest,
     RenameItemRequest,
@@ -729,6 +730,87 @@ class CatalogService:
             status="succeeded",
         )
         return updated
+
+    def restore_file(
+        self,
+        *,
+        owner_id: str,
+        file_id: str,
+        request: RestoreItemRequest,
+    ) -> FileRestoreResponse:
+        existing = self.repository.get_file(owner_id, file_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if existing.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+
+        explicit_target_parent: FolderRecord | None = None
+        if request.parent_folder_id is not None:
+            explicit_target_parent = self.repository.get_folder(owner_id, request.parent_folder_id)
+            if explicit_target_parent is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            if explicit_target_parent.trashed_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot restore file into trashed folder",
+                )
+
+        fallback_to_root = False
+        target_parent = explicit_target_parent
+        if request.parent_folder_id is None and existing.original_parent_folder_id is not None:
+            original_parent = self.repository.get_folder(owner_id, existing.original_parent_folder_id)
+            if original_parent is not None and original_parent.trashed_at is None:
+                target_parent = original_parent
+            else:
+                fallback_to_root = True
+        elif request.parent_folder_id is None and existing.original_parent_folder_id is None:
+            fallback_to_root = existing.parent_folder_id is not None
+
+        target_parent_id = None if target_parent is None else target_parent.folder_id
+        normalized_name = existing.filename.casefold()
+        siblings = self.repository.list_child_files(owner_id, target_parent_id)
+        if any(
+            sibling.file_id != existing.file_id
+            and sibling.trashed_at is None
+            and sibling.filename.casefold() == normalized_name
+            for sibling in siblings
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A file with that name already exists in this location",
+            )
+
+        restored = existing.model_copy(
+            update={
+                "parent_folder_id": target_parent_id,
+                "updated_at": utcnow(),
+                "trashed_at": None,
+                "purge_after": None,
+                "original_parent_folder_id": None,
+            }
+        )
+        self.repository.update_file(restored)
+
+        logger.info(
+            "catalog file restored",
+            event_name="catalog_file_restored",
+            event_category="catalog",
+            file_id=existing.file_id,
+            owner_id=existing.owner_id,
+            parent_folder_id=target_parent_id,
+            restored_to_root=target_parent_id is None,
+            status="succeeded",
+        )
+        return FileRestoreResponse(
+            file_id=existing.file_id,
+            restored_to_parent_folder_id=target_parent_id,
+            restored_to_root=target_parent_id is None,
+            message=(
+                "Original parent was unavailable, file restored to root"
+                if fallback_to_root and target_parent is None
+                else ""
+            ),
+        )
 
     def list_user_files(self, user: AuthenticatedUser) -> list[FileRecord]:
         records = self.repository.list_files(user.subject)

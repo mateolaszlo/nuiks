@@ -14,9 +14,11 @@ from studyvault_backend_common.models import (
     AuthenticatedUser,
     FileActivityEvent,
     FileRecord,
+    FileRestoreResponse,
     FolderRecord,
     MoveItemRequest,
     RenameItemRequest,
+    RestoreItemRequest,
     has_control_chars,
     utcnow,
 )
@@ -74,10 +76,35 @@ class FileService:
                     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
                 if "move" in lowered:
                     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+                if "restore" in lowered:
+                    return HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Cannot restore file into trashed folder",
+                    )
                 return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot trash already trashed file")
             if "move" in lowered or "location" in lowered:
                 return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File move conflict")
+            if "restore" in lowered:
+                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File restore conflict")
             return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File rename conflict")
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="File metadata update failed",
+        )
+
+    @staticmethod
+    def _map_catalog_file_restore_error(exc: ServiceClientError) -> HTTPException:
+        message = str(exc)
+        if "status 404" in message:
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if "status 409" in message:
+            lowered = message.lower()
+            if "trashed folder" in lowered:
+                return HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot restore file into trashed folder",
+                )
+            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File restore conflict")
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="File metadata update failed",
@@ -441,6 +468,39 @@ class FileService:
             )
         except ServiceClientError as exc:
             raise self._map_catalog_file_error(exc) from exc
+
+    async def restore_file(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_id: str,
+        request: RestoreItemRequest,
+    ) -> FileRestoreResponse:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        if file_record.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+
+        try:
+            restore_result = await self.downstream.restore_catalog_file(
+                file_id,
+                user.subject,
+                request,
+                bearer_token=user.token or "",
+            )
+            restored_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            await self.downstream.publish_search(restored_record, bearer_token=user.token or "")
+            await self.downstream.publish_activity(
+                FileActivityEvent(action="file_restored", file=restored_record),
+                bearer_token=user.token or "",
+            )
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_restore_error(exc) from exc
+
+        return restore_result
 
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
         file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")

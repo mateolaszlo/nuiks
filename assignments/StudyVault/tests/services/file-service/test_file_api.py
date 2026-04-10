@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.http import ServiceClientError
-from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest
+from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest, RestoreItemRequest
 from tests.conftest import load_service_module
 
 
@@ -123,6 +123,78 @@ class FakeDownstream:
                 self.catalog_records[index] = trashed
                 return trashed
         raise AssertionError("expected file to be present in fake downstream catalog store")
+
+    async def restore_catalog_file(
+        self,
+        file_id: str,
+        owner_id: str,
+        request: RestoreItemRequest,
+        *,
+        bearer_token: str,
+    ) -> dict[str, object]:
+        existing = self.fetch_existing_file(file_id)
+        if existing.owner_id != owner_id:
+            raise ServiceClientError(
+                f"POST http://catalog.test/internal/catalog/files/{file_id}/restore failed with status 404"
+            )
+        if existing.trashed_at is None:
+            raise ServiceClientError(
+                f"POST http://catalog.test/internal/catalog/files/{file_id}/restore failed with status 409"
+            )
+
+        target_folder = None
+        if request.parent_folder_id is not None:
+            target_folder = self.catalog_folders.get(request.parent_folder_id)
+            if target_folder is None or target_folder.owner_id != owner_id:
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_id}/restore failed with status 404"
+                )
+            if target_folder.trashed_at is not None:
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_id}/restore failed with status 409 trashed folder"
+                )
+        elif existing.original_parent_folder_id is not None:
+            original_parent = self.catalog_folders.get(existing.original_parent_folder_id)
+            if original_parent is not None and original_parent.owner_id == owner_id and original_parent.trashed_at is None:
+                target_folder = original_parent
+
+        target_parent_id = None if target_folder is None else target_folder.folder_id
+        for sibling in self.catalog_records:
+            if (
+                sibling.file_id != existing.file_id
+                and sibling.parent_folder_id == target_parent_id
+                and sibling.trashed_at is None
+                and sibling.filename.casefold() == existing.filename.casefold()
+            ):
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_id}/restore failed with status 409 restore"
+                )
+
+        restored = existing.model_copy(
+            update={
+                "parent_folder_id": target_parent_id,
+                "trashed_at": None,
+                "purge_after": None,
+                "original_parent_folder_id": None,
+                "updated_at": datetime(2026, 4, 12, tzinfo=timezone.utc),
+            }
+        )
+        for index, stored in enumerate(self.catalog_records):
+            if stored.file_id == file_id:
+                self.catalog_records[index] = restored
+                break
+        return {
+            "file_id": file_id,
+            "restored_to_parent_folder_id": target_parent_id,
+            "restored_to_root": target_parent_id is None,
+            "message": (
+                "Original parent was unavailable, file restored to root"
+                if request.parent_folder_id is None
+                and existing.original_parent_folder_id is not None
+                and target_parent_id is None
+                else ""
+            ),
+        }
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -564,6 +636,247 @@ def test_file_trash_is_idempotent_for_already_trashed_file() -> None:
     assert response.status_code == 204
     assert downstream.search_records == []
     assert downstream.activity_actions == []
+
+
+def test_file_restore_to_original_parent_succeeds_and_emits_downstream_events() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    original_parent = FolderRecord.create(owner_id="test-user", name="Original")
+    downstream.catalog_folders[original_parent.folder_id] = original_parent
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = "trash-parent"
+    stored.original_parent_folder_id = original_parent.folder_id
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["file_id"] == stored.file_id
+    assert payload["restored_to_parent_folder_id"] == original_parent.folder_id
+    assert payload["restored_to_root"] is False
+    assert downstream.catalog_records[0].parent_folder_id == original_parent.folder_id
+    assert downstream.catalog_records[0].trashed_at is None
+    assert downstream.catalog_records[0].original_parent_folder_id is None
+    assert downstream.search_records[-1].trashed_at is None
+    assert downstream.activity_actions[-1] == "file_restored"
+
+
+def test_file_restore_explicit_target_overrides_original_parent() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    original_parent = FolderRecord.create(owner_id="test-user", name="Original")
+    override_parent = FolderRecord.create(owner_id="test-user", name="Override")
+    downstream.catalog_folders[original_parent.folder_id] = original_parent
+    downstream.catalog_folders[override_parent.folder_id] = override_parent
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.original_parent_folder_id = original_parent.folder_id
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": override_parent.folder_id},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["restored_to_parent_folder_id"] == override_parent.folder_id
+    assert downstream.catalog_records[0].parent_folder_id == override_parent.folder_id
+
+
+def test_file_restore_falls_back_to_root_when_original_parent_is_missing() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = "folder-1"
+    stored.original_parent_folder_id = "missing-folder"
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["restored_to_parent_folder_id"] is None
+    assert payload["restored_to_root"] is True
+    assert payload["message"] == "Original parent was unavailable, file restored to root"
+    assert downstream.catalog_records[0].parent_folder_id is None
+
+
+def test_file_restore_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files/missing-file/restore",
+            headers={"authorization": "Bearer fake"},
+            json={},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
+def test_file_restore_rejects_non_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File is not trashed"
+
+
+def test_file_restore_rejects_missing_explicit_target_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": "missing-folder"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
+def test_file_restore_rejects_trashed_explicit_target_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    target.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    downstream.catalog_folders[target.folder_id] = target
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot restore file into trashed folder"
+
+
+def test_file_restore_rejects_destination_name_conflict() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    downstream.catalog_folders[target.folder_id] = target
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    conflict = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    conflict.parent_folder_id = target.folder_id
+    downstream.catalog_records.extend([stored, conflict])
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/restore",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File restore conflict"
 
 
 def test_file_upload_accepts_parent_folder_id() -> None:

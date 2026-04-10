@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import Protocol
 
 from studyvault_backend_common.http import JsonServiceClient
-from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest
+from studyvault_backend_common.models import (
+    FileActivityEvent,
+    FileRecord,
+    FileRestoreResponse,
+    FolderRecord,
+    MoveItemRequest,
+    RestoreItemRequest,
+)
 
 
 class DownstreamPublisher(Protocol):
@@ -28,6 +35,15 @@ class DownstreamPublisher(Protocol):
     ) -> FileRecord: ...
 
     async def trash_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord: ...
+
+    async def restore_catalog_file(
+        self,
+        file_id: str,
+        owner_id: str,
+        request: RestoreItemRequest,
+        *,
+        bearer_token: str,
+    ) -> FileRestoreResponse: ...
 
 
 class HttpDownstreamPublisher:
@@ -120,3 +136,19 @@ class HttpDownstreamPublisher:
             query_params={"owner_id": owner_id},
         )
         return FileRecord(**payload)
+
+    async def restore_catalog_file(
+        self,
+        file_id: str,
+        owner_id: str,
+        request: RestoreItemRequest,
+        *,
+        bearer_token: str,
+    ) -> FileRestoreResponse:
+        payload = await self.client.post_json(
+            f"{self.catalog_url}/internal/catalog/files/{file_id}/restore?owner_id={owner_id}",
+            request.model_dump(mode="json"),
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
+        )
+        return FileRestoreResponse(**payload)

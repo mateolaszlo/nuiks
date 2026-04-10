@@ -3,6 +3,7 @@ from app.schemas.catalog import (
     CatalogExpiredTrashResponse,
     CatalogItemsResponse,
     CatalogTrashResponse,
+    FileRestoreResponse,
 )
 from studyvault_backend_common.models import FileRecord
 
@@ -12,4 +13,5 @@ __all__ = [
     "CatalogItemsResponse",
     "CatalogTrashResponse",
     "FileRecord",
+    "FileRestoreResponse",
 ]

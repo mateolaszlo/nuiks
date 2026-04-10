@@ -22,6 +22,7 @@ from app.schemas.catalog import (
     CatalogItemsResponse,
     CatalogRestoreResponse,
     CatalogTrashResponse,
+    FileRestoreResponse,
 )
 from app.services.catalog import CatalogService
 
@@ -174,6 +175,18 @@ def build_router(service: CatalogService) -> APIRouter:
         owner_id: str = Query(...),
     ) -> FileRecord:
         return service.trash_file(owner_id=owner_id, file_id=file_id)
+
+    @router.post(
+        "/internal/catalog/files/{file_id}/restore",
+        response_model=FileRestoreResponse,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def restore_file(
+        file_id: str,
+        request: RestoreItemRequest,
+        owner_id: str = Query(...),
+    ) -> FileRestoreResponse:
+        return service.restore_file(owner_id=owner_id, file_id=file_id, request=request)
 
     @router.get(
         "/internal/catalog/files/{file_id}",

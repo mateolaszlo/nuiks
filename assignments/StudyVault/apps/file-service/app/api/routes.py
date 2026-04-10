@@ -4,7 +4,14 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.models import AuthenticatedUser, FileRecord, MoveItemRequest, RenameItemRequest
+from studyvault_backend_common.models import (
+    AuthenticatedUser,
+    FileRecord,
+    FileRestoreResponse,
+    MoveItemRequest,
+    RenameItemRequest,
+    RestoreItemRequest,
+)
 from studyvault_backend_common.responses import build_attachment_content_disposition
 
 from app.core.config import get_settings
@@ -77,5 +84,13 @@ def build_router(service: FileService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> None:
         await service.trash_file(user=user, file_id=file_id)
+
+    @router.post("/api/files/{file_id}/restore", response_model=FileRestoreResponse)
+    async def restore_file(
+        file_id: str,
+        request: RestoreItemRequest,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> FileRestoreResponse:
+        return await service.restore_file(user=user, file_id=file_id, request=request)
 
     return router

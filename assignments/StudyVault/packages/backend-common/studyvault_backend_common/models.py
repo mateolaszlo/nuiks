@@ -198,6 +198,13 @@ class RestoreItemRequest(BaseModel):
     parent_folder_id: str | None = None
 
 
+class FileRestoreResponse(BaseModel):
+    file_id: str
+    restored_to_parent_folder_id: str | None = None
+    restored_to_root: bool
+    message: str = ""
+
+
 class BreadcrumbEntry(BaseModel):
     folder_id: str | None = None
     name: str
