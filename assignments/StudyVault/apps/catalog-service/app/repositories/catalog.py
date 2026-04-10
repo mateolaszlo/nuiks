@@ -24,6 +24,8 @@ class CatalogRepository(Protocol):
 
     def create_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
 
+    def rename_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
+
     def get_folder(self, owner_id: str, folder_id: str) -> FolderRecord | None: ...
 
     def list_folders(self, owner_id: str) -> list[FolderRecord]: ...
@@ -67,6 +69,10 @@ class InMemoryCatalogRepository:
         return None
 
     def create_folder(self, folder_record: FolderRecord) -> FolderRecord:
+        self._folders[folder_record.folder_id] = folder_record
+        return folder_record
+
+    def rename_folder(self, folder_record: FolderRecord) -> FolderRecord:
         self._folders[folder_record.folder_id] = folder_record
         return folder_record
 
@@ -229,6 +235,22 @@ class SqlAlchemyCatalogRepository:
                 deleted_by_cascade=folder_record.deleted_by_cascade,
             )
             session.add(row)
+            self._commit(session)
+        return folder_record
+
+    def rename_folder(self, folder_record: FolderRecord) -> FolderRecord:
+        with self.session_factory() as session:
+            row = session.scalar(
+                select(FolderRow).where(
+                    FolderRow.owner_id == folder_record.owner_id,
+                    FolderRow.folder_id == folder_record.folder_id,
+                )
+            )
+            if row is None:
+                raise LookupError(f"Folder {folder_record.folder_id} not found")
+            row.name = folder_record.name
+            row.normalized_name = folder_record.normalized_name or folder_record.name.casefold()
+            row.updated_at = folder_record.updated_at
             self._commit(session)
         return folder_record
 

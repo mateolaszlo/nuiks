@@ -654,3 +654,182 @@ def test_catalog_create_folder_hides_other_users_parent() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_renames_root_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Archives"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Archives"
+    assert payload["parent_folder_id"] is None
+    assert payload["normalized_name"] == "archives"
+    assert payload["updated_at"] != folder.updated_at.isoformat().replace("+00:00", "Z")
+
+
+def test_catalog_renames_nested_folder_without_changing_location() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Week One"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Week One"
+    assert payload["parent_folder_id"] == parent.folder_id
+    assert payload["path_depth"] == 1
+
+
+def test_catalog_rename_folder_allows_case_only_change() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Projects"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "projects"
+    assert payload["normalized_name"] == "projects"
+
+
+def test_catalog_rename_folder_returns_not_found_for_unknown_folder() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/catalog/folders/missing-folder",
+            json={"name": "Archives"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_rename_folder_hides_other_users_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="other-user", name="Private")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Shared"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_rename_folder_rejects_trashed_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Trash Me")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Still Trash"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Cannot rename trashed folder"}
+
+
+def test_catalog_rename_folder_rejects_duplicate_active_sibling_name() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    sibling = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 2",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, folder, sibling])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "week 2"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+
+
+def test_catalog_rename_folder_allows_name_used_under_different_parent() -> None:
+    module = load_service_module("catalog")
+    first_parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    second_parent = FolderRecord.create(owner_id="test-user", name="Archives")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Drafts",
+        parent_folder_id=first_parent.folder_id,
+        path_depth=1,
+    )
+    other_branch_folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 2",
+        parent_folder_id=second_parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(
+        folder_seed=[first_parent, second_parent, folder, other_branch_folder]
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Week 2"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["name"] == "Week 2"

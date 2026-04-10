@@ -12,6 +12,8 @@ from studyvault_backend_common.models import (
     CreateFolderRequest,
     FileRecord,
     FolderRecord,
+    RenameItemRequest,
+    utcnow,
 )
 
 from app.repositories.catalog import CatalogRepository
@@ -122,6 +124,116 @@ class CatalogService:
             status="succeeded",
         )
         return created
+
+    def rename_folder(self, user: AuthenticatedUser, folder_id: str, request: RenameItemRequest) -> FolderRecord:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if folder.trashed_at is not None:
+            logger.warning(
+                "catalog folder rename rejected",
+                event_name="catalog_folder_rename_rejected",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="trashed",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot rename trashed folder",
+            )
+
+        normalized_name = request.name.casefold()
+        current_normalized_name = folder.normalized_name or folder.name.casefold()
+        if normalized_name == current_normalized_name:
+            logger.info(
+                "catalog folder rename skipped",
+                event_name="catalog_folder_rename_skipped",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                folder_name=folder.name,
+                status="unchanged",
+            )
+            return folder
+
+        siblings = self.repository.list_child_folders(user.subject, folder.parent_folder_id)
+        if any(
+            sibling.folder_id != folder_id
+            and (sibling.normalized_name or sibling.name.casefold()) == normalized_name
+            for sibling in siblings
+        ):
+            logger.warning(
+                "catalog folder rename conflict",
+                event_name="catalog_folder_rename_conflict",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                parent_folder_id=folder.parent_folder_id,
+                folder_name=request.name,
+                status="conflict",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            )
+
+        renamed_folder = folder.model_copy(
+            update={
+                "name": request.name,
+                "normalized_name": normalized_name,
+                "updated_at": utcnow(),
+            }
+        )
+        try:
+            updated = self.repository.rename_folder(renamed_folder)
+        except IntegrityError as exc:
+            logger.warning(
+                "catalog folder rename conflict",
+                event_name="catalog_folder_rename_conflict",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                parent_folder_id=folder.parent_folder_id,
+                folder_name=request.name,
+                status="conflict",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            ) from exc
+
+        logger.info(
+            "catalog folder renamed",
+            event_name="catalog_folder_renamed",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=updated.folder_id,
+            parent_folder_id=updated.parent_folder_id,
+            folder_name=updated.name,
+            status="succeeded",
+        )
+        return updated
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)

@@ -5,7 +5,13 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.models import AuthenticatedUser, CreateFolderRequest, FileRecord, FolderRecord
+from studyvault_backend_common.models import (
+    AuthenticatedUser,
+    CreateFolderRequest,
+    FileRecord,
+    FolderRecord,
+    RenameItemRequest,
+)
 
 from app.core.config import get_settings
 from app.schemas.catalog import (
@@ -72,6 +78,14 @@ def build_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.create_folder(user, request)
+
+    @router.patch("/api/catalog/folders/{folder_id}", response_model=FolderRecord)
+    def rename_folder(
+        folder_id: str,
+        request: RenameItemRequest,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> FolderRecord:
+        return service.rename_folder(user, folder_id, request)
 
     @router.get(
         "/internal/catalog/trash/expired",
