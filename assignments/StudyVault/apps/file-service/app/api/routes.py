@@ -71,4 +71,11 @@ def build_router(service: FileService) -> APIRouter:
     ) -> FileRecord:
         return await service.move_file(user=user, file_id=file_id, request=request)
 
+    @router.delete("/api/files/{file_id}", status_code=204)
+    async def trash_file(
+        file_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> None:
+        await service.trash_file(user=user, file_id=file_id)
+
     return router

@@ -90,3 +90,29 @@ class JsonServiceClient:
             if response.is_error:
                 raise ServiceClientError(f"PATCH {url} failed with status {response.status_code}")
             return response.json()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(0.25),
+        retry=retry_if_exception_type((httpx.HTTPError, ServiceClientError)),
+        reraise=True,
+    )
+    async def delete_json(
+        self,
+        url: str,
+        *,
+        bearer_token: str | None = None,
+        internal_token: str | None = None,
+        query_params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        headers: dict[str, str] = {}
+        if bearer_token:
+            headers["authorization"] = f"Bearer {bearer_token}"
+        if internal_token:
+            headers["x-internal-token"] = internal_token
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.delete(url, headers=headers, params=query_params)
+            if response.is_error:
+                raise ServiceClientError(f"DELETE {url} failed with status {response.status_code}")
+            return response.json()

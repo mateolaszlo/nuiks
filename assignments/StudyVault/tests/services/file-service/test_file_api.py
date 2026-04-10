@@ -103,6 +103,27 @@ class FakeDownstream:
                 return moved
         raise AssertionError("expected file to be present in fake downstream catalog store")
 
+    async def trash_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
+        existing = self.fetch_existing_file(file_id)
+        if existing.owner_id != owner_id:
+            raise ServiceClientError(f"DELETE http://catalog.test/internal/catalog/files/{file_id} failed with status 404")
+        if existing.trashed_at is not None:
+            return existing
+        trashed_at = datetime(2026, 4, 11, tzinfo=timezone.utc)
+        trashed = existing.model_copy(
+            update={
+                "updated_at": trashed_at,
+                "trashed_at": trashed_at,
+                "purge_after": datetime(2026, 5, 11, tzinfo=timezone.utc),
+                "original_parent_folder_id": existing.original_parent_folder_id or existing.parent_folder_id,
+            }
+        )
+        for index, stored in enumerate(self.catalog_records):
+            if stored.file_id == file_id:
+                self.catalog_records[index] = trashed
+                return trashed
+        raise AssertionError("expected file to be present in fake downstream catalog store")
+
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
     module = load_service_module("file")
@@ -471,6 +492,78 @@ def test_file_move_rejects_target_name_conflict() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "File move conflict"
+
+
+def test_file_trash_marks_file_trashed_and_emits_downstream_events() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = "folder-1"
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/files/{stored.file_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.catalog_records[0].trashed_at is not None
+    assert downstream.catalog_records[0].purge_after is not None
+    assert downstream.catalog_records[0].original_parent_folder_id == "folder-1"
+    assert downstream.search_records[-1].trashed_at is not None
+    assert downstream.activity_actions[-1] == "file_trashed"
+
+
+def test_file_trash_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/api/files/missing-file",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
+def test_file_trash_is_idempotent_for_already_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/files/{stored.file_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.search_records == []
+    assert downstream.activity_actions == []
 
 
 def test_file_upload_accepts_parent_folder_id() -> None:

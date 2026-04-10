@@ -27,6 +27,8 @@ class DownstreamPublisher(Protocol):
         bearer_token: str,
     ) -> FileRecord: ...
 
+    async def trash_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord: ...
+
 
 class HttpDownstreamPublisher:
     def __init__(
@@ -107,5 +109,14 @@ class HttpDownstreamPublisher:
             },
             bearer_token=bearer_token,
             internal_token=self.internal_token,
+        )
+        return FileRecord(**payload)
+
+    async def trash_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
+        payload = await self.client.delete_json(
+            f"{self.catalog_url}/internal/catalog/files/{file_id}",
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
+            query_params={"owner_id": owner_id},
         )
         return FileRecord(**payload)

@@ -702,6 +702,34 @@ class CatalogService:
         )
         return updated
 
+    def trash_file(self, *, owner_id: str, file_id: str) -> FileRecord:
+        existing = self.repository.get_file(owner_id, file_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if existing.trashed_at is not None:
+            return existing
+
+        trashed_at = utcnow()
+        updated = existing.model_copy(
+            update={
+                "updated_at": trashed_at,
+                "trashed_at": trashed_at,
+                "purge_after": trashed_at + timedelta(days=30),
+                "original_parent_folder_id": existing.original_parent_folder_id or existing.parent_folder_id,
+            }
+        )
+        updated = self.repository.update_file(updated)
+        logger.info(
+            "catalog file trashed",
+            event_name="catalog_file_trashed",
+            event_category="catalog",
+            file_id=updated.file_id,
+            owner_id=updated.owner_id,
+            parent_folder_id=updated.parent_folder_id,
+            status="succeeded",
+        )
+        return updated
+
     def list_user_files(self, user: AuthenticatedUser) -> list[FileRecord]:
         records = self.repository.list_files(user.subject)
         logger.info(

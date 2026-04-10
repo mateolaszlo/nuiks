@@ -1665,13 +1665,14 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add expired-trash internal endpoint
 - [x] Add internal file patch endpoint
 - [x] Add internal file move endpoint
+- [x] Add internal file trash endpoint
 
 ## 16.3 `apps/file-service`
 
 - [x] Extend upload request to accept `parent_folder_id`
 - [x] Add rename file endpoint
 - [x] Add move file endpoint
-- [ ] Add trash file endpoint
+- [x] Add trash file endpoint
 - [ ] Add restore file endpoint
 - [ ] Add hard delete method for purge worker
 - [ ] Add `delete()` to object store abstraction

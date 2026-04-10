@@ -164,6 +164,17 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> FileRecord:
         return service.move_file(owner_id=owner_id, file_id=file_id, request=request)
 
+    @router.delete(
+        "/internal/catalog/files/{file_id}",
+        response_model=FileRecord,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def trash_file(
+        file_id: str,
+        owner_id: str = Query(...),
+    ) -> FileRecord:
+        return service.trash_file(owner_id=owner_id, file_id=file_id)
+
     @router.get(
         "/internal/catalog/files/{file_id}",
         response_model=FileRecord,

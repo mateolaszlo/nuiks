@@ -70,7 +70,11 @@ class FileService:
         if "status 409" in message:
             lowered = message.lower()
             if "trashed" in lowered:
-                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+                if "rename" in lowered:
+                    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+                if "move" in lowered:
+                    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot trash already trashed file")
             if "move" in lowered or "location" in lowered:
                 return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File move conflict")
             return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File rename conflict")
@@ -409,6 +413,34 @@ class FileService:
             raise self._map_catalog_file_error(exc) from exc
 
         return moved_record
+
+    async def trash_file(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_id: str,
+    ) -> None:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        if file_record.trashed_at is not None:
+            return
+
+        try:
+            trashed_record = await self.downstream.trash_catalog_file(
+                file_id,
+                user.subject,
+                bearer_token=user.token or "",
+            )
+            await self.downstream.publish_search(trashed_record, bearer_token=user.token or "")
+            await self.downstream.publish_activity(
+                FileActivityEvent(action="file_trashed", file=trashed_record),
+                bearer_token=user.token or "",
+            )
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
 
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
         file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
