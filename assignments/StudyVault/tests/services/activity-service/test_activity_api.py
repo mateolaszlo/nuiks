@@ -11,6 +11,8 @@ from studyvault_backend_common.models import (
     AdminErrorRecord,
     AdminServiceHealth,
     AdminUserSummary,
+    FileActivityEvent,
+    FileRecord,
     STUDYVAULT_ADMIN_ROLE,
 )
 from tests.conftest import load_service_module
@@ -33,6 +35,30 @@ def test_activity_returns_recent_events_for_user() -> None:
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["owner_id"] == "test-user"
+
+
+def test_activity_internal_route_accepts_generic_file_event() -> None:
+    module = load_service_module("activity")
+    repository = module.InMemoryActivityRepository()
+    app = module.create_app(repository=repository)
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="final.txt",
+        mime_type="text/plain",
+        size=12,
+        tags=[],
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/internal/activity/events",
+            json=FileActivityEvent(action="file_renamed", file=file_record).model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "file_renamed"
+    assert response.json()["filename"] == "final.txt"
 
 
 def test_admin_routes_require_admin_role() -> None:

@@ -63,6 +63,93 @@ def test_catalog_internal_create_requires_internal_token() -> None:
     assert repository.get_file("test-user", record.file_id) is not None
 
 
+def test_catalog_internal_file_patch_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+    updated = record.model_copy(update={"filename": "final.txt", "updated_at": datetime(2026, 4, 10, tzinfo=timezone.utc)})
+
+    with TestClient(app) as client:
+        unauthorized = client.patch(
+            f"/internal/catalog/files/{record.file_id}",
+            json=updated.model_dump(mode="json"),
+        )
+        authorized = client.patch(
+            f"/internal/catalog/files/{record.file_id}",
+            json=updated.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json()["filename"] == "final.txt"
+
+
+def test_catalog_internal_file_patch_rejects_active_sibling_conflict() -> None:
+    module = load_service_module("catalog")
+    first = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    second = FileRecord.create(
+        owner_id="test-user",
+        filename="final.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    first.parent_folder_id = "folder-1"
+    second.parent_folder_id = "folder-1"
+    repository = module.InMemoryCatalogRepository(seed=[first, second])
+    app = module.create_app(repository=repository)
+    updated = first.model_copy(update={"filename": "final.txt", "updated_at": datetime(2026, 4, 10, tzinfo=timezone.utc)})
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/internal/catalog/files/{first.file_id}",
+            json=updated.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A file with that name already exists in this location"
+
+
+def test_catalog_internal_file_patch_rejects_trashed_file() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+    updated = record.model_copy(update={"filename": "final.txt", "updated_at": datetime(2026, 4, 10, tzinfo=timezone.utc)})
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/internal/catalog/files/{record.file_id}",
+            json=updated.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot rename trashed file"
+
+
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository()

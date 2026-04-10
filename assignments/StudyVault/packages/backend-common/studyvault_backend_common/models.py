@@ -269,9 +269,13 @@ class ActivityRecord(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class UploadActivityEvent(BaseModel):
+class FileActivityEvent(BaseModel):
     action: str = "file_uploaded"
     file: FileRecord
+
+
+class UploadActivityEvent(FileActivityEvent):
+    action: str = "file_uploaded"
 
 
 class ApiErrorResponse(BaseModel):

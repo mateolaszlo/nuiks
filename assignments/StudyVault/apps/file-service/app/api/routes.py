@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.models import AuthenticatedUser, FileRecord
+from studyvault_backend_common.models import AuthenticatedUser, FileRecord, RenameItemRequest
 from studyvault_backend_common.responses import build_attachment_content_disposition
 
 from app.core.config import get_settings
@@ -54,5 +54,13 @@ def build_router(service: FileService) -> APIRouter:
                 "content-disposition": build_attachment_content_disposition(file_record.filename),
             },
         )
+
+    @router.patch("/api/files/{file_id}", response_model=FileRecord)
+    async def rename_file(
+        file_id: str,
+        request: RenameItemRequest,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> FileRecord:
+        return await service.rename_file(user=user, file_id=file_id, request=request)
 
     return router

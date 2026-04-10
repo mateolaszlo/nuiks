@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.http import ServiceClientError
-from studyvault_backend_common.models import FileRecord, FolderRecord
+from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord
 from tests.conftest import load_service_module
 
 
@@ -14,6 +14,7 @@ class FakeDownstream:
         self.catalog_records: list[FileRecord] = []
         self.search_records: list[FileRecord] = []
         self.activity_file_ids: list[str] = []
+        self.activity_actions: list[str] = []
         self.catalog_folders: dict[str, FolderRecord] = {}
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
@@ -24,18 +25,44 @@ class FakeDownstream:
 
     async def publish_activity(self, event, *, bearer_token: str) -> None:
         self.activity_file_ids.append(event.file.file_id)
+        self.activity_actions.append(event.action)
 
     async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
+        return self.fetch_existing_file(file_id)
+
+    def fetch_existing_file(self, file_id: str) -> FileRecord:
         for record in self.catalog_records:
             if record.file_id == file_id:
                 return record
-        raise AssertionError("expected file to be present in fake downstream catalog store")
+        raise ServiceClientError(f"GET http://catalog.test/internal/catalog/files/{file_id} failed with status 404")
 
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord:
         folder = self.catalog_folders.get(folder_id)
         if folder is None or folder.owner_id != "test-user":
             raise ServiceClientError(f"GET http://catalog.test/api/catalog/folders/{folder_id} failed with status 404")
         return folder
+
+    async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord:
+        existing = self.fetch_existing_file(file_record.file_id)
+        if existing.trashed_at is not None:
+            raise ServiceClientError(
+                f"PATCH http://catalog.test/internal/catalog/files/{file_record.file_id} failed with status 409 trashed"
+            )
+        for sibling in self.catalog_records:
+            if (
+                sibling.file_id != file_record.file_id
+                and sibling.parent_folder_id == existing.parent_folder_id
+                and sibling.trashed_at is None
+                and sibling.filename.casefold() == file_record.filename.casefold()
+            ):
+                raise ServiceClientError(
+                    f"PATCH http://catalog.test/internal/catalog/files/{file_record.file_id} failed with status 409 conflict"
+                )
+        for index, stored in enumerate(self.catalog_records):
+            if stored.file_id == file_record.file_id:
+                self.catalog_records[index] = file_record
+                return file_record
+        raise AssertionError("expected file to be present in fake downstream catalog store")
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -60,6 +87,143 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     assert len(downstream.catalog_records) == 1
     assert len(downstream.search_records) == 1
     assert downstream.activity_file_ids == [payload["file_id"]]
+    assert downstream.activity_actions == ["file_uploaded"]
+
+
+def test_file_rename_updates_filename_and_emits_downstream_events() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=["notes"],
+    )
+    stored.parent_folder_id = "folder-1"
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/files/{stored.file_id}",
+            headers={"authorization": "Bearer fake"},
+            json={"name": "final.txt"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filename"] == "final.txt"
+    assert payload["parent_folder_id"] == "folder-1"
+    assert payload["object_key"] == stored.object_key
+    assert downstream.catalog_records[0].filename == "final.txt"
+    assert downstream.search_records[-1].filename == "final.txt"
+    assert downstream.activity_actions[-1] == "file_renamed"
+
+
+def test_file_rename_is_noop_for_same_normalized_name() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="Draft.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/files/{stored.file_id}",
+            headers={"authorization": "Bearer fake"},
+            json={"name": "draft.txt"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["filename"] == "Draft.txt"
+    assert downstream.search_records == []
+    assert downstream.activity_actions == []
+
+
+def test_file_rename_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/files/missing-file",
+            headers={"authorization": "Bearer fake"},
+            json={"name": "final.txt"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
+def test_file_rename_rejects_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/files/{stored.file_id}",
+            headers={"authorization": "Bearer fake"},
+            json={"name": "final.txt"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot rename trashed file"
+
+
+def test_file_rename_rejects_same_parent_name_conflict() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    first = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    second = FileRecord.create(
+        owner_id="test-user",
+        filename="final.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    first.parent_folder_id = "folder-1"
+    second.parent_folder_id = "folder-1"
+    downstream.catalog_records.extend([first, second])
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/files/{first.file_id}",
+            headers={"authorization": "Bearer fake"},
+            json={"name": "final.txt"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File rename conflict"
 
 
 def test_file_upload_accepts_parent_folder_id() -> None:

@@ -139,6 +139,19 @@ def build_router(service: CatalogService) -> APIRouter:
     def create_file(file_record: FileRecord) -> FileRecord:
         return service.create_file(file_record)
 
+    @router.patch(
+        "/internal/catalog/files/{file_id}",
+        response_model=FileRecord,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def update_file(
+        file_id: str,
+        file_record: FileRecord,
+    ) -> FileRecord:
+        if file_id != file_record.file_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File id mismatch")
+        return service.update_file(file_record)
+
     @router.get(
         "/internal/catalog/files/{file_id}",
         response_model=FileRecord,

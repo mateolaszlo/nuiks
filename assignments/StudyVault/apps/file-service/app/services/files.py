@@ -12,10 +12,12 @@ from studyvault_backend_common.models import (
     MAX_TAG_COUNT,
     MAX_TAG_LENGTH,
     AuthenticatedUser,
+    FileActivityEvent,
     FileRecord,
     FolderRecord,
-    UploadActivityEvent,
+    RenameItemRequest,
     has_control_chars,
+    utcnow,
 )
 
 from app.repositories.object_store import ObjectStoreRepository
@@ -52,6 +54,20 @@ class FileService:
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Folder lookup failed",
+        )
+
+    @staticmethod
+    def _map_catalog_file_error(exc: ServiceClientError) -> HTTPException:
+        message = str(exc)
+        if "status 404" in message:
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if "status 409" in message:
+            if "trashed" in message.lower():
+                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File rename conflict")
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="File metadata update failed",
         )
 
     @staticmethod
@@ -245,7 +261,7 @@ class FileService:
                 status="succeeded",
             )
             await self.downstream.publish_activity(
-                UploadActivityEvent(file=file_record),
+                FileActivityEvent(file=file_record),
                 bearer_token=user.token or "",
             )
             logger.info(
@@ -295,6 +311,46 @@ class FileService:
         )
 
         return file_record
+
+    async def rename_file(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_id: str,
+        request: RenameItemRequest,
+    ) -> FileRecord:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        if file_record.trashed_at is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+
+        if request.name.casefold() == file_record.filename.casefold():
+            return file_record
+
+        updated_record = file_record.model_copy(
+            update={
+                "filename": request.name,
+                "updated_at": utcnow(),
+            }
+        )
+
+        try:
+            updated_record = await self.downstream.update_catalog_file(
+                updated_record,
+                bearer_token=user.token or "",
+            )
+            await self.downstream.publish_search(updated_record, bearer_token=user.token or "")
+            await self.downstream.publish_activity(
+                FileActivityEvent(action="file_renamed", file=updated_record),
+                bearer_token=user.token or "",
+            )
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        return updated_record
 
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
         file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")

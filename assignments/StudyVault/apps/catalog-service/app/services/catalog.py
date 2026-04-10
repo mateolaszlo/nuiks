@@ -613,6 +613,44 @@ class CatalogService:
         )
         return created
 
+    def update_file(self, file_record: FileRecord) -> FileRecord:
+        existing = self.repository.get_file(file_record.owner_id, file_record.file_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if existing.trashed_at is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+
+        siblings = self.repository.list_child_files(file_record.owner_id, existing.parent_folder_id)
+        normalized_name = file_record.filename.casefold()
+        if any(
+            sibling.file_id != file_record.file_id
+            and sibling.trashed_at is None
+            and sibling.filename.casefold() == normalized_name
+            for sibling in siblings
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A file with that name already exists in this location",
+            )
+
+        updated = existing.model_copy(
+            update={
+                "filename": file_record.filename,
+                "updated_at": file_record.updated_at,
+            }
+        )
+        updated = self.repository.update_file(updated)
+        logger.info(
+            "catalog file updated",
+            event_name="catalog_file_updated",
+            event_category="catalog",
+            file_id=updated.file_id,
+            owner_id=updated.owner_id,
+            filename=updated.filename,
+            status="succeeded",
+        )
+        return updated
+
     def list_user_files(self, user: AuthenticatedUser) -> list[FileRecord]:
         records = self.repository.list_files(user.subject)
         logger.info(

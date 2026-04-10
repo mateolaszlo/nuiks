@@ -1644,7 +1644,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add `FolderRecord`
 - [x] Add `DriveItem`
 - [x] Add folder DTOs
-- [ ] Add generic activity DTOs
+- [x] Add generic activity DTOs
 - [x] Add name validation helpers
 - [x] Extend `FileRecord` with folder/trash metadata
 
@@ -1663,11 +1663,12 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add move folder endpoint
 - [x] Add restore logic
 - [x] Add expired-trash internal endpoint
+- [x] Add internal file patch endpoint
 
 ## 16.3 `apps/file-service`
 
 - [x] Extend upload request to accept `parent_folder_id`
-- [ ] Add rename file endpoint
+- [x] Add rename file endpoint
 - [ ] Add move file endpoint
 - [ ] Add trash file endpoint
 - [ ] Add restore file endpoint

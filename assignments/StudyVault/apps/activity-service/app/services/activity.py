@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from studyvault_backend_common.logging import get_logger
-from studyvault_backend_common.models import ActivityRecord, AuthenticatedUser, UploadActivityEvent
+from studyvault_backend_common.models import ActivityRecord, AuthenticatedUser, FileActivityEvent
 
 from app.repositories.activity import ActivityRepository
 
@@ -13,7 +13,7 @@ class ActivityService:
     def __init__(self, repository: ActivityRepository) -> None:
         self.repository = repository
 
-    def record_upload(self, event: UploadActivityEvent) -> ActivityRecord:
+    def record_event(self, event: FileActivityEvent) -> ActivityRecord:
         record = ActivityRecord(
             owner_id=event.file.owner_id,
             action=event.action,
