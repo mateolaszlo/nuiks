@@ -761,3 +761,30 @@ class CatalogService:
             status="succeeded",
         )
         return record
+
+    def get_user_folder(self, user: AuthenticatedUser, folder_id: str) -> FolderRecord:
+        record = self.repository.get_folder(user.subject, folder_id)
+        if record is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        logger.info(
+            "catalog folder fetched",
+            event_name="catalog_folder_fetched",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            folder_name=record.name,
+            status="succeeded",
+        )
+        return record

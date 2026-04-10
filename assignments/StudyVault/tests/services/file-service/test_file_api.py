@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 
-from studyvault_backend_common.models import FileRecord
+from studyvault_backend_common.http import ServiceClientError
+from studyvault_backend_common.models import FileRecord, FolderRecord
 from tests.conftest import load_service_module
 
 
@@ -11,6 +14,7 @@ class FakeDownstream:
         self.catalog_records: list[FileRecord] = []
         self.search_records: list[FileRecord] = []
         self.activity_file_ids: list[str] = []
+        self.catalog_folders: dict[str, FolderRecord] = {}
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
         self.catalog_records.append(file_record)
@@ -26,6 +30,12 @@ class FakeDownstream:
             if record.file_id == file_id:
                 return record
         raise AssertionError("expected file to be present in fake downstream catalog store")
+
+    async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord:
+        folder = self.catalog_folders.get(folder_id)
+        if folder is None or folder.owner_id != "test-user":
+            raise ServiceClientError(f"GET http://catalog.test/api/catalog/folders/{folder_id} failed with status 404")
+        return folder
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -46,9 +56,105 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     payload = response.json()
     assert payload["filename"] == "lecture.txt"
     assert payload["tags"] == ["math"]
+    assert payload["parent_folder_id"] is None
     assert len(downstream.catalog_records) == 1
     assert len(downstream.search_records) == 1
     assert downstream.activity_file_ids == [payload["file_id"]]
+
+
+def test_file_upload_accepts_parent_folder_id() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    folder = FolderRecord.create(owner_id="test-user", name="Coursework")
+    downstream.catalog_folders[folder.folder_id] = folder
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"parent_folder_id": folder.folder_id},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["parent_folder_id"] == folder.folder_id
+    assert downstream.catalog_records[0].parent_folder_id == folder.folder_id
+    assert downstream.search_records[0].parent_folder_id == folder.folder_id
+    assert downstream.activity_file_ids == [payload["file_id"]]
+
+
+def test_file_upload_rejects_unknown_parent_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"parent_folder_id": "missing-folder"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_rejects_trashed_parent_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    folder = FolderRecord.create(owner_id="test-user", name="Archived")
+    folder.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    downstream.catalog_folders[folder.folder_id] = folder
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"parent_folder_id": folder.folder_id},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Cannot upload file into trashed folder"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+
+
+def test_file_upload_treats_other_users_parent_folder_as_not_found() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    folder = FolderRecord.create(owner_id="other-user", name="Private")
+    downstream.catalog_folders[folder.folder_id] = folder
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"parent_folder_id": folder.folder_id},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
 
 
 def test_file_upload_rejects_empty_content() -> None:

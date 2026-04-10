@@ -31,9 +31,15 @@ def build_router(service: FileService) -> APIRouter:
     async def upload_file(
         file: UploadFile = File(...),
         tags: list[str] | None = Form(default=None),
+        parent_folder_id: str | None = Form(default=None),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FileRecord:
-        return await service.upload_file(user=user, upload=file, tags=tags or [])
+        return await service.upload_file(
+            user=user,
+            upload=file,
+            tags=tags or [],
+            parent_folder_id=parent_folder_id,
+        )
 
     @router.get("/api/files/{file_id}/download")
     async def download_file(

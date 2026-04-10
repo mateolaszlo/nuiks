@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from studyvault_backend_common.http import JsonServiceClient
-from studyvault_backend_common.models import FileRecord, UploadActivityEvent
+from studyvault_backend_common.models import FileRecord, FolderRecord, UploadActivityEvent
 
 
 class DownstreamPublisher(Protocol):
@@ -14,6 +14,8 @@ class DownstreamPublisher(Protocol):
     async def publish_activity(self, event: UploadActivityEvent, *, bearer_token: str) -> None: ...
 
     async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord: ...
+
+    async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord: ...
 
 
 class HttpDownstreamPublisher:
@@ -63,3 +65,10 @@ class HttpDownstreamPublisher:
             internal_token=self.internal_token,
         )
         return FileRecord(**payload)
+
+    async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord:
+        payload = await self.client.get_json(
+            f"{self.catalog_url}/api/catalog/folders/{folder_id}",
+            bearer_token=bearer_token,
+        )
+        return FolderRecord(**payload)

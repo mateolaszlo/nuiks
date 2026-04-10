@@ -1653,6 +1653,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add schema change for `folders`
 - [x] Add new `files` columns
 - [x] Add folder repository methods
+- [x] Add folder fetch endpoint
 - [x] Add item listing endpoint
 - [x] Add breadcrumbs endpoint
 - [x] Add trash list endpoint
@@ -1665,7 +1666,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 ## 16.3 `apps/file-service`
 
-- [ ] Extend upload request to accept `parent_folder_id`
+- [x] Extend upload request to accept `parent_folder_id`
 - [ ] Add rename file endpoint
 - [ ] Add move file endpoint
 - [ ] Add trash file endpoint

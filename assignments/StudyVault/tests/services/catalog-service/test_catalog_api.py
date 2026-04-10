@@ -220,6 +220,54 @@ def test_catalog_item_listing_can_return_trashed_items() -> None:
     ]
 
 
+def test_catalog_gets_folder_for_authenticated_user() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Coursework")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            f"/api/catalog/folders/{folder.folder_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["folder_id"] == folder.folder_id
+    assert response.json()["name"] == "Coursework"
+
+
+def test_catalog_get_folder_returns_not_found_for_unknown_folder() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/catalog/folders/missing-folder",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
+def test_catalog_get_folder_returns_not_found_for_other_users_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="other-user", name="Private")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            f"/api/catalog/folders/{folder.folder_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
 def test_catalog_item_listing_returns_not_found_for_unknown_parent() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository()

@@ -13,6 +13,7 @@ from studyvault_backend_common.models import (
     MAX_TAG_LENGTH,
     AuthenticatedUser,
     FileRecord,
+    FolderRecord,
     UploadActivityEvent,
     has_control_chars,
 )
@@ -37,6 +38,21 @@ class FileService:
         self.object_store = object_store
         self.downstream = downstream
         self.max_upload_bytes = max_upload_bytes
+
+    @staticmethod
+    def _map_catalog_folder_lookup_error(exc: ServiceClientError) -> HTTPException:
+        message = str(exc)
+        if "status 404" in message:
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if "status 422" in message:
+            return HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot upload file into trashed folder",
+            )
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Folder lookup failed",
+        )
 
     @staticmethod
     def _validate_upload_metadata(*, filename: str, tags: list[str]) -> list[str]:
@@ -87,9 +103,49 @@ class FileService:
         user: AuthenticatedUser,
         upload: UploadFile,
         tags: list[str],
+        parent_folder_id: str | None,
     ) -> FileRecord:
         filename = upload.filename or "unnamed-file"
         normalized_tags = self._validate_upload_metadata(filename=filename, tags=tags)
+        parent_folder: FolderRecord | None = None
+        if parent_folder_id is not None:
+            try:
+                parent_folder = await self.downstream.fetch_catalog_folder(
+                    parent_folder_id,
+                    bearer_token=user.token or "",
+                )
+            except ServiceClientError as exc:
+                logger.warning(
+                    "file upload rejected: parent folder lookup failed",
+                    event_name="file_upload_failed",
+                    event_category="file",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    filename=filename,
+                    parent_folder_id=parent_folder_id,
+                    status="rejected",
+                    error=str(exc),
+                )
+                raise self._map_catalog_folder_lookup_error(exc) from exc
+
+            if parent_folder.trashed_at is not None:
+                logger.warning(
+                    "file upload rejected: parent folder trashed",
+                    event_name="file_upload_failed",
+                    event_category="file",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    filename=filename,
+                    parent_folder_id=parent_folder_id,
+                    status="rejected",
+                    error="Cannot upload file into trashed folder",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot upload file into trashed folder",
+                )
         try:
             with TemporaryFile() as buffered_upload:
                 total_size = 0
@@ -143,6 +199,7 @@ class FileService:
                     size=total_size,
                     tags=normalized_tags,
                 )
+                file_record.parent_folder_id = parent_folder.folder_id if parent_folder is not None else None
                 logger.info(
                     "file upload started",
                     event_name="file_upload_started",
@@ -155,6 +212,7 @@ class FileService:
                     mime_type=file_record.mime_type,
                     size=file_record.size,
                     tags_count=len(file_record.tags),
+                    parent_folder_id=file_record.parent_folder_id,
                     status="started",
                 )
                 await run_in_threadpool(self.object_store.store, file_record, buffered_upload, total_size)
@@ -232,6 +290,7 @@ class FileService:
             mime_type=file_record.mime_type,
             size=file_record.size,
             tags_count=len(file_record.tags),
+            parent_folder_id=file_record.parent_folder_id,
             status="succeeded",
         )
 

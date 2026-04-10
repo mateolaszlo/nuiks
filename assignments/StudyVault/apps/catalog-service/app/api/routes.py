@@ -75,6 +75,13 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> CatalogTrashResponse:
         return service.list_trash(user)
 
+    @router.get("/api/catalog/folders/{folder_id}", response_model=FolderRecord)
+    def get_folder(
+        folder_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> FolderRecord:
+        return service.get_user_folder(user, folder_id)
+
     @router.post("/api/catalog/folders", response_model=FolderRecord, status_code=status.HTTP_201_CREATED)
     def create_folder(
         request: CreateFolderRequest,
