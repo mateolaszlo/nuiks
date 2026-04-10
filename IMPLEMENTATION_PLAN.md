@@ -1660,7 +1660,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add rename folder endpoint
 - [x] Add trash folder endpoint
 - [x] Add move folder endpoint
-- [ ] Add restore logic
+- [x] Add restore logic
 - [x] Add expired-trash internal endpoint
 
 ## 16.3 `apps/file-service`

@@ -23,9 +23,17 @@ class CatalogExpiredTrashResponse(BaseModel):
     folders: list[FolderRecord]
 
 
+class CatalogRestoreResponse(BaseModel):
+    folder_id: str
+    restored_to_parent_folder_id: str | None = None
+    restored_to_root: bool
+    message: str = ""
+
+
 __all__ = [
     "CatalogBreadcrumbsResponse",
     "CatalogExpiredTrashResponse",
     "CatalogItemsResponse",
+    "CatalogRestoreResponse",
     "CatalogTrashResponse",
 ]

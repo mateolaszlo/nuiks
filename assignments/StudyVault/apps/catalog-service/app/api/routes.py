@@ -12,6 +12,7 @@ from studyvault_backend_common.models import (
     FolderRecord,
     MoveItemRequest,
     RenameItemRequest,
+    RestoreItemRequest,
 )
 
 from app.core.config import get_settings
@@ -19,6 +20,7 @@ from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
     CatalogItemsResponse,
+    CatalogRestoreResponse,
     CatalogTrashResponse,
 )
 from app.services.catalog import CatalogService
@@ -102,6 +104,14 @@ def build_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.move_folder(user, folder_id, request)
+
+    @router.post("/api/catalog/folders/{folder_id}/restore", response_model=CatalogRestoreResponse)
+    def restore_folder(
+        folder_id: str,
+        request: RestoreItemRequest,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> CatalogRestoreResponse:
+        return service.restore_folder(user, folder_id, request)
 
     @router.get(
         "/internal/catalog/trash/expired",

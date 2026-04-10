@@ -1341,3 +1341,285 @@ def test_catalog_move_folder_allows_non_conflicting_target_parent() -> None:
 
     assert response.status_code == 200
     assert response.json()["parent_folder_id"] == target_parent.folder_id
+
+
+def test_catalog_restores_folder_to_original_parent() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    folder.original_parent_folder_id = parent.folder_id
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "folder_id": folder.folder_id,
+        "restored_to_parent_folder_id": parent.folder_id,
+        "restored_to_root": False,
+        "message": "",
+    }
+    restored = repository.get_folder("test-user", folder.folder_id)
+    assert restored is not None
+    assert restored.trashed_at is None
+    assert restored.purge_after is None
+    assert restored.original_parent_folder_id is None
+
+
+def test_catalog_restore_folder_falls_back_to_root_when_original_parent_missing() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id="missing-parent",
+        path_depth=1,
+    )
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    folder.original_parent_folder_id = "missing-parent"
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "folder_id": folder.folder_id,
+        "restored_to_parent_folder_id": None,
+        "restored_to_root": True,
+        "message": "Original parent was unavailable, item restored to root",
+    }
+    restored = repository.get_folder("test-user", folder.folder_id)
+    assert restored is not None
+    assert restored.parent_folder_id is None
+    assert restored.path_depth == 0
+
+
+def test_catalog_restore_folder_allows_explicit_target_override() -> None:
+    module = load_service_module("catalog")
+    original_parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    override_parent = FolderRecord.create(owner_id="test-user", name="Archive")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=original_parent.folder_id,
+        path_depth=1,
+    )
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    folder.original_parent_folder_id = original_parent.folder_id
+    repository = module.InMemoryCatalogRepository(folder_seed=[original_parent, override_parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": override_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    restored = repository.get_folder("test-user", folder.folder_id)
+    assert restored is not None
+    assert restored.parent_folder_id == override_parent.folder_id
+    assert restored.path_depth == 1
+
+
+def test_catalog_restore_folder_restores_descendants_and_files() -> None:
+    module = load_service_module("catalog")
+    root = FolderRecord.create(owner_id="test-user", name="Projects")
+    child = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=root.folder_id,
+        path_depth=1,
+    )
+    child.deleted_by_cascade = True
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    file_record.parent_folder_id = child.folder_id
+    for folder in (root, child):
+        folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+        folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+        folder.original_parent_folder_id = folder.parent_folder_id
+    file_record.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    file_record.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    file_record.original_parent_folder_id = child.folder_id
+    repository = module.InMemoryCatalogRepository(seed=[file_record], folder_seed=[root, child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{root.folder_id}/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+        active_response = client.get("/api/catalog/items", headers={"authorization": "Bearer fake"})
+        trash_response = client.get("/api/catalog/trash", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    restored_child = repository.get_folder("test-user", child.folder_id)
+    restored_file = repository.get_file("test-user", file_record.file_id)
+    assert restored_child is not None and restored_child.trashed_at is None
+    assert restored_child.deleted_by_cascade is False
+    assert restored_child.original_parent_folder_id is None
+    assert restored_file is not None and restored_file.trashed_at is None
+    assert restored_file.original_parent_folder_id is None
+    assert active_response.status_code == 200
+    assert {(item["kind"], item["name"]) for item in active_response.json()["items"]} == {("folder", "Projects")}
+    assert trash_response.status_code == 200
+    assert trash_response.json() == {"items": []}
+
+
+def test_catalog_restore_folder_returns_not_found_for_unknown_folder() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders/missing-folder/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_restore_folder_returns_not_found_for_unknown_target() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": "missing-target"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_restore_folder_rejects_non_trashed_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Folder is not trashed"}
+
+
+def test_catalog_restore_folder_rejects_trashed_target_parent() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    target = FolderRecord.create(owner_id="test-user", name="Archive")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    target.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder, target])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": target.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Cannot restore folder into trashed folder"}
+
+
+def test_catalog_restore_folder_rejects_restore_into_descendant() -> None:
+    module = load_service_module("catalog")
+    root = FolderRecord.create(owner_id="test-user", name="Projects")
+    child = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=root.folder_id,
+        path_depth=1,
+    )
+    for folder in (root, child):
+        folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+        folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[root, child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{root.folder_id}/restore",
+            json={"parent_folder_id": child.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Cannot restore folder into itself or its descendant"}
+
+
+def test_catalog_restore_folder_rejects_conflicting_active_sibling_name() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    active_conflict = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    folder.original_parent_folder_id = parent.folder_id
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, active_conflict, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A folder with that name already exists in this location"}

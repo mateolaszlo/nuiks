@@ -14,6 +14,7 @@ from studyvault_backend_common.models import (
     FolderRecord,
     MoveItemRequest,
     RenameItemRequest,
+    RestoreItemRequest,
     utcnow,
 )
 
@@ -22,6 +23,7 @@ from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
     CatalogItemsResponse,
+    CatalogRestoreResponse,
     CatalogTrashResponse,
 )
 
@@ -449,6 +451,151 @@ class CatalogService:
             status="succeeded",
         )
         return self.repository.get_folder(user.subject, folder_id) or moved_root
+
+    def restore_folder(
+        self,
+        user: AuthenticatedUser,
+        folder_id: str,
+        request: RestoreItemRequest,
+    ) -> CatalogRestoreResponse:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if folder.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Folder is not trashed")
+
+        all_folders = self.repository.list_folders(user.subject)
+        folders_by_parent: dict[str | None, list[FolderRecord]] = {}
+        folders_by_id = {item.folder_id: item for item in all_folders}
+        for item in all_folders:
+            folders_by_parent.setdefault(item.parent_folder_id, []).append(item)
+
+        subtree_ids = {folder_id}
+        queue = [folder_id]
+        subtree_folders: list[FolderRecord] = []
+        while queue:
+            current_id = queue.pop(0)
+            for child in folders_by_parent.get(current_id, []):
+                subtree_ids.add(child.folder_id)
+                subtree_folders.append(child)
+                queue.append(child.folder_id)
+
+        explicit_target_parent: FolderRecord | None = None
+        if request.parent_folder_id is not None:
+            if request.parent_folder_id in subtree_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot restore folder into itself or its descendant",
+                )
+            explicit_target_parent = self.repository.get_folder(user.subject, request.parent_folder_id)
+            if explicit_target_parent is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            if explicit_target_parent.trashed_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot restore folder into trashed folder",
+                )
+
+        fallback_to_root = False
+        target_parent = explicit_target_parent
+        if request.parent_folder_id is None and folder.original_parent_folder_id is not None:
+            original_parent = folders_by_id.get(folder.original_parent_folder_id)
+            if original_parent is not None and original_parent.trashed_at is None and original_parent.folder_id not in subtree_ids:
+                target_parent = original_parent
+            else:
+                fallback_to_root = True
+        elif request.parent_folder_id is None and folder.original_parent_folder_id is None:
+            fallback_to_root = folder.parent_folder_id is not None
+
+        target_parent_id = None if target_parent is None else target_parent.folder_id
+        root_normalized_name = folder.normalized_name or folder.name.casefold()
+        siblings = self.repository.list_child_folders(user.subject, target_parent_id)
+        if any(
+            sibling.folder_id != folder_id
+            and (sibling.normalized_name or sibling.name.casefold()) == root_normalized_name
+            for sibling in siblings
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            )
+
+        updated_at = utcnow()
+        root_depth = 0 if target_parent is None else target_parent.path_depth + 1
+        depth_delta = root_depth - folder.path_depth
+
+        restored_root = folder.model_copy(
+            update={
+                "parent_folder_id": target_parent_id,
+                "path_depth": root_depth,
+                "updated_at": updated_at,
+                "trashed_at": None,
+                "purge_after": None,
+                "original_parent_folder_id": None,
+                "deleted_by_cascade": False,
+            }
+        )
+        self.repository.update_folder(restored_root)
+
+        for child in subtree_folders:
+            restored_child = child.model_copy(
+                update={
+                    "path_depth": child.path_depth + depth_delta,
+                    "updated_at": updated_at,
+                    "trashed_at": None,
+                    "purge_after": None,
+                    "original_parent_folder_id": None,
+                    "deleted_by_cascade": False,
+                }
+            )
+            self.repository.update_folder(restored_child)
+
+        file_queue = [folder_id, *[child.folder_id for child in subtree_folders]]
+        for current_id in file_queue:
+            for child_file in self.repository.list_child_files(user.subject, current_id):
+                restored_file = child_file.model_copy(
+                    update={
+                        "updated_at": updated_at,
+                        "trashed_at": None,
+                        "purge_after": None,
+                        "original_parent_folder_id": None,
+                    }
+                )
+                self.repository.update_file(restored_file)
+
+        message = (
+            "Original parent was unavailable, item restored to root"
+            if fallback_to_root and target_parent is None
+            else ""
+        )
+        logger.info(
+            "catalog folder restored",
+            event_name="catalog_folder_restored",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            restored_to_parent_folder_id=target_parent_id,
+            restored_to_root=target_parent is None,
+            status="succeeded",
+        )
+        return CatalogRestoreResponse(
+            folder_id=folder_id,
+            restored_to_parent_folder_id=target_parent_id,
+            restored_to_root=target_parent is None,
+            message=message,
+        )
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)
