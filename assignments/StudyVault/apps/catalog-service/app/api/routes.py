@@ -87,6 +87,13 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> FolderRecord:
         return service.rename_folder(user, folder_id, request)
 
+    @router.delete("/api/catalog/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def trash_folder(
+        folder_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> None:
+        service.trash_folder(user, folder_id)
+
     @router.get(
         "/internal/catalog/trash/expired",
         response_model=CatalogExpiredTrashResponse,

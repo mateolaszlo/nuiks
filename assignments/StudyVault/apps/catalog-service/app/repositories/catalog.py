@@ -26,11 +26,17 @@ class CatalogRepository(Protocol):
 
     def rename_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
 
+    def update_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
+
     def get_folder(self, owner_id: str, folder_id: str) -> FolderRecord | None: ...
 
     def list_folders(self, owner_id: str) -> list[FolderRecord]: ...
 
     def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]: ...
+
+    def list_child_files(self, owner_id: str, parent_folder_id: str | None) -> list[FileRecord]: ...
+
+    def update_file(self, file_record: FileRecord) -> FileRecord: ...
 
     def list_items(self, owner_id: str, parent_folder_id: str | None) -> list[DriveItem]: ...
 
@@ -76,6 +82,10 @@ class InMemoryCatalogRepository:
         self._folders[folder_record.folder_id] = folder_record
         return folder_record
 
+    def update_folder(self, folder_record: FolderRecord) -> FolderRecord:
+        self._folders[folder_record.folder_id] = folder_record
+        return folder_record
+
     def get_folder(self, owner_id: str, folder_id: str) -> FolderRecord | None:
         record = self._folders.get(folder_id)
         if record and record.owner_id == owner_id:
@@ -95,6 +105,18 @@ class InMemoryCatalogRepository:
             and record.trashed_at is None
         ]
         return sorted(records, key=lambda item: (item.normalized_name or item.name.casefold(), item.created_at))
+
+    def list_child_files(self, owner_id: str, parent_folder_id: str | None) -> list[FileRecord]:
+        records = [
+            record
+            for record in self._records.values()
+            if record.owner_id == owner_id and record.parent_folder_id == parent_folder_id
+        ]
+        return sorted(records, key=lambda item: (item.filename.casefold(), item.created_at, item.file_id))
+
+    def update_file(self, file_record: FileRecord) -> FileRecord:
+        self._records[file_record.file_id] = file_record
+        return file_record
 
     def list_items(self, owner_id: str, parent_folder_id: str | None) -> list[DriveItem]:
         folders = [
@@ -254,6 +276,28 @@ class SqlAlchemyCatalogRepository:
             self._commit(session)
         return folder_record
 
+    def update_folder(self, folder_record: FolderRecord) -> FolderRecord:
+        with self.session_factory() as session:
+            row = session.scalar(
+                select(FolderRow).where(
+                    FolderRow.owner_id == folder_record.owner_id,
+                    FolderRow.folder_id == folder_record.folder_id,
+                )
+            )
+            if row is None:
+                raise LookupError(f"Folder {folder_record.folder_id} not found")
+            row.name = folder_record.name
+            row.normalized_name = folder_record.normalized_name or folder_record.name.casefold()
+            row.parent_folder_id = folder_record.parent_folder_id
+            row.path_depth = folder_record.path_depth
+            row.updated_at = folder_record.updated_at
+            row.trashed_at = folder_record.trashed_at
+            row.purge_after = folder_record.purge_after
+            row.original_parent_folder_id = folder_record.original_parent_folder_id
+            row.deleted_by_cascade = folder_record.deleted_by_cascade
+            self._commit(session)
+        return folder_record
+
     def get_folder(self, owner_id: str, folder_id: str) -> FolderRecord | None:
         with self.session_factory() as session:
             row = session.scalar(
@@ -280,6 +324,41 @@ class SqlAlchemyCatalogRepository:
                 .order_by(FolderRow.normalized_name, FolderRow.created_at, FolderRow.folder_id)
             ).all()
         return [self._to_folder_record(row) for row in rows]
+
+    def list_child_files(self, owner_id: str, parent_folder_id: str | None) -> list[FileRecord]:
+        with self.session_factory() as session:
+            rows = session.scalars(
+                select(FileRow)
+                .where(
+                    FileRow.owner_id == owner_id,
+                    FileRow.parent_folder_id == parent_folder_id,
+                )
+                .order_by(FileRow.filename, FileRow.created_at, FileRow.file_id)
+            ).all()
+        return [self._to_record(row) for row in rows]
+
+    def update_file(self, file_record: FileRecord) -> FileRecord:
+        with self.session_factory() as session:
+            row = session.scalar(
+                select(FileRow).where(
+                    FileRow.owner_id == file_record.owner_id,
+                    FileRow.file_id == file_record.file_id,
+                )
+            )
+            if row is None:
+                raise LookupError(f"File {file_record.file_id} not found")
+            row.filename = file_record.filename
+            row.mime_type = file_record.mime_type
+            row.size = file_record.size
+            row.object_key = file_record.object_key
+            row.tags = json.dumps(file_record.tags)
+            row.updated_at = file_record.updated_at
+            row.parent_folder_id = file_record.parent_folder_id
+            row.trashed_at = file_record.trashed_at
+            row.purge_after = file_record.purge_after
+            row.original_parent_folder_id = file_record.original_parent_folder_id
+            self._commit(session)
+        return file_record
 
     def list_items(self, owner_id: str, parent_folder_id: str | None) -> list[DriveItem]:
         with self.session_factory() as session:

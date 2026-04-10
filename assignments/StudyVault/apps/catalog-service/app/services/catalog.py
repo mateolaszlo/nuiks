@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -234,6 +234,92 @@ class CatalogService:
             status="succeeded",
         )
         return updated
+
+    def trash_folder(self, user: AuthenticatedUser, folder_id: str) -> None:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if folder.trashed_at is not None:
+            logger.info(
+                "catalog folder trash skipped",
+                event_name="catalog_folder_trash_skipped",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="already_trashed",
+            )
+            return
+
+        trashed_at = utcnow()
+        purge_after = trashed_at + timedelta(days=30)
+        updated_at = trashed_at
+
+        folder_updates: list[FolderRecord] = []
+        file_updates: list[FileRecord] = []
+        queue = [folder]
+
+        while queue:
+            current = queue.pop(0)
+            is_root = current.folder_id == folder.folder_id
+            folder_updates.append(
+                current.model_copy(
+                    update={
+                        "updated_at": updated_at,
+                        "trashed_at": trashed_at,
+                        "purge_after": purge_after,
+                        "original_parent_folder_id": (
+                            current.original_parent_folder_id or current.parent_folder_id
+                        ),
+                        "deleted_by_cascade": False if is_root else True,
+                    }
+                )
+            )
+
+            child_folders = self.repository.list_child_folders(user.subject, current.folder_id)
+            queue.extend(child_folders)
+            for child_file in self.repository.list_child_files(user.subject, current.folder_id):
+                file_updates.append(
+                    child_file.model_copy(
+                        update={
+                            "updated_at": updated_at,
+                            "trashed_at": trashed_at,
+                            "purge_after": purge_after,
+                            "original_parent_folder_id": (
+                                child_file.original_parent_folder_id or child_file.parent_folder_id
+                            ),
+                        }
+                    )
+                )
+
+        for updated_folder in folder_updates:
+            self.repository.update_folder(updated_folder)
+        for updated_file in file_updates:
+            self.repository.update_file(updated_file)
+
+        logger.info(
+            "catalog folder trashed",
+            event_name="catalog_folder_trashed",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            trashed_folder_count=len(folder_updates),
+            trashed_file_count=len(file_updates),
+            status="succeeded",
+        )
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)
