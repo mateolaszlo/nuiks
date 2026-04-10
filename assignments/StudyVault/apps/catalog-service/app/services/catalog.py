@@ -812,6 +812,29 @@ class CatalogService:
             ),
         )
 
+    def hard_delete_file(self, *, owner_id: str, file_id: str) -> None:
+        existing = self.repository.get_file(owner_id, file_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if existing.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+
+        self.repository.delete_file(owner_id, file_id)
+        logger.info(
+            "catalog file hard deleted",
+            event_name="catalog_file_hard_deleted",
+            event_category="catalog",
+            file_id=file_id,
+            owner_id=owner_id,
+            status="succeeded",
+        )
+
+    def get_file_for_owner(self, *, owner_id: str, file_id: str) -> FileRecord:
+        record = self.repository.get_file(owner_id, file_id)
+        if record is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        return record
+
     def list_user_files(self, user: AuthenticatedUser) -> list[FileRecord]:
         records = self.repository.list_files(user.subject)
         logger.info(

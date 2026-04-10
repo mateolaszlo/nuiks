@@ -1667,6 +1667,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add internal file move endpoint
 - [x] Add internal file trash endpoint
 - [x] Add internal file restore endpoint
+- [x] Add internal file hard-delete endpoint
 
 ## 16.3 `apps/file-service`
 
@@ -1675,8 +1676,8 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add move file endpoint
 - [x] Add trash file endpoint
 - [x] Add restore file endpoint
-- [ ] Add hard delete method for purge worker
-- [ ] Add `delete()` to object store abstraction
+- [x] Add hard delete method for purge worker
+- [x] Add `delete()` to object store abstraction
 
 ## 16.4 `apps/search-service`
 

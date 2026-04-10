@@ -93,6 +93,18 @@ class FileService:
         )
 
     @staticmethod
+    def _map_catalog_file_hard_delete_error(exc: ServiceClientError) -> HTTPException:
+        message = str(exc)
+        if "status 404" in message:
+            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if "status 409" in message:
+            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="File hard delete failed",
+        )
+
+    @staticmethod
     def _map_catalog_file_restore_error(exc: ServiceClientError) -> HTTPException:
         message = str(exc)
         if "status 404" in message:
@@ -360,7 +372,7 @@ class FileService:
         request: RenameItemRequest,
     ) -> FileRecord:
         try:
-            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         except ServiceClientError as exc:
             raise self._map_catalog_file_error(exc) from exc
 
@@ -400,7 +412,7 @@ class FileService:
         request: MoveItemRequest,
     ) -> FileRecord:
         try:
-            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         except ServiceClientError as exc:
             raise self._map_catalog_file_error(exc) from exc
 
@@ -448,7 +460,7 @@ class FileService:
         file_id: str,
     ) -> None:
         try:
-            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         except ServiceClientError as exc:
             raise self._map_catalog_file_error(exc) from exc
 
@@ -477,7 +489,7 @@ class FileService:
         request: RestoreItemRequest,
     ) -> FileRestoreResponse:
         try:
-            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         except ServiceClientError as exc:
             raise self._map_catalog_file_error(exc) from exc
 
@@ -491,7 +503,7 @@ class FileService:
                 request,
                 bearer_token=user.token or "",
             )
-            restored_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+            restored_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
             await self.downstream.publish_search(restored_record, bearer_token=user.token or "")
             await self.downstream.publish_activity(
                 FileActivityEvent(action="file_restored", file=restored_record),
@@ -503,7 +515,7 @@ class FileService:
         return restore_result
 
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
-        file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+        file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         if file_record.owner_id != user.subject:
             logger.warning(
                 "file download rejected: owner mismatch",
@@ -562,3 +574,27 @@ class FileService:
             status="succeeded",
         )
         return file_record, content
+
+    async def hard_delete_file(self, *, owner_id: str, file_id: str) -> None:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, owner_id, bearer_token="")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_hard_delete_error(exc) from exc
+
+        if file_record.trashed_at is None or file_record.purge_after is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+
+        try:
+            await run_in_threadpool(self.object_store.delete, file_record.object_key)
+        except ObjectStoreNotFoundError:
+            pass
+        except ObjectStoreUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="File storage unavailable",
+            ) from exc
+
+        try:
+            await self.downstream.hard_delete_catalog_file(file_id, owner_id, bearer_token="")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_hard_delete_error(exc) from exc

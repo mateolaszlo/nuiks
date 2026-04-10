@@ -27,8 +27,11 @@ class FakeDownstream:
         self.activity_file_ids.append(event.file.file_id)
         self.activity_actions.append(event.action)
 
-    async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
-        return self.fetch_existing_file(file_id)
+    async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
+        record = self.fetch_existing_file(file_id)
+        if record.owner_id != owner_id:
+            raise ServiceClientError(f"GET http://catalog.test/internal/catalog/files/{file_id} failed with status 404")
+        return record
 
     def fetch_existing_file(self, file_id: str) -> FileRecord:
         for record in self.catalog_records:
@@ -195,6 +198,18 @@ class FakeDownstream:
                 else ""
             ),
         }
+
+    async def hard_delete_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> None:
+        existing = self.fetch_existing_file(file_id)
+        if existing.owner_id != owner_id:
+            raise ServiceClientError(
+                f"DELETE http://catalog.test/internal/catalog/files/{file_id}/hard-delete failed with status 404"
+            )
+        if existing.trashed_at is None:
+            raise ServiceClientError(
+                f"DELETE http://catalog.test/internal/catalog/files/{file_id}/hard-delete failed with status 409"
+            )
+        self.catalog_records = [record for record in self.catalog_records if record.file_id != file_id]
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -1145,7 +1160,7 @@ def test_file_download_sanitizes_unsafe_filename_in_content_disposition() -> Non
     )
 
     class LegacyDownstream(FakeDownstream):
-        async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
+        async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
             return legacy_record
 
     downstream = LegacyDownstream()
@@ -1215,6 +1230,163 @@ def test_file_download_returns_bad_gateway_when_object_store_is_unavailable() ->
 
     assert download_response.status_code == 502
     assert download_response.json()["detail"] == "File storage unavailable"
+
+
+def test_file_hard_delete_requires_internal_token() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        unauthorized = client.delete(f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user")
+        authorized = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 204
+
+
+def test_file_hard_delete_removes_object_and_metadata() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert stored.object_key not in object_store._objects
+    assert downstream.catalog_records == []
+
+
+def test_file_hard_delete_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/internal/files/missing-file/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
+def test_file_hard_delete_rejects_non_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File is not trashed"
+    assert stored.object_key in object_store._objects
+
+
+def test_file_hard_delete_succeeds_when_object_content_is_already_missing() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.catalog_records == []
+
+
+def test_file_hard_delete_returns_bad_gateway_when_object_store_delete_fails() -> None:
+    module = load_service_module("file")
+
+    class UnavailableDeleteObjectStore(module.InMemoryObjectStoreRepository):
+        def delete(self, object_key: str) -> None:
+            raise module.ObjectStoreUnavailableError("backend down")
+
+    object_store = UnavailableDeleteObjectStore()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "File storage unavailable"
+    assert downstream.catalog_records[0].file_id == stored.file_id
 
 
 def test_file_download_emits_encoded_filename_for_non_ascii_name() -> None:

@@ -22,6 +22,8 @@ class CatalogRepository(Protocol):
 
     def get_file(self, owner_id: str, file_id: str) -> FileRecord | None: ...
 
+    def delete_file(self, owner_id: str, file_id: str) -> None: ...
+
     def create_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
 
     def rename_folder(self, folder_record: FolderRecord) -> FolderRecord: ...
@@ -73,6 +75,11 @@ class InMemoryCatalogRepository:
         if record and record.owner_id == owner_id:
             return record
         return None
+
+    def delete_file(self, owner_id: str, file_id: str) -> None:
+        record = self.get_file(owner_id, file_id)
+        if record is not None:
+            del self._records[file_id]
 
     def create_folder(self, folder_record: FolderRecord) -> FolderRecord:
         self._folders[folder_record.folder_id] = folder_record
@@ -239,6 +246,16 @@ class SqlAlchemyCatalogRepository:
                 select(FileRow).where(FileRow.owner_id == owner_id, FileRow.file_id == file_id)
             )
         return self._to_record(row) if row else None
+
+    def delete_file(self, owner_id: str, file_id: str) -> None:
+        with self.session_factory() as session:
+            row = session.scalar(
+                select(FileRow).where(FileRow.owner_id == owner_id, FileRow.file_id == file_id)
+            )
+            if row is None:
+                return
+            session.delete(row)
+            self._commit(session)
 
     def create_folder(self, folder_record: FolderRecord) -> FolderRecord:
         with self.session_factory() as session:

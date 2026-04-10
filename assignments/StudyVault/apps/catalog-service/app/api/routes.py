@@ -188,6 +188,17 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> FileRestoreResponse:
         return service.restore_file(owner_id=owner_id, file_id=file_id, request=request)
 
+    @router.delete(
+        "/internal/catalog/files/{file_id}/hard-delete",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def hard_delete_file(
+        file_id: str,
+        owner_id: str = Query(...),
+    ) -> None:
+        service.hard_delete_file(owner_id=owner_id, file_id=file_id)
+
     @router.get(
         "/internal/catalog/files/{file_id}",
         response_model=FileRecord,
@@ -195,8 +206,8 @@ def build_router(service: CatalogService) -> APIRouter:
     )
     def get_file(
         file_id: str,
-        user: AuthenticatedUser = Depends(current_user_dependency),
+        owner_id: str = Query(...),
     ) -> FileRecord:
-        return service.get_user_file(user, file_id)
+        return service.get_file_for_owner(owner_id=owner_id, file_id=file_id)
 
     return router

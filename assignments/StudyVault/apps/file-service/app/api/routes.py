@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
@@ -29,6 +29,10 @@ def build_router(service: FileService) -> APIRouter:
             auth_disabled=settings.auth_disabled,
         )
     )
+
+    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+        if x_internal_token != settings.internal_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
 
     @router.get("/health")
     async def healthcheck() -> dict[str, str]:
@@ -92,5 +96,16 @@ def build_router(service: FileService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FileRestoreResponse:
         return await service.restore_file(user=user, file_id=file_id, request=request)
+
+    @router.delete(
+        "/internal/files/{file_id}/hard-delete",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_internal_token)],
+    )
+    async def hard_delete_file(
+        file_id: str,
+        owner_id: str = Query(...),
+    ) -> None:
+        await service.hard_delete_file(owner_id=owner_id, file_id=file_id)
 
     return router

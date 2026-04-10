@@ -20,7 +20,7 @@ class DownstreamPublisher(Protocol):
 
     async def publish_activity(self, event: FileActivityEvent, *, bearer_token: str) -> None: ...
 
-    async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord: ...
+    async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord: ...
 
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord: ...
 
@@ -44,6 +44,8 @@ class DownstreamPublisher(Protocol):
         *,
         bearer_token: str,
     ) -> FileRestoreResponse: ...
+
+    async def hard_delete_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> None: ...
 
 
 class HttpDownstreamPublisher:
@@ -86,9 +88,9 @@ class HttpDownstreamPublisher:
             internal_token=self.internal_token,
         )
 
-    async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
+    async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
         payload = await self.client.get_json(
-            f"{self.catalog_url}/internal/catalog/files/{file_id}",
+            f"{self.catalog_url}/internal/catalog/files/{file_id}?owner_id={owner_id}",
             bearer_token=bearer_token,
             internal_token=self.internal_token,
         )
@@ -152,3 +154,11 @@ class HttpDownstreamPublisher:
             internal_token=self.internal_token,
         )
         return FileRestoreResponse(**payload)
+
+    async def hard_delete_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> None:
+        await self.client.delete_json(
+            f"{self.catalog_url}/internal/catalog/files/{file_id}/hard-delete",
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
+            query_params={"owner_id": owner_id},
+        )

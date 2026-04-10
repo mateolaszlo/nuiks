@@ -22,6 +22,8 @@ class ObjectStoreRepository(Protocol):
 
     def get(self, object_key: str) -> bytes: ...
 
+    def delete(self, object_key: str) -> None: ...
+
     def ping(self) -> None: ...
 
 
@@ -35,6 +37,12 @@ class InMemoryObjectStoreRepository:
     def get(self, object_key: str) -> bytes:
         try:
             return self._objects[object_key]
+        except KeyError as exc:
+            raise ObjectStoreNotFoundError(object_key) from exc
+
+    def delete(self, object_key: str) -> None:
+        try:
+            del self._objects[object_key]
         except KeyError as exc:
             raise ObjectStoreNotFoundError(object_key) from exc
 
@@ -89,3 +97,14 @@ class S3ObjectStoreRepository:
         except BotoCoreError as exc:
             raise ObjectStoreUnavailableError(f"Failed to fetch object {object_key}") from exc
         return response["Body"].read()
+
+    def delete(self, object_key: str) -> None:
+        try:
+            self.client.delete_object(Bucket=self.bucket_name, Key=object_key)
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code")
+            if error_code in {"NoSuchKey", "404", "NotFound"}:
+                raise ObjectStoreNotFoundError(object_key) from exc
+            raise ObjectStoreUnavailableError(f"Failed to delete object {object_key}") from exc
+        except BotoCoreError as exc:
+            raise ObjectStoreUnavailableError(f"Failed to delete object {object_key}") from exc

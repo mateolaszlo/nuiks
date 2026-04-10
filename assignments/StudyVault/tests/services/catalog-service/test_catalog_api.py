@@ -150,6 +150,45 @@ def test_catalog_internal_file_patch_rejects_trashed_file() -> None:
     assert response.json()["detail"] == "Cannot rename trashed file"
 
 
+def test_catalog_internal_file_get_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.get(f"/internal/catalog/files/{record.file_id}?owner_id=test-user")
+        authorized = client.get(
+            f"/internal/catalog/files/{record.file_id}?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json()["file_id"] == record.file_id
+
+
+def test_catalog_internal_file_get_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/catalog/files/missing-file?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
 def test_catalog_internal_file_move_requires_internal_token() -> None:
     module = load_service_module("catalog")
     record = FileRecord.create(
@@ -620,6 +659,92 @@ def test_catalog_internal_file_restore_rejects_target_name_conflict() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "A file with that name already exists in this location"
+
+
+def test_catalog_internal_file_hard_delete_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    record.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.delete(f"/internal/catalog/files/{record.file_id}/hard-delete?owner_id=test-user")
+        authorized = client.delete(
+            f"/internal/catalog/files/{record.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 204
+
+
+def test_catalog_internal_file_hard_delete_removes_trashed_file() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    record.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/files/{record.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert repository.get_file("test-user", record.file_id) is None
+
+
+def test_catalog_internal_file_hard_delete_returns_not_found_for_unknown_file() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/internal/catalog/files/missing-file/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "File not found"
+
+
+def test_catalog_internal_file_hard_delete_rejects_non_trashed_file() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/files/{record.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File is not trashed"
 
 
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:
