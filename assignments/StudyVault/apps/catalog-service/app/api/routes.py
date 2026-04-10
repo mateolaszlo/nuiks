@@ -10,6 +10,7 @@ from studyvault_backend_common.models import (
     CreateFolderRequest,
     FileRecord,
     FolderRecord,
+    MoveItemRequest,
     RenameItemRequest,
 )
 
@@ -93,6 +94,14 @@ def build_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> None:
         service.trash_folder(user, folder_id)
+
+    @router.post("/api/catalog/folders/{folder_id}/move", response_model=FolderRecord)
+    def move_folder(
+        folder_id: str,
+        request: MoveItemRequest,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> FolderRecord:
+        return service.move_folder(user, folder_id, request)
 
     @router.get(
         "/internal/catalog/trash/expired",

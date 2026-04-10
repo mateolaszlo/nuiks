@@ -1051,3 +1051,293 @@ def test_catalog_trash_folder_is_idempotent_when_already_trashed() -> None:
     stored = repository.get_folder("test-user", folder.folder_id)
     assert stored is not None
     assert stored.trashed_at == datetime(2026, 4, 8, tzinfo=timezone.utc)
+
+
+def test_catalog_moves_root_folder_into_target_parent() -> None:
+    module = load_service_module("catalog")
+    target_parent = FolderRecord.create(owner_id="test-user", name="Archives", path_depth=0)
+    folder = FolderRecord.create(owner_id="test-user", name="Projects", path_depth=0)
+    repository = module.InMemoryCatalogRepository(folder_seed=[target_parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": target_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["parent_folder_id"] == target_parent.folder_id
+    assert payload["path_depth"] == 1
+
+
+def test_catalog_moves_nested_folder_to_root() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects", path_depth=0)
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["parent_folder_id"] is None
+    assert payload["path_depth"] == 0
+
+
+def test_catalog_move_folder_updates_descendant_depths() -> None:
+    module = load_service_module("catalog")
+    target_parent = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=2)
+    folder = FolderRecord.create(owner_id="test-user", name="Projects", path_depth=0)
+    child = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=folder.folder_id,
+        path_depth=1,
+    )
+    grandchild = FolderRecord.create(
+        owner_id="test-user",
+        name="Drafts",
+        parent_folder_id=child.folder_id,
+        path_depth=2,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[target_parent, folder, child, grandchild])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": target_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    moved_child = repository.get_folder("test-user", child.folder_id)
+    moved_grandchild = repository.get_folder("test-user", grandchild.folder_id)
+    assert moved_child is not None and moved_child.path_depth == 4
+    assert moved_grandchild is not None and moved_grandchild.path_depth == 5
+
+
+def test_catalog_move_folder_is_noop_for_same_parent() -> None:
+    module = load_service_module("catalog")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects", path_depth=0)
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[parent, folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["parent_folder_id"] == parent.folder_id
+    assert payload["path_depth"] == 1
+
+
+def test_catalog_move_folder_returns_not_found_for_unknown_source() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders/missing-folder/move",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_move_folder_hides_other_users_source() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="other-user", name="Private")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_move_folder_returns_not_found_for_unknown_target() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": "missing-target"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Folder not found"}
+
+
+def test_catalog_move_folder_rejects_trashed_source() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": None},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Cannot move trashed folder"}
+
+
+def test_catalog_move_folder_rejects_trashed_target() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    target = FolderRecord.create(owner_id="test-user", name="Archive")
+    target.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder, target])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": target.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Cannot move folder into trashed folder"}
+
+
+def test_catalog_move_folder_rejects_move_into_itself() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": folder.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Cannot move folder into itself or its descendant"}
+
+
+def test_catalog_move_folder_rejects_move_into_descendant() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    child = FolderRecord.create(
+        owner_id="test-user",
+        name="Week 1",
+        parent_folder_id=folder.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder, child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": child.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Cannot move folder into itself or its descendant"}
+
+
+def test_catalog_move_folder_rejects_conflicting_name_in_target_parent() -> None:
+    module = load_service_module("catalog")
+    source_parent = FolderRecord.create(owner_id="test-user", name="Source")
+    target_parent = FolderRecord.create(owner_id="test-user", name="Target")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Projects",
+        parent_folder_id=source_parent.folder_id,
+        path_depth=1,
+    )
+    conflict = FolderRecord.create(
+        owner_id="test-user",
+        name="projects",
+        parent_folder_id=target_parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[source_parent, target_parent, folder, conflict])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": target_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+
+
+def test_catalog_move_folder_allows_non_conflicting_target_parent() -> None:
+    module = load_service_module("catalog")
+    source_parent = FolderRecord.create(owner_id="test-user", name="Source")
+    target_parent = FolderRecord.create(owner_id="test-user", name="Target")
+    folder = FolderRecord.create(
+        owner_id="test-user",
+        name="Projects",
+        parent_folder_id=source_parent.folder_id,
+        path_depth=1,
+    )
+    other_target_child = FolderRecord.create(
+        owner_id="test-user",
+        name="Archive",
+        parent_folder_id=target_parent.folder_id,
+        path_depth=1,
+    )
+    repository = module.InMemoryCatalogRepository(folder_seed=[source_parent, target_parent, folder, other_target_child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/move",
+            json={"parent_folder_id": target_parent.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["parent_folder_id"] == target_parent.folder_id

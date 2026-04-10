@@ -12,6 +12,7 @@ from studyvault_backend_common.models import (
     CreateFolderRequest,
     FileRecord,
     FolderRecord,
+    MoveItemRequest,
     RenameItemRequest,
     utcnow,
 )
@@ -320,6 +321,134 @@ class CatalogService:
             trashed_file_count=len(file_updates),
             status="succeeded",
         )
+
+    def move_folder(self, user: AuthenticatedUser, folder_id: str, request: MoveItemRequest) -> FolderRecord:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if folder.trashed_at is not None:
+            logger.warning(
+                "catalog folder move rejected",
+                event_name="catalog_folder_move_rejected",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="trashed",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot move trashed folder",
+            )
+
+        target_parent: FolderRecord | None = None
+        if request.parent_folder_id is not None:
+            if request.parent_folder_id == folder_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot move folder into itself or its descendant",
+                )
+            target_parent = self.repository.get_folder(user.subject, request.parent_folder_id)
+            if target_parent is None:
+                logger.warning(
+                    "catalog move target lookup failed",
+                    event_name="catalog_move_target_lookup_failed",
+                    event_category="catalog",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    folder_id=folder_id,
+                    target_parent_folder_id=request.parent_folder_id,
+                    status="not_found",
+                )
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            if target_parent.trashed_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot move folder into trashed folder",
+                )
+            target_ancestors = self.repository.get_folder_ancestors(user.subject, target_parent.folder_id)
+            if any(ancestor.folder_id == folder_id for ancestor in target_ancestors):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot move folder into itself or its descendant",
+                )
+
+        if folder.parent_folder_id == request.parent_folder_id:
+            logger.info(
+                "catalog folder move skipped",
+                event_name="catalog_folder_move_skipped",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                parent_folder_id=folder.parent_folder_id,
+                status="unchanged",
+            )
+            return folder
+
+        siblings = self.repository.list_child_folders(user.subject, request.parent_folder_id)
+        if any(
+            sibling.folder_id != folder_id
+            and (sibling.normalized_name or sibling.name.casefold())
+            == (folder.normalized_name or folder.name.casefold())
+            for sibling in siblings
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A folder with that name already exists in this location",
+            )
+
+        updated_at = utcnow()
+        target_depth = 0 if target_parent is None else target_parent.path_depth + 1
+        depth_delta = target_depth - folder.path_depth
+
+        moved_root = folder.model_copy(
+            update={
+                "parent_folder_id": request.parent_folder_id,
+                "path_depth": target_depth,
+                "updated_at": updated_at,
+            }
+        )
+        self.repository.update_folder(moved_root)
+
+        queue = self.repository.list_child_folders(user.subject, folder.folder_id)
+        while queue:
+            current = queue.pop(0)
+            updated_child = current.model_copy(
+                update={
+                    "path_depth": current.path_depth + depth_delta,
+                    "updated_at": updated_at,
+                }
+            )
+            self.repository.update_folder(updated_child)
+            queue.extend(self.repository.list_child_folders(user.subject, current.folder_id))
+
+        logger.info(
+            "catalog folder moved",
+            event_name="catalog_folder_moved",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            parent_folder_id=request.parent_folder_id,
+            path_depth=target_depth,
+            status="succeeded",
+        )
+        return self.repository.get_folder(user.subject, folder_id) or moved_root
 
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)
