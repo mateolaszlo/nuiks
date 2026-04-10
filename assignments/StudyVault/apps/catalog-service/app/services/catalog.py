@@ -651,6 +651,57 @@ class CatalogService:
         )
         return updated
 
+    def move_file(self, *, owner_id: str, file_id: str, request: MoveItemRequest) -> FileRecord:
+        existing = self.repository.get_file(owner_id, file_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if existing.trashed_at is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+
+        if existing.parent_folder_id == request.parent_folder_id:
+            return existing
+
+        if request.parent_folder_id is not None:
+            target_folder = self.repository.get_folder(owner_id, request.parent_folder_id)
+            if target_folder is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+            if target_folder.trashed_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot move file into trashed folder",
+                )
+
+        siblings = self.repository.list_child_files(owner_id, request.parent_folder_id)
+        normalized_name = existing.filename.casefold()
+        if any(
+            sibling.file_id != existing.file_id
+            and sibling.trashed_at is None
+            and sibling.filename.casefold() == normalized_name
+            for sibling in siblings
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A file with that name already exists in this location",
+            )
+
+        updated = existing.model_copy(
+            update={
+                "parent_folder_id": request.parent_folder_id,
+                "updated_at": utcnow(),
+            }
+        )
+        updated = self.repository.update_file(updated)
+        logger.info(
+            "catalog file moved",
+            event_name="catalog_file_moved",
+            event_category="catalog",
+            file_id=updated.file_id,
+            owner_id=updated.owner_id,
+            parent_folder_id=updated.parent_folder_id,
+            status="succeeded",
+        )
+        return updated
+
     def list_user_files(self, user: AuthenticatedUser) -> list[FileRecord]:
         records = self.repository.list_files(user.subject)
         logger.info(

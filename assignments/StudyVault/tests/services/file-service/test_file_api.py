@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.http import ServiceClientError
-from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord
+from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest
 from tests.conftest import load_service_module
 
 
@@ -62,6 +62,45 @@ class FakeDownstream:
             if stored.file_id == file_record.file_id:
                 self.catalog_records[index] = file_record
                 return file_record
+        raise AssertionError("expected file to be present in fake downstream catalog store")
+
+    async def move_catalog_file(
+        self,
+        file_record: FileRecord,
+        request: MoveItemRequest,
+        *,
+        bearer_token: str,
+    ) -> FileRecord:
+        existing = self.fetch_existing_file(file_record.file_id)
+        if existing.trashed_at is not None:
+            raise ServiceClientError(
+                f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 409 trashed"
+            )
+        if request.parent_folder_id is not None:
+            folder = self.catalog_folders.get(request.parent_folder_id)
+            if folder is None or folder.owner_id != "test-user":
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 404"
+                )
+            if folder.trashed_at is not None:
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 422"
+                )
+        for sibling in self.catalog_records:
+            if (
+                sibling.file_id != file_record.file_id
+                and sibling.parent_folder_id == request.parent_folder_id
+                and sibling.trashed_at is None
+                and sibling.filename.casefold() == existing.filename.casefold()
+            ):
+                raise ServiceClientError(
+                    f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 409 move"
+                )
+        moved = existing.model_copy(update={"parent_folder_id": request.parent_folder_id})
+        for index, stored in enumerate(self.catalog_records):
+            if stored.file_id == file_record.file_id:
+                self.catalog_records[index] = moved
+                return moved
         raise AssertionError("expected file to be present in fake downstream catalog store")
 
 
@@ -224,6 +263,214 @@ def test_file_rename_rejects_same_parent_name_conflict() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "File rename conflict"
+
+
+def test_file_move_updates_parent_and_emits_downstream_events() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    source = FolderRecord.create(owner_id="test-user", name="Source")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    downstream.catalog_folders[source.folder_id] = source
+    downstream.catalog_folders[target.folder_id] = target
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = source.folder_id
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["parent_folder_id"] == target.folder_id
+    assert downstream.catalog_records[0].parent_folder_id == target.folder_id
+    assert downstream.search_records[-1].parent_folder_id == target.folder_id
+    assert downstream.activity_actions[-1] == "file_moved"
+
+
+def test_file_move_to_root_succeeds() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    source = FolderRecord.create(owner_id="test-user", name="Source")
+    downstream.catalog_folders[source.folder_id] = source
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = source.folder_id
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": None},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["parent_folder_id"] is None
+
+
+def test_file_move_same_parent_is_noop() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    source = FolderRecord.create(owner_id="test-user", name="Source")
+    downstream.catalog_folders[source.folder_id] = source
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.parent_folder_id = source.folder_id
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": source.folder_id},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["parent_folder_id"] == source.folder_id
+    assert downstream.search_records == []
+    assert downstream.activity_actions == []
+
+
+def test_file_move_returns_not_found_for_unknown_target_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": "missing-folder"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
+def test_file_move_rejects_trashed_target_folder() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    target.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    downstream.catalog_folders[target.folder_id] = target
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Cannot move file into trashed folder"
+
+
+def test_file_move_rejects_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": None},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot move trashed file"
+
+
+def test_file_move_rejects_target_name_conflict() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    source = FolderRecord.create(owner_id="test-user", name="Source")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    downstream.catalog_folders[source.folder_id] = source
+    downstream.catalog_folders[target.folder_id] = target
+    first = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    second = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    first.parent_folder_id = source.folder_id
+    second.parent_folder_id = target.folder_id
+    downstream.catalog_records.extend([first, second])
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{first.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File move conflict"
 
 
 def test_file_upload_accepts_parent_folder_id() -> None:

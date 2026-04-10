@@ -15,6 +15,7 @@ from studyvault_backend_common.models import (
     FileActivityEvent,
     FileRecord,
     FolderRecord,
+    MoveItemRequest,
     RenameItemRequest,
     has_control_chars,
     utcnow,
@@ -61,9 +62,17 @@ class FileService:
         message = str(exc)
         if "status 404" in message:
             return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        if "status 422" in message:
+            return HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Cannot move file into trashed folder",
+            )
         if "status 409" in message:
-            if "trashed" in message.lower():
+            lowered = message.lower()
+            if "trashed" in lowered:
                 return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+            if "move" in lowered or "location" in lowered:
+                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File move conflict")
             return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File rename conflict")
         return HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -351,6 +360,55 @@ class FileService:
             raise self._map_catalog_file_error(exc) from exc
 
         return updated_record
+
+    async def move_file(
+        self,
+        *,
+        user: AuthenticatedUser,
+        file_id: str,
+        request: MoveItemRequest,
+    ) -> FileRecord:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        if file_record.trashed_at is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+
+        target_folder: FolderRecord | None = None
+        if request.parent_folder_id is not None:
+            try:
+                target_folder = await self.downstream.fetch_catalog_folder(
+                    request.parent_folder_id,
+                    bearer_token=user.token or "",
+                )
+            except ServiceClientError as exc:
+                raise self._map_catalog_folder_lookup_error(exc) from exc
+            if target_folder.trashed_at is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot move file into trashed folder",
+                )
+
+        if file_record.parent_folder_id == request.parent_folder_id:
+            return file_record
+
+        try:
+            moved_record = await self.downstream.move_catalog_file(
+                file_record,
+                request,
+                bearer_token=user.token or "",
+            )
+            await self.downstream.publish_search(moved_record, bearer_token=user.token or "")
+            await self.downstream.publish_activity(
+                FileActivityEvent(action="file_moved", file=moved_record),
+                bearer_token=user.token or "",
+            )
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_error(exc) from exc
+
+        return moved_record
 
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
         file_record = await self.downstream.fetch_catalog_file(file_id, bearer_token=user.token or "")

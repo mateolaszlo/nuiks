@@ -150,6 +150,161 @@ def test_catalog_internal_file_patch_rejects_trashed_file() -> None:
     assert response.json()["detail"] == "Cannot rename trashed file"
 
 
+def test_catalog_internal_file_move_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": None},
+        )
+        authorized = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": None},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+
+
+def test_catalog_internal_file_move_updates_parent_folder_id() -> None:
+    module = load_service_module("catalog")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record], folder_seed=[target])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": target.folder_id},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["parent_folder_id"] == target.folder_id
+
+
+def test_catalog_internal_file_move_rejects_missing_target_folder() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": "missing-folder"},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
+def test_catalog_internal_file_move_rejects_trashed_target_folder() -> None:
+    module = load_service_module("catalog")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    target.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[record], folder_seed=[target])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": target.folder_id},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Cannot move file into trashed folder"
+
+
+def test_catalog_internal_file_move_rejects_trashed_file() -> None:
+    module = load_service_module("catalog")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/internal/catalog/files/{record.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": None},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Cannot move trashed file"
+
+
+def test_catalog_internal_file_move_rejects_target_name_conflict() -> None:
+    module = load_service_module("catalog")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    first = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    second = FileRecord.create(
+        owner_id="test-user",
+        filename="draft.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    second.parent_folder_id = target.folder_id
+    repository = module.InMemoryCatalogRepository(seed=[first, second], folder_seed=[target])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/internal/catalog/files/{first.file_id}/move?owner_id=test-user",
+            json={"parent_folder_id": target.folder_id},
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A file with that name already exists in this location"
+
+
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository()

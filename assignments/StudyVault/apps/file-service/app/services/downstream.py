@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from studyvault_backend_common.http import JsonServiceClient
-from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord
+from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest
 
 
 class DownstreamPublisher(Protocol):
@@ -18,6 +18,14 @@ class DownstreamPublisher(Protocol):
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord: ...
 
     async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord: ...
+
+    async def move_catalog_file(
+        self,
+        file_record: FileRecord,
+        request: MoveItemRequest,
+        *,
+        bearer_token: str,
+    ) -> FileRecord: ...
 
 
 class HttpDownstreamPublisher:
@@ -79,6 +87,24 @@ class HttpDownstreamPublisher:
         payload = await self.client.patch_json(
             f"{self.catalog_url}/internal/catalog/files/{file_record.file_id}",
             file_record.model_dump(mode="json"),
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
+        )
+        return FileRecord(**payload)
+
+    async def move_catalog_file(
+        self,
+        file_record: FileRecord,
+        request: MoveItemRequest,
+        *,
+        bearer_token: str,
+    ) -> FileRecord:
+        payload = await self.client.post_json(
+            f"{self.catalog_url}/internal/catalog/files/{file_record.file_id}/move",
+            {
+                "owner_id": file_record.owner_id,
+                "parent_folder_id": request.parent_folder_id,
+            },
             bearer_token=bearer_token,
             internal_token=self.internal_token,
         )

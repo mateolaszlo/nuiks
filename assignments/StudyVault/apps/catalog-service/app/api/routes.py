@@ -152,6 +152,18 @@ def build_router(service: CatalogService) -> APIRouter:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File id mismatch")
         return service.update_file(file_record)
 
+    @router.post(
+        "/internal/catalog/files/{file_id}/move",
+        response_model=FileRecord,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def move_file(
+        file_id: str,
+        request: MoveItemRequest,
+        owner_id: str = Query(...),
+    ) -> FileRecord:
+        return service.move_file(owner_id=owner_id, file_id=file_id, request=request)
+
     @router.get(
         "/internal/catalog/files/{file_id}",
         response_model=FileRecord,
