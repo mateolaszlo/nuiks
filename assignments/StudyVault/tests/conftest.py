@@ -15,6 +15,7 @@ SERVICE_ROOTS = {
     "search": ROOT / "apps" / "search-service",
     "activity": ROOT / "apps" / "activity-service",
     "file": ROOT / "apps" / "file-service",
+    "purge": ROOT / "apps" / "purge-worker",
 }
 
 
@@ -47,6 +48,7 @@ def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "CATALOG_INTERNAL_URL": "http://catalog.test",
         "SEARCH_INTERNAL_URL": "http://search.test",
         "ACTIVITY_INTERNAL_URL": "http://activity.test",
+        "FILE_INTERNAL_URL": "http://file.test",
         "STUDYVAULT_INTERNAL_TOKEN": "internal-test-token",
         "CATALOG_DATABASE_URL": "sqlite+pysqlite:///:memory:",
         "SEARCH_MONGODB_URL": "mongodb://mongodb.test:27017",

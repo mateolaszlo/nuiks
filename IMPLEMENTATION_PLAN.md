@@ -1704,9 +1704,10 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 ## 16.7 New worker or command
 
-- [ ] Add purge worker
-- [ ] Add batch processing
-- [ ] Add retries/logging
+- [x] Add purge worker command
+- [x] Process expired files
+- [x] Add batch processing
+- [x] Add retries/logging
 - [ ] Make schedule configurable
 
 ---

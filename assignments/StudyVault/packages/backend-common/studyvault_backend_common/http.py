@@ -115,4 +115,6 @@ class JsonServiceClient:
             response = await client.delete(url, headers=headers, params=query_params)
             if response.is_error:
                 raise ServiceClientError(f"DELETE {url} failed with status {response.status_code}")
+            if not response.content:
+                return {}
             return response.json()
