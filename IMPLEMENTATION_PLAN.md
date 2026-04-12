@@ -1682,6 +1682,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 ## 16.4 `apps/search-service`
 
+- [x] Hide trashed files by default
 - [ ] Replace file-only index doc with item index doc
 - [ ] Add folder indexing
 - [x] Add delete by `item_id`

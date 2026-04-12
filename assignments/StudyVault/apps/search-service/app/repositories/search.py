@@ -14,7 +14,7 @@ class SearchRepository(Protocol):
 
     def delete_item(self, item_id: str) -> None: ...
 
-    def search(self, owner_id: str, query: str) -> list[FileRecord]: ...
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]: ...
 
     def ping(self) -> None: ...
 
@@ -30,12 +30,13 @@ class InMemorySearchRepository:
     def delete_item(self, item_id: str) -> None:
         self._records.pop(item_id, None)
 
-    def search(self, owner_id: str, query: str) -> list[FileRecord]:
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
         lowered = query.lower()
         matches = [
             record
             for record in self._records.values()
             if record.owner_id == owner_id
+            and (include_trashed or record.trashed_at is None)
             and (
                 lowered in record.filename.lower()
                 or lowered in record.mime_type.lower()
@@ -70,16 +71,17 @@ class MongoSearchRepository:
     def delete_item(self, item_id: str) -> None:
         self.collection.delete_one({"file_id": item_id})
 
-    def search(self, owner_id: str, query: str) -> list[FileRecord]:
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
         regex = {"$regex": re.escape(query), "$options": "i"}
-        cursor = self.collection.find(
-            {
-                "owner_id": owner_id,
-                "$or": [
-                    {"filename": regex},
-                    {"mime_type": regex},
-                    {"tags": regex},
-                ],
-            }
-        ).sort("created_at", DESCENDING)
+        query_filter = {
+            "owner_id": owner_id,
+            "$or": [
+                {"filename": regex},
+                {"mime_type": regex},
+                {"tags": regex},
+            ],
+        }
+        if not include_trashed:
+            query_filter["trashed_at"] = None
+        cursor = self.collection.find(query_filter).sort("created_at", DESCENDING)
         return [FileRecord(**document) for document in cursor]

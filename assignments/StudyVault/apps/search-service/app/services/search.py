@@ -39,11 +39,11 @@ class SearchService:
             status="succeeded",
         )
 
-    def search(self, user: AuthenticatedUser, query: str) -> list[FileRecord]:
+    def search(self, user: AuthenticatedUser, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
         if not query.strip():
             return []
         normalized_query = query.strip()
-        results = self.repository.search(user.subject, normalized_query)
+        results = self.repository.search(user.subject, normalized_query, include_trashed=include_trashed)
         logger.info(
             "search executed",
             event_name="search_executed",
@@ -53,6 +53,7 @@ class SearchService:
             owner_email=user.email,
             query=normalized_query,
             query_length=len(normalized_query),
+            include_trashed=include_trashed,
             result_count=len(results),
             status="succeeded",
         )

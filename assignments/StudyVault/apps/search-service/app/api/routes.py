@@ -32,9 +32,10 @@ def build_router(service: SearchService) -> APIRouter:
     @router.get("/api/search", response_model=list[FileRecord])
     def search_files(
         q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
+        include_trashed: bool = Query(default=False),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[FileRecord]:
-        return service.search(user, q)
+        return service.search(user, q, include_trashed=include_trashed)
 
     @router.post(
         "/internal/search/index",
