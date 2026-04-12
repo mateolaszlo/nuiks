@@ -15,6 +15,7 @@ def create_service(client=None, batch_size: int | None = None) -> PurgeService:
         client = HttpPurgeClient(
             catalog_url=settings.catalog_internal_url,
             file_url=settings.file_internal_url,
+            search_url=settings.search_internal_url,
             internal_token=settings.internal_token,
         )
     return PurgeService(client, batch_size=batch_size or settings.purge_batch_size)

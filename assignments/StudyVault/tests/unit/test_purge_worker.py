@@ -11,11 +11,23 @@ from tests.conftest import load_service_module
 
 
 class FakePurgeClient:
-    def __init__(self, batches=None, *, list_error: Exception | None = None, file_errors=None) -> None:
+    def __init__(
+        self,
+        batches=None,
+        *,
+        list_error: Exception | None = None,
+        file_errors=None,
+        folder_errors=None,
+        search_errors=None,
+    ) -> None:
         self.batches = list(batches or [])
         self.list_error = list_error
         self.file_errors = file_errors or {}
-        self.deleted: list[tuple[str, str]] = []
+        self.folder_errors = folder_errors or {}
+        self.search_errors = search_errors or {}
+        self.deleted_files: list[tuple[str, str]] = []
+        self.deleted_folders: list[tuple[str, str]] = []
+        self.deleted_search_items: list[str] = []
         self.list_calls = 0
 
     async def list_expired_trash(self, *, before: datetime, limit: int):
@@ -31,7 +43,19 @@ class FakePurgeClient:
         error = self.file_errors.get(file_id)
         if error is not None:
             raise error
-        self.deleted.append((owner_id, file_id))
+        self.deleted_files.append((owner_id, file_id))
+
+    async def delete_search_item(self, *, item_id: str) -> None:
+        error = self.search_errors.get(item_id)
+        if error is not None:
+            raise error
+        self.deleted_search_items.append(item_id)
+
+    async def hard_delete_folder(self, *, owner_id: str, folder_id: str) -> None:
+        error = self.folder_errors.get(folder_id)
+        if error is not None:
+            raise error
+        self.deleted_folders.append((owner_id, folder_id))
 
 
 def test_purge_worker_returns_success_for_empty_expired_trash() -> None:
@@ -43,7 +67,8 @@ def test_purge_worker_returns_success_for_empty_expired_trash() -> None:
     assert result.batches_processed == 0
     assert result.deleted_files == 0
     assert result.failed_files == 0
-    assert result.ignored_folders == 0
+    assert result.deleted_folders == 0
+    assert result.failed_folders == 0
 
 
 def test_purge_worker_hard_deletes_expired_files() -> None:
@@ -63,7 +88,7 @@ def test_purge_worker_hard_deletes_expired_files() -> None:
 
     assert result.batches_processed == 1
     assert result.deleted_files == 1
-    assert client.deleted == [("test-user", file_record.file_id)]
+    assert client.deleted_files == [("test-user", file_record.file_id)]
 
 
 def test_purge_worker_processes_multiple_batches_until_empty() -> None:
@@ -95,10 +120,10 @@ def test_purge_worker_processes_multiple_batches_until_empty() -> None:
 
     assert result.batches_processed == 2
     assert result.deleted_files == 2
-    assert [file_id for _, file_id in client.deleted] == [first.file_id, second.file_id]
+    assert [file_id for _, file_id in client.deleted_files] == [first.file_id, second.file_id]
 
 
-def test_purge_worker_ignores_expired_folders_in_this_phase() -> None:
+def test_purge_worker_hard_deletes_expired_folders_after_search_delete() -> None:
     module = load_service_module("purge")
     service_module = load_service_module("purge", module_name="app.services.purge")
     folder = FolderRecord.create(owner_id="test-user", name="Expired")
@@ -107,8 +132,9 @@ def test_purge_worker_ignores_expired_folders_in_this_phase() -> None:
     result = asyncio.run(module.run_purge_pass(client=client, batch_size=10))
 
     assert result.deleted_files == 0
-    assert result.ignored_folders == 1
-    assert client.deleted == []
+    assert result.deleted_folders == 1
+    assert client.deleted_search_items == [folder.folder_id]
+    assert client.deleted_folders == [("test-user", folder.folder_id)]
 
 
 def test_purge_worker_continues_after_per_file_failure() -> None:
@@ -137,7 +163,43 @@ def test_purge_worker_continues_after_per_file_failure() -> None:
 
     assert result.deleted_files == 1
     assert result.failed_files == 1
-    assert client.deleted == [("test-user", second.file_id)]
+    assert client.deleted_files == [("test-user", second.file_id)]
+
+
+def test_purge_worker_continues_after_per_folder_failure() -> None:
+    module = load_service_module("purge")
+    service_module = load_service_module("purge", module_name="app.services.purge")
+    first = FolderRecord.create(owner_id="test-user", name="First")
+    second = FolderRecord.create(owner_id="test-user", name="Second")
+    client = FakePurgeClient(
+        batches=[service_module.ExpiredTrashBatch(files=[], folders=[first, second])],
+        folder_errors={first.folder_id: ServiceClientError("DELETE failed with status 409")},
+    )
+
+    result = asyncio.run(module.run_purge_pass(client=client, batch_size=10))
+
+    assert result.deleted_folders == 1
+    assert result.failed_folders == 1
+    assert client.deleted_search_items == [first.folder_id, second.folder_id]
+    assert client.deleted_folders == [("test-user", second.folder_id)]
+
+
+def test_purge_worker_treats_missing_descendant_folder_as_idempotent() -> None:
+    module = load_service_module("purge")
+    service_module = load_service_module("purge", module_name="app.services.purge")
+    root = FolderRecord.create(owner_id="test-user", name="Root", path_depth=0)
+    child = FolderRecord.create(owner_id="test-user", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    client = FakePurgeClient(
+        batches=[service_module.ExpiredTrashBatch(files=[], folders=[child, root])],
+        folder_errors={child.folder_id: ServiceClientError("DELETE failed with status 404")},
+    )
+
+    result = asyncio.run(module.run_purge_pass(client=client, batch_size=10))
+
+    assert result.deleted_folders == 1
+    assert result.failed_folders == 0
+    assert client.deleted_search_items == [root.folder_id, child.folder_id]
+    assert client.deleted_folders == [("test-user", root.folder_id)]
 
 
 def test_purge_worker_raises_when_catalog_lookup_fails() -> None:

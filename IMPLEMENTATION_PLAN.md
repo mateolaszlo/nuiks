@@ -1668,6 +1668,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add internal file trash endpoint
 - [x] Add internal file restore endpoint
 - [x] Add internal file hard-delete endpoint
+- [x] Add internal folder hard-delete endpoint
 
 ## 16.3 `apps/file-service`
 
@@ -1706,6 +1707,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 - [x] Add purge worker command
 - [x] Process expired files
+- [x] Process expired folders
 - [x] Add batch processing
 - [x] Add retries/logging
 - [ ] Make schedule configurable

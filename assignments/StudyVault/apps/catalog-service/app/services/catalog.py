@@ -829,6 +829,48 @@ class CatalogService:
             status="succeeded",
         )
 
+    def hard_delete_folder(self, *, owner_id: str, folder_id: str) -> None:
+        existing = self.repository.get_folder(owner_id, folder_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if existing.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Folder is not trashed")
+
+        folders_to_delete: list[FolderRecord] = []
+        queue = [existing]
+
+        while queue:
+            current = queue.pop(0)
+            folders_to_delete.append(current)
+
+            child_files = self.repository.list_child_files(owner_id, current.folder_id)
+            if child_files:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Folder subtree still contains files",
+                )
+
+            queue.extend(
+                self.repository.list_child_folders(
+                    owner_id,
+                    current.folder_id,
+                    include_trashed=True,
+                )
+            )
+
+        for folder in sorted(folders_to_delete, key=lambda item: item.path_depth, reverse=True):
+            self.repository.delete_folder(owner_id, folder.folder_id)
+
+        logger.info(
+            "catalog folder hard deleted",
+            event_name="catalog_folder_hard_deleted",
+            event_category="catalog",
+            folder_id=folder_id,
+            owner_id=owner_id,
+            deleted_folder_count=len(folders_to_delete),
+            status="succeeded",
+        )
+
     def get_file_for_owner(self, *, owner_id: str, file_id: str) -> FileRecord:
         record = self.repository.get_file(owner_id, file_id)
         if record is None:

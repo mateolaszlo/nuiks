@@ -747,6 +747,109 @@ def test_catalog_internal_file_hard_delete_rejects_non_trashed_file() -> None:
     assert response.json()["detail"] == "File is not trashed"
 
 
+def test_catalog_internal_folder_hard_delete_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Archive")
+    folder.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.delete(f"/internal/catalog/folders/{folder.folder_id}/hard-delete?owner_id=test-user")
+        authorized = client.delete(
+            f"/internal/catalog/folders/{folder.folder_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 204
+
+
+def test_catalog_internal_folder_hard_delete_removes_trashed_subtree_without_files() -> None:
+    module = load_service_module("catalog")
+    root = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=0)
+    root.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    root.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    child = FolderRecord.create(owner_id="test-user", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    child.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    child.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[root, child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/folders/{root.folder_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert repository.get_folder("test-user", root.folder_id) is None
+    assert repository.get_folder("test-user", child.folder_id) is None
+
+
+def test_catalog_internal_folder_hard_delete_returns_not_found_for_unknown_folder() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/internal/catalog/folders/missing-folder/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Folder not found"
+
+
+def test_catalog_internal_folder_hard_delete_rejects_non_trashed_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Archive")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/folders/{folder.folder_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Folder is not trashed"
+
+
+def test_catalog_internal_folder_hard_delete_rejects_subtree_with_files() -> None:
+    module = load_service_module("catalog")
+    root = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=0)
+    root.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    root.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    child = FolderRecord.create(owner_id="test-user", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    child.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    child.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="leftover.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    file_record.parent_folder_id = child.folder_id
+    repository = module.InMemoryCatalogRepository(seed=[file_record], folder_seed=[root, child])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/folders/{root.folder_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Folder subtree still contains files"
+    assert repository.get_folder("test-user", root.folder_id) is not None
+    assert repository.get_folder("test-user", child.folder_id) is not None
+
+
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository()

@@ -199,6 +199,17 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> None:
         service.hard_delete_file(owner_id=owner_id, file_id=file_id)
 
+    @router.delete(
+        "/internal/catalog/folders/{folder_id}/hard-delete",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def hard_delete_folder(
+        folder_id: str,
+        owner_id: str = Query(...),
+    ) -> None:
+        service.hard_delete_folder(owner_id=owner_id, folder_id=folder_id)
+
     @router.get(
         "/internal/catalog/files/{file_id}",
         response_model=FileRecord,

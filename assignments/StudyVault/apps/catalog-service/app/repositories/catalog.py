@@ -32,9 +32,17 @@ class CatalogRepository(Protocol):
 
     def get_folder(self, owner_id: str, folder_id: str) -> FolderRecord | None: ...
 
+    def delete_folder(self, owner_id: str, folder_id: str) -> None: ...
+
     def list_folders(self, owner_id: str) -> list[FolderRecord]: ...
 
-    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]: ...
+    def list_child_folders(
+        self,
+        owner_id: str,
+        parent_folder_id: str | None,
+        *,
+        include_trashed: bool = False,
+    ) -> list[FolderRecord]: ...
 
     def list_child_files(self, owner_id: str, parent_folder_id: str | None) -> list[FileRecord]: ...
 
@@ -99,17 +107,28 @@ class InMemoryCatalogRepository:
             return record
         return None
 
+    def delete_folder(self, owner_id: str, folder_id: str) -> None:
+        record = self.get_folder(owner_id, folder_id)
+        if record is not None:
+            del self._folders[folder_id]
+
     def list_folders(self, owner_id: str) -> list[FolderRecord]:
         records = [record for record in self._folders.values() if record.owner_id == owner_id]
         return sorted(records, key=lambda item: item.created_at, reverse=True)
 
-    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]:
+    def list_child_folders(
+        self,
+        owner_id: str,
+        parent_folder_id: str | None,
+        *,
+        include_trashed: bool = False,
+    ) -> list[FolderRecord]:
         records = [
             record
             for record in self._folders.values()
             if record.owner_id == owner_id
             and record.parent_folder_id == parent_folder_id
-            and record.trashed_at is None
+            and (include_trashed or record.trashed_at is None)
         ]
         return sorted(records, key=lambda item: (item.normalized_name or item.name.casefold(), item.created_at))
 
@@ -322,6 +341,16 @@ class SqlAlchemyCatalogRepository:
             )
         return self._to_folder_record(row) if row else None
 
+    def delete_folder(self, owner_id: str, folder_id: str) -> None:
+        with self.session_factory() as session:
+            row = session.scalar(
+                select(FolderRow).where(FolderRow.owner_id == owner_id, FolderRow.folder_id == folder_id)
+            )
+            if row is None:
+                return
+            session.delete(row)
+            self._commit(session)
+
     def list_folders(self, owner_id: str) -> list[FolderRecord]:
         with self.session_factory() as session:
             rows = session.scalars(
@@ -329,17 +358,25 @@ class SqlAlchemyCatalogRepository:
             ).all()
         return [self._to_folder_record(row) for row in rows]
 
-    def list_child_folders(self, owner_id: str, parent_folder_id: str | None) -> list[FolderRecord]:
+    def list_child_folders(
+        self,
+        owner_id: str,
+        parent_folder_id: str | None,
+        *,
+        include_trashed: bool = False,
+    ) -> list[FolderRecord]:
         with self.session_factory() as session:
-            rows = session.scalars(
+            statement = (
                 select(FolderRow)
                 .where(
                     FolderRow.owner_id == owner_id,
                     FolderRow.parent_folder_id == parent_folder_id,
-                    FolderRow.trashed_at.is_(None),
                 )
                 .order_by(FolderRow.normalized_name, FolderRow.created_at, FolderRow.folder_id)
-            ).all()
+            )
+            if not include_trashed:
+                statement = statement.where(FolderRow.trashed_at.is_(None))
+            rows = session.scalars(statement).all()
         return [self._to_folder_record(row) for row in rows]
 
     def list_child_files(self, owner_id: str, parent_folder_id: str | None) -> list[FileRecord]:
