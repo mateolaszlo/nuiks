@@ -1,6 +1,6 @@
 # IMPLEMENTATION_PLAN.md
 
-# StudyVault: Google Drive Lite Implementation Plan
+# StudyVault: Google Drive Clone Implementation Plan
 
 ## Document status
 
