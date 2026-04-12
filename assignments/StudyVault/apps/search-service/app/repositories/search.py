@@ -12,6 +12,8 @@ from studyvault_backend_common.models import FileRecord
 class SearchRepository(Protocol):
     def index_file(self, file_record: FileRecord) -> FileRecord: ...
 
+    def delete_item(self, item_id: str) -> None: ...
+
     def search(self, owner_id: str, query: str) -> list[FileRecord]: ...
 
     def ping(self) -> None: ...
@@ -24,6 +26,9 @@ class InMemorySearchRepository:
     def index_file(self, file_record: FileRecord) -> FileRecord:
         self._records[file_record.file_id] = file_record
         return file_record
+
+    def delete_item(self, item_id: str) -> None:
+        self._records.pop(item_id, None)
 
     def search(self, owner_id: str, query: str) -> list[FileRecord]:
         lowered = query.lower()
@@ -61,6 +66,9 @@ class MongoSearchRepository:
             upsert=True,
         )
         return file_record
+
+    def delete_item(self, item_id: str) -> None:
+        self.collection.delete_one({"file_id": item_id})
 
     def search(self, owner_id: str, query: str) -> list[FileRecord]:
         regex = {"$regex": re.escape(query), "$options": "i"}

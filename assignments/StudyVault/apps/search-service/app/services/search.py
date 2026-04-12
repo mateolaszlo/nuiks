@@ -29,6 +29,16 @@ class SearchService:
         )
         return indexed
 
+    def delete_item(self, item_id: str) -> None:
+        self.repository.delete_item(item_id)
+        logger.info(
+            "search document deleted",
+            event_name="search_document_deleted",
+            event_category="search",
+            item_id=item_id,
+            status="succeeded",
+        )
+
     def search(self, user: AuthenticatedUser, query: str) -> list[FileRecord]:
         if not query.strip():
             return []

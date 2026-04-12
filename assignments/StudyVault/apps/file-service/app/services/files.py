@@ -105,6 +105,16 @@ class FileService:
         )
 
     @staticmethod
+    def _map_search_delete_error(exc: ServiceClientError) -> HTTPException:
+        message = str(exc)
+        if "status 404" in message:
+            return HTTPException(status_code=status.HTTP_204_NO_CONTENT)
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Search delete failed",
+        )
+
+    @staticmethod
     def _map_catalog_file_restore_error(exc: ServiceClientError) -> HTTPException:
         message = str(exc)
         if "status 404" in message:
@@ -598,3 +608,10 @@ class FileService:
             await self.downstream.hard_delete_catalog_file(file_id, owner_id, bearer_token="")
         except ServiceClientError as exc:
             raise self._map_catalog_file_hard_delete_error(exc) from exc
+
+        try:
+            await self.downstream.delete_search_item(file_id, bearer_token="")
+        except ServiceClientError as exc:
+            if "status 404" in str(exc):
+                return
+            raise self._map_search_delete_error(exc) from exc

@@ -23,6 +23,9 @@ class FakeDownstream:
     async def publish_search(self, file_record: FileRecord, *, bearer_token: str) -> None:
         self.search_records.append(file_record)
 
+    async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
+        self.search_records = [record for record in self.search_records if record.file_id != item_id]
+
     async def publish_activity(self, event, *, bearer_token: str) -> None:
         self.activity_file_ids.append(event.file.file_id)
         self.activity_actions.append(event.action)
@@ -1274,6 +1277,7 @@ def test_file_hard_delete_removes_object_and_metadata() -> None:
     stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
     stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
     downstream.catalog_records.append(stored)
+    downstream.search_records.append(stored)
     object_store._objects[stored.object_key] = b"hello"
     app = module.create_app(object_store=object_store, downstream=downstream)
 
@@ -1286,6 +1290,7 @@ def test_file_hard_delete_removes_object_and_metadata() -> None:
     assert response.status_code == 204
     assert stored.object_key not in object_store._objects
     assert downstream.catalog_records == []
+    assert downstream.search_records == []
 
 
 def test_file_hard_delete_returns_not_found_for_unknown_file() -> None:
@@ -1344,6 +1349,7 @@ def test_file_hard_delete_succeeds_when_object_content_is_already_missing() -> N
     stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
     stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
     downstream.catalog_records.append(stored)
+    downstream.search_records.append(stored)
     app = module.create_app(object_store=object_store, downstream=downstream)
 
     with TestClient(app) as client:
@@ -1354,6 +1360,7 @@ def test_file_hard_delete_succeeds_when_object_content_is_already_missing() -> N
 
     assert response.status_code == 204
     assert downstream.catalog_records == []
+    assert downstream.search_records == []
 
 
 def test_file_hard_delete_returns_bad_gateway_when_object_store_delete_fails() -> None:
@@ -1387,6 +1394,70 @@ def test_file_hard_delete_returns_bad_gateway_when_object_store_delete_fails() -
     assert response.status_code == 502
     assert response.json()["detail"] == "File storage unavailable"
     assert downstream.catalog_records[0].file_id == stored.file_id
+
+
+def test_file_hard_delete_succeeds_when_search_item_is_already_missing() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+
+
+def test_file_hard_delete_returns_bad_gateway_when_search_delete_fails() -> None:
+    module = load_service_module("file")
+
+    class SearchDeleteFailureDownstream(FakeDownstream):
+        async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
+            raise ServiceClientError(f"DELETE http://search.test/internal/search/items/{item_id} failed with status 500")
+
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = SearchDeleteFailureDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    downstream.search_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/files/{stored.file_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Search delete failed"
+    assert stored.object_key not in object_store._objects
+    assert downstream.catalog_records == []
+    assert downstream.search_records[0].file_id == stored.file_id
 
 
 def test_file_download_emits_encoded_filename_for_non_ascii_name() -> None:

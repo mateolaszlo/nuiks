@@ -47,6 +47,8 @@ class DownstreamPublisher(Protocol):
 
     async def hard_delete_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> None: ...
 
+    async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None: ...
+
 
 class HttpDownstreamPublisher:
     def __init__(
@@ -161,4 +163,11 @@ class HttpDownstreamPublisher:
             bearer_token=bearer_token,
             internal_token=self.internal_token,
             query_params={"owner_id": owner_id},
+        )
+
+    async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
+        await self.client.delete_json(
+            f"{self.search_url}/internal/search/items/{item_id}",
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
         )

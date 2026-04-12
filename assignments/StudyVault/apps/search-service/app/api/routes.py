@@ -44,4 +44,12 @@ def build_router(service: SearchService) -> APIRouter:
     def index_file(file_record: FileRecord) -> FileRecord:
         return service.index_file(file_record)
 
+    @router.delete(
+        "/internal/search/items/{item_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def delete_item(item_id: str) -> None:
+        service.delete_item(item_id)
+
     return router

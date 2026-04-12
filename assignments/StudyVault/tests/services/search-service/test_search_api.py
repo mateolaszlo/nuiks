@@ -62,6 +62,66 @@ def test_search_returns_empty_list_for_blank_query() -> None:
     assert response.json() == []
 
 
+def test_internal_search_delete_requires_internal_token() -> None:
+    module = load_service_module("search")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="Linear Algebra Notes.pdf",
+        mime_type="application/pdf",
+        size=100,
+        tags=["math"],
+    )
+    repository = module.InMemorySearchRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.delete(f"/internal/search/items/{record.file_id}")
+        authorized = client.delete(
+            f"/internal/search/items/{record.file_id}",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 204
+
+
+def test_internal_search_delete_removes_item_from_results() -> None:
+    module = load_service_module("search")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="Linear Algebra Notes.pdf",
+        mime_type="application/pdf",
+        size=100,
+        tags=["math"],
+    )
+    repository = module.InMemorySearchRepository(seed=[record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        delete_response = client.delete(
+            f"/internal/search/items/{record.file_id}",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+        search_response = client.get("/api/search?q=math", headers={"authorization": "Bearer fake"})
+
+    assert delete_response.status_code == 204
+    assert search_response.status_code == 200
+    assert search_response.json() == []
+
+
+def test_internal_search_delete_is_idempotent_for_missing_item() -> None:
+    module = load_service_module("search")
+    app = module.create_app(repository=module.InMemorySearchRepository())
+
+    with TestClient(app) as client:
+        response = client.delete(
+            "/internal/search/items/missing-item",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+
+
 def test_mongo_search_escapes_regex_metacharacters() -> None:
     module = load_service_module("search")
     repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
