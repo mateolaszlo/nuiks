@@ -1,0 +1,1 @@
+"""Purge worker application package."""

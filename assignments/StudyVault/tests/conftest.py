@@ -34,6 +34,7 @@ def load_service_module(service_name: str, module_name: str = "app.main"):
     if service_root in sys.path:
         sys.path.remove(service_root)
     sys.path.insert(0, service_root)
+    importlib.invalidate_caches()
     return importlib.import_module(module_name)
 
 
