@@ -12,10 +12,10 @@ from studyvault_backend_common.models import (
     MAX_TAG_COUNT,
     MAX_TAG_LENGTH,
     AuthenticatedUser,
-    FileActivityEvent,
     FileRecord,
     FileRestoreResponse,
     FolderRecord,
+    ItemActivityEvent,
     MoveItemRequest,
     RenameItemRequest,
     RestoreItemRequest,
@@ -323,7 +323,7 @@ class FileService:
                 status="succeeded",
             )
             await self.downstream.publish_activity(
-                FileActivityEvent(file=file_record),
+                ItemActivityEvent.from_file(file_record, action="file_uploaded"),
                 bearer_token=user.token or "",
             )
             logger.info(
@@ -400,13 +400,19 @@ class FileService:
         )
 
         try:
+            old_name = file_record.filename
             updated_record = await self.downstream.update_catalog_file(
                 updated_record,
                 bearer_token=user.token or "",
             )
             await self.downstream.publish_search(updated_record, bearer_token=user.token or "")
             await self.downstream.publish_activity(
-                FileActivityEvent(action="file_renamed", file=updated_record),
+                ItemActivityEvent.from_file(
+                    updated_record,
+                    action="item_renamed",
+                    old_name=old_name,
+                    new_name=updated_record.filename,
+                ),
                 bearer_token=user.token or "",
             )
         except ServiceClientError as exc:
@@ -455,7 +461,7 @@ class FileService:
             )
             await self.downstream.publish_search(moved_record, bearer_token=user.token or "")
             await self.downstream.publish_activity(
-                FileActivityEvent(action="file_moved", file=moved_record),
+                ItemActivityEvent.from_file(moved_record, action="item_moved"),
                 bearer_token=user.token or "",
             )
         except ServiceClientError as exc:
@@ -485,7 +491,7 @@ class FileService:
             )
             await self.downstream.publish_search(trashed_record, bearer_token=user.token or "")
             await self.downstream.publish_activity(
-                FileActivityEvent(action="file_trashed", file=trashed_record),
+                ItemActivityEvent.from_file(trashed_record, action="item_trashed"),
                 bearer_token=user.token or "",
             )
         except ServiceClientError as exc:
@@ -516,7 +522,7 @@ class FileService:
             restored_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
             await self.downstream.publish_search(restored_record, bearer_token=user.token or "")
             await self.downstream.publish_activity(
-                FileActivityEvent(action="file_restored", file=restored_record),
+                ItemActivityEvent.from_file(restored_record, action="item_restored"),
                 bearer_token=user.token or "",
             )
         except ServiceClientError as exc:

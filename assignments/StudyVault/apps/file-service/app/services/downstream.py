@@ -4,10 +4,10 @@ from typing import Protocol
 
 from studyvault_backend_common.http import JsonServiceClient
 from studyvault_backend_common.models import (
-    FileActivityEvent,
     FileRecord,
     FileRestoreResponse,
     FolderRecord,
+    ItemActivityEvent,
     MoveItemRequest,
     RestoreItemRequest,
 )
@@ -18,7 +18,7 @@ class DownstreamPublisher(Protocol):
 
     async def publish_search(self, file_record: FileRecord, *, bearer_token: str) -> None: ...
 
-    async def publish_activity(self, event: FileActivityEvent, *, bearer_token: str) -> None: ...
+    async def publish_activity(self, event: ItemActivityEvent, *, bearer_token: str) -> None: ...
 
     async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord: ...
 
@@ -82,7 +82,7 @@ class HttpDownstreamPublisher:
             internal_token=self.internal_token,
         )
 
-    async def publish_activity(self, event: FileActivityEvent, *, bearer_token: str) -> None:
+    async def publish_activity(self, event: ItemActivityEvent, *, bearer_token: str) -> None:
         await self.client.post_json(
             f"{self.activity_url}/internal/activity/events",
             event.model_dump(mode="json"),

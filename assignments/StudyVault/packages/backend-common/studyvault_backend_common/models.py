@@ -271,14 +271,55 @@ class ActivityRecord(BaseModel):
     activity_id: str = Field(default_factory=lambda: str(uuid4()))
     owner_id: str
     action: str
-    file_id: str
-    filename: str
+    item_id: str | None = None
+    item_kind: Literal["file", "folder"] | None = None
+    item_name: str | None = None
+    message: str = ""
+    file_id: str | None = None
+    filename: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
 
 class FileActivityEvent(BaseModel):
     action: str = "file_uploaded"
     file: FileRecord
+
+
+class ItemActivityEvent(BaseModel):
+    action: str
+    item_id: str
+    item_kind: Literal["file", "folder"]
+    item_name: str
+    owner_id: str
+    created_at: datetime = Field(default_factory=utcnow)
+    parent_folder_id: str | None = None
+    old_name: str | None = None
+    new_name: str | None = None
+    file_id: str | None = None
+    filename: str | None = None
+
+    @classmethod
+    def from_file(
+        cls,
+        file_record: FileRecord,
+        *,
+        action: str,
+        old_name: str | None = None,
+        new_name: str | None = None,
+    ) -> "ItemActivityEvent":
+        return cls(
+            action=action,
+            item_id=file_record.file_id,
+            item_kind="file",
+            item_name=file_record.filename,
+            owner_id=file_record.owner_id,
+            created_at=file_record.updated_at,
+            parent_folder_id=file_record.parent_folder_id,
+            old_name=old_name,
+            new_name=new_name,
+            file_id=file_record.file_id,
+            filename=file_record.filename,
+        )
 
 
 class UploadActivityEvent(FileActivityEvent):

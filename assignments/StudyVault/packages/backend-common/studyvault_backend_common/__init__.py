@@ -15,6 +15,7 @@ from .models import (
     FileActivityEvent,
     FileRecord,
     FileRestoreResponse,
+    ItemActivityEvent,
     STUDYVAULT_ADMIN_ROLE,
     UploadActivityEvent,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "FileActivityEvent",
     "FileRecord",
     "FileRestoreResponse",
+    "ItemActivityEvent",
     "JsonServiceClient",
     "ServiceClientError",
     "STUDYVAULT_ADMIN_ROLE",

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.http import ServiceClientError
-from studyvault_backend_common.models import FileActivityEvent, FileRecord, FolderRecord, MoveItemRequest, RestoreItemRequest
+from studyvault_backend_common.models import FileRecord, FolderRecord, MoveItemRequest, RestoreItemRequest
 from tests.conftest import load_service_module
 
 
@@ -15,6 +15,8 @@ class FakeDownstream:
         self.search_records: list[FileRecord] = []
         self.activity_file_ids: list[str] = []
         self.activity_actions: list[str] = []
+        self.activity_item_kinds: list[str] = []
+        self.activity_messages: list[str | None] = []
         self.catalog_folders: dict[str, FolderRecord] = {}
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
@@ -27,8 +29,10 @@ class FakeDownstream:
         self.search_records = [record for record in self.search_records if record.file_id != item_id]
 
     async def publish_activity(self, event, *, bearer_token: str) -> None:
-        self.activity_file_ids.append(event.file.file_id)
+        self.activity_file_ids.append(event.item_id)
         self.activity_actions.append(event.action)
+        self.activity_item_kinds.append(event.item_kind)
+        self.activity_messages.append(getattr(event, "message", None))
 
     async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord:
         record = self.fetch_existing_file(file_id)
@@ -238,6 +242,7 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     assert len(downstream.search_records) == 1
     assert downstream.activity_file_ids == [payload["file_id"]]
     assert downstream.activity_actions == ["file_uploaded"]
+    assert downstream.activity_item_kinds == ["file"]
 
 
 def test_file_rename_updates_filename_and_emits_downstream_events() -> None:
@@ -269,7 +274,8 @@ def test_file_rename_updates_filename_and_emits_downstream_events() -> None:
     assert payload["object_key"] == stored.object_key
     assert downstream.catalog_records[0].filename == "final.txt"
     assert downstream.search_records[-1].filename == "final.txt"
-    assert downstream.activity_actions[-1] == "file_renamed"
+    assert downstream.activity_actions[-1] == "item_renamed"
+    assert downstream.activity_item_kinds[-1] == "file"
 
 
 def test_file_rename_is_noop_for_same_normalized_name() -> None:
@@ -406,7 +412,8 @@ def test_file_move_updates_parent_and_emits_downstream_events() -> None:
     assert response.json()["parent_folder_id"] == target.folder_id
     assert downstream.catalog_records[0].parent_folder_id == target.folder_id
     assert downstream.search_records[-1].parent_folder_id == target.folder_id
-    assert downstream.activity_actions[-1] == "file_moved"
+    assert downstream.activity_actions[-1] == "item_moved"
+    assert downstream.activity_item_kinds[-1] == "file"
 
 
 def test_file_move_to_root_succeeds() -> None:
@@ -610,7 +617,8 @@ def test_file_trash_marks_file_trashed_and_emits_downstream_events() -> None:
     assert downstream.catalog_records[0].purge_after is not None
     assert downstream.catalog_records[0].original_parent_folder_id == "folder-1"
     assert downstream.search_records[-1].trashed_at is not None
-    assert downstream.activity_actions[-1] == "file_trashed"
+    assert downstream.activity_actions[-1] == "item_trashed"
+    assert downstream.activity_item_kinds[-1] == "file"
 
 
 def test_file_trash_returns_not_found_for_unknown_file() -> None:
@@ -692,7 +700,8 @@ def test_file_restore_to_original_parent_succeeds_and_emits_downstream_events() 
     assert downstream.catalog_records[0].trashed_at is None
     assert downstream.catalog_records[0].original_parent_folder_id is None
     assert downstream.search_records[-1].trashed_at is None
-    assert downstream.activity_actions[-1] == "file_restored"
+    assert downstream.activity_actions[-1] == "item_restored"
+    assert downstream.activity_item_kinds[-1] == "file"
 
 
 def test_file_restore_explicit_target_overrides_original_parent() -> None:

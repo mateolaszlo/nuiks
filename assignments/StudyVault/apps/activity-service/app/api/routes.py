@@ -11,7 +11,7 @@ from studyvault_backend_common.models import (
     AdminPasswordResetResult,
     AdminUserSummary,
     AuthenticatedUser,
-    FileActivityEvent,
+    ItemActivityEvent,
 )
 
 from app.core.config import get_settings
@@ -50,7 +50,7 @@ def build_router(service: ActivityService, admin_service: AdminService) -> APIRo
         response_model=ActivityRecord,
         dependencies=[Depends(require_internal_token)],
     )
-    def create_activity(event: FileActivityEvent) -> ActivityRecord:
+    def create_activity(event: ItemActivityEvent) -> ActivityRecord:
         return service.record_event(event)
 
     @router.get("/api/admin/users", response_model=list[AdminUserSummary])

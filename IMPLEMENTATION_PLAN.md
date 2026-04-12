@@ -1691,9 +1691,9 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 ## 16.5 `apps/activity-service`
 
-- [ ] Replace upload-only activity model
-- [ ] Accept generic item events
-- [ ] Update activity message mapping
+- [x] Replace upload-only activity model
+- [x] Accept generic item events
+- [x] Update activity message mapping
 
 ## 16.6 `apps/frontend`
 

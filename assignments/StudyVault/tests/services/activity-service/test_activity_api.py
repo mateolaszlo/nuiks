@@ -11,8 +11,8 @@ from studyvault_backend_common.models import (
     AdminErrorRecord,
     AdminServiceHealth,
     AdminUserSummary,
-    FileActivityEvent,
     FileRecord,
+    ItemActivityEvent,
     STUDYVAULT_ADMIN_ROLE,
 )
 from tests.conftest import load_service_module
@@ -52,13 +52,82 @@ def test_activity_internal_route_accepts_generic_file_event() -> None:
     with TestClient(app) as client:
         response = client.post(
             "/internal/activity/events",
-            json=FileActivityEvent(action="file_renamed", file=file_record).model_dump(mode="json"),
+            json=ItemActivityEvent.from_file(
+                file_record,
+                action="item_renamed",
+                old_name="draft.txt",
+                new_name=file_record.filename,
+            ).model_dump(mode="json"),
             headers={"x-internal-token": "internal-test-token"},
         )
 
     assert response.status_code == 200
-    assert response.json()["action"] == "file_renamed"
+    assert response.json()["action"] == "item_renamed"
+    assert response.json()["item_kind"] == "file"
+    assert response.json()["item_id"] == file_record.file_id
+    assert response.json()["item_name"] == "final.txt"
     assert response.json()["filename"] == "final.txt"
+    assert response.json()["file_id"] == file_record.file_id
+    assert response.json()["message"] == "Renamed draft.txt to final.txt"
+
+
+def test_activity_internal_route_accepts_generic_folder_event() -> None:
+    module = load_service_module("activity")
+    repository = module.InMemoryActivityRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/internal/activity/events",
+            json=ItemActivityEvent(
+                action="folder_created",
+                item_id="folder-123",
+                item_kind="folder",
+                item_name="Projects",
+                owner_id="test-user",
+            ).model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "folder_created"
+    assert response.json()["item_kind"] == "folder"
+    assert response.json()["item_id"] == "folder-123"
+    assert response.json()["item_name"] == "Projects"
+    assert response.json()["file_id"] is None
+    assert response.json()["filename"] is None
+    assert response.json()["message"] == "Created folder Projects"
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_message"),
+    [
+        ("item_moved", "Moved notes.txt"),
+        ("item_trashed", "Moved notes.txt to trash"),
+        ("item_restored", "Restored notes.txt"),
+    ],
+)
+def test_activity_message_mapping_for_generic_item_actions(action: str, expected_message: str) -> None:
+    module = load_service_module("activity")
+    repository = module.InMemoryActivityRepository()
+    app = module.create_app(repository=repository)
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=12,
+        tags=[],
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/internal/activity/events",
+            json=ItemActivityEvent.from_file(file_record, action=action).model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == expected_message
 
 
 def test_admin_routes_require_admin_role() -> None:

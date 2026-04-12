@@ -1,3 +1,3 @@
-from studyvault_backend_common.models import ActivityRecord, FileActivityEvent
+from studyvault_backend_common.models import ActivityRecord, ItemActivityEvent
 
-__all__ = ["ActivityRecord", "FileActivityEvent"]
+__all__ = ["ActivityRecord", "ItemActivityEvent"]
