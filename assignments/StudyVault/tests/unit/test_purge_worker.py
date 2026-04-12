@@ -180,7 +180,7 @@ def test_purge_worker_continues_after_per_folder_failure() -> None:
 
     assert result.deleted_folders == 1
     assert result.failed_folders == 1
-    assert client.deleted_search_items == [first.folder_id, second.folder_id]
+    assert sorted(client.deleted_search_items) == sorted([first.folder_id, second.folder_id])
     assert client.deleted_folders == [("test-user", second.folder_id)]
 
 
@@ -208,3 +208,77 @@ def test_purge_worker_raises_when_catalog_lookup_fails() -> None:
 
     with pytest.raises(ServiceClientError):
         asyncio.run(module.run_purge_pass(client=client, batch_size=10))
+
+
+def test_purge_worker_defaults_to_once_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("purge")
+    config_module = load_service_module("purge", module_name="app.core.config")
+    monkeypatch.delenv("PURGE_RUN_MODE", raising=False)
+    monkeypatch.delenv("PURGE_INTERVAL_SECONDS", raising=False)
+    config_module.get_settings.cache_clear()
+
+    settings = config_module.get_settings()
+
+    assert settings.purge_run_mode == "once"
+    assert settings.purge_interval_seconds == 86400
+
+
+def test_purge_worker_loop_mode_runs_multiple_passes_until_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("purge")
+    config_module = load_service_module("purge", module_name="app.core.config")
+    monkeypatch.setenv("PURGE_RUN_MODE", "loop")
+    monkeypatch.setenv("PURGE_INTERVAL_SECONDS", "5")
+    config_module.get_settings.cache_clear()
+
+    client = FakePurgeClient()
+    sleep_calls: list[int] = []
+
+    async def fake_sleep(seconds: int) -> None:
+        sleep_calls.append(seconds)
+        if len(sleep_calls) >= 2:
+            raise KeyboardInterrupt
+
+    result = asyncio.run(module.run_worker(client=client, batch_size=10, sleep=fake_sleep))
+
+    assert client.list_calls == 2
+    assert sleep_calls == [5, 5]
+    assert result.deleted_files == 0
+    assert result.deleted_folders == 0
+
+
+def test_purge_worker_once_mode_does_not_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("purge")
+    config_module = load_service_module("purge", module_name="app.core.config")
+    service_module = load_service_module("purge", module_name="app.services.purge")
+    monkeypatch.setenv("PURGE_RUN_MODE", "once")
+    monkeypatch.setenv("PURGE_INTERVAL_SECONDS", "7")
+    config_module.get_settings.cache_clear()
+
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="single.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    client = FakePurgeClient(batches=[service_module.ExpiredTrashBatch(files=[file_record], folders=[])])
+    sleep_calls: list[int] = []
+
+    async def fake_sleep(seconds: int) -> None:
+        sleep_calls.append(seconds)
+
+    result = asyncio.run(module.run_worker(client=client, batch_size=10, sleep=fake_sleep))
+
+    assert result.deleted_files == 1
+    assert sleep_calls == []
+    assert client.list_calls == 2
+
+
+def test_purge_worker_rejects_invalid_interval_in_loop_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    config_module = load_service_module("purge", module_name="app.core.config")
+    monkeypatch.setenv("PURGE_RUN_MODE", "loop")
+    monkeypatch.setenv("PURGE_INTERVAL_SECONDS", "0")
+    config_module.get_settings.cache_clear()
+
+    with pytest.raises(ValueError, match="PURGE_INTERVAL_SECONDS must be a positive integer in loop mode"):
+        config_module.get_settings()

@@ -1710,7 +1710,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Process expired folders
 - [x] Add batch processing
 - [x] Add retries/logging
-- [ ] Make schedule configurable
+- [x] Make schedule configurable
 
 ---
 
