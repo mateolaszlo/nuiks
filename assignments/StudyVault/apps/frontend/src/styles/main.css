@@ -186,6 +186,13 @@ a {
   color: #14213d;
 }
 
+.create-folder-form {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(241, 245, 249, 0.9);
+}
+
 .drive-item-card {
   align-items: flex-start;
 }

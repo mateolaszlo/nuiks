@@ -27,6 +27,21 @@ export type DriveItem = {
   deleted_by_cascade: boolean;
 };
 
+export type FolderRecord = {
+  folder_id: string;
+  owner_id: string;
+  name: string;
+  normalized_name: string;
+  parent_folder_id: string | null;
+  path_depth: number;
+  created_at: string;
+  updated_at: string;
+  trashed_at: string | null;
+  purge_after: string | null;
+  original_parent_folder_id: string | null;
+  deleted_by_cascade: boolean;
+};
+
 export type CatalogItemsResponse = {
   parent_folder_id: string | null;
   items: DriveItem[];

@@ -8,6 +8,7 @@ import type {
   AdminUserSummary,
   CatalogItemsResponse,
   FileRecord,
+  FolderRecord,
 } from "./types";
 
 export class ApiClient {
@@ -41,6 +42,17 @@ export class ApiClient {
     return this.request<CatalogBreadcrumbsResponse>(
       `/api/catalog/breadcrumbs/${encodeURIComponent(folderId)}`,
     );
+  }
+
+  createFolder(name: string, parentFolderId?: string | null): Promise<FolderRecord> {
+    return this.request<FolderRecord>("/api/catalog/folders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name,
+        parent_folder_id: parentFolderId ?? null,
+      }),
+    });
   }
 
   search(query: string): Promise<FileRecord[]> {

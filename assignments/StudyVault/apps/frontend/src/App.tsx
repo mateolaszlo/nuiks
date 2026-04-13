@@ -55,6 +55,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [showCreateFolderForm, setShowCreateFolderForm] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
 
@@ -170,6 +172,28 @@ export default function App() {
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleCreateFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedName = newFolderName.trim();
+    if (!trimmedName) {
+      setError("Enter a folder name.");
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      await api.createFolder(trimmedName, currentFolderId);
+      setNewFolderName("");
+      setShowCreateFolderForm(false);
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (createFolderError) {
+      setError(createFolderError instanceof Error ? createFolderError.message : "Folder creation failed");
     } finally {
       setIsBusy(false);
     }
@@ -572,6 +596,17 @@ export default function App() {
             </div>
             <div className="action-row">
               <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  setShowCreateFolderForm((value) => !value);
+                  setError(null);
+                }}
+                disabled={isBusy}
+              >
+                {showCreateFolderForm ? "Close" : "New Folder"}
+              </button>
+              <button
                 className="secondary-button"
                 type="button"
                 onClick={() => void handleGoUp()}
@@ -589,6 +624,38 @@ export default function App() {
               </button>
             </div>
           </div>
+          {showCreateFolderForm ? (
+            <form className="stack create-folder-form" onSubmit={handleCreateFolder}>
+              <label className="stack">
+                <span>Folder name</span>
+                <input
+                  type="text"
+                  placeholder="Lecture Notes"
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  disabled={isBusy}
+                />
+              </label>
+              <p className="muted">Location: {currentFolderLabel}</p>
+              <div className="action-row">
+                <button className="primary-button" type="submit" disabled={isBusy}>
+                  {isBusy ? "Creating…" : "Create Folder"}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => {
+                    setShowCreateFolderForm(false);
+                    setNewFolderName("");
+                    setError(null);
+                  }}
+                  disabled={isBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : null}
           <div className="breadcrumbs" aria-label="Breadcrumbs">
             {breadcrumbs.map((entry, index) => {
               const isLast = index === breadcrumbs.length - 1;
