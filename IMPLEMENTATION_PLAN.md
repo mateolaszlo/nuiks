@@ -1688,6 +1688,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add folder indexing
 - [x] Add delete by `item_id`
 - [x] Add filters for trashed and kind
+- [x] Expose mixed public search results
 - [x] Add reindex script
 
 ## 16.5 `apps/activity-service`
@@ -1704,7 +1705,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add rename UI
 - [x] Add move UI
 - [x] Add trash page
-- [ ] Update search results to support folders
+- [x] Update search results to support folders
 
 ## 16.7 New worker or command
 

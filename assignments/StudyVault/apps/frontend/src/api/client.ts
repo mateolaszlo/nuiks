@@ -9,6 +9,7 @@ import type {
   CatalogTrashResponse,
   AdminUserSummary,
   CatalogItemsResponse,
+  DriveItem,
   FileRecord,
   FileRestoreResponse,
   FolderRecord,
@@ -128,8 +129,21 @@ export class ApiClient {
     );
   }
 
-  search(query: string): Promise<FileRecord[]> {
-    return this.request<FileRecord[]>(`/api/search?q=${encodeURIComponent(query)}`);
+  search(
+    query: string,
+    options?: { kind?: "file" | "folder" | "all"; includeTrashed?: boolean; parentId?: string | null },
+  ): Promise<DriveItem[]> {
+    const params = new URLSearchParams({ q: query });
+    if (options?.kind) {
+      params.set("kind", options.kind);
+    }
+    if (options?.includeTrashed) {
+      params.set("include_trashed", "true");
+    }
+    if (options?.parentId) {
+      params.set("parent_id", options.parentId);
+    }
+    return this.request<DriveItem[]>(`/api/search?${params.toString()}`);
   }
 
   listActivity(): Promise<ActivityRecord[]> {

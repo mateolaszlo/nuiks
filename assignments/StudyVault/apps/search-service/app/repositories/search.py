@@ -25,7 +25,7 @@ class SearchRepository(Protocol):
         query: str,
         *,
         include_trashed: bool = False,
-        kind: Literal["file", "folder", "all"] = "file",
+        kind: Literal["file", "folder", "all"] = "all",
         parent_id: str | None = None,
     ) -> list[DriveItem]: ...
 
@@ -59,7 +59,7 @@ class InMemorySearchRepository:
         query: str,
         *,
         include_trashed: bool = False,
-        kind: Literal["file", "folder", "all"] = "file",
+        kind: Literal["file", "folder", "all"] = "all",
         parent_id: str | None = None,
     ) -> list[DriveItem]:
         lowered = query.lower()
@@ -123,7 +123,7 @@ class MongoSearchRepository:
         query: str,
         *,
         include_trashed: bool = False,
-        kind: Literal["file", "folder", "all"] = "file",
+        kind: Literal["file", "folder", "all"] = "all",
         parent_id: str | None = None,
     ) -> list[DriveItem]:
         regex = {"$regex": re.escape(query), "$options": "i"}

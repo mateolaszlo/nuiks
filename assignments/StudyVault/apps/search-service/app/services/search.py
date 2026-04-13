@@ -50,23 +50,19 @@ class SearchService:
         query: str,
         *,
         include_trashed: bool = False,
-        kind: Literal["file", "folder", "all"] = "file",
+        kind: Literal["file", "folder", "all"] = "all",
         parent_id: str | None = None,
-    ) -> list[FileRecord]:
+    ) -> list[DriveItem]:
         if not query.strip():
             return []
         normalized_query = query.strip()
-        results = [
-            self._to_file_record(item)
-            for item in self.repository.search(
-                user.subject,
-                normalized_query,
-                include_trashed=include_trashed,
-                kind=kind,
-                parent_id=parent_id,
-            )
-            if item.kind == "file"
-        ]
+        results = self.repository.search(
+            user.subject,
+            normalized_query,
+            include_trashed=include_trashed,
+            kind=kind,
+            parent_id=parent_id,
+        )
         logger.info(
             "search executed",
             event_name="search_executed",
@@ -83,20 +79,3 @@ class SearchService:
             status="succeeded",
         )
         return results
-
-    @staticmethod
-    def _to_file_record(item: DriveItem) -> FileRecord:
-        return FileRecord(
-            file_id=item.item_id,
-            owner_id=item.owner_id,
-            filename=item.name,
-            mime_type=item.mime_type or "",
-            size=item.size or 0,
-            tags=item.tags,
-            object_key=item.object_key or "",
-            created_at=item.created_at,
-            updated_at=item.updated_at,
-            parent_folder_id=item.parent_folder_id,
-            trashed_at=item.trashed_at,
-            purge_after=item.purge_after,
-        )

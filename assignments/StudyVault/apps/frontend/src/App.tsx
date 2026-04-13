@@ -10,7 +10,6 @@ import type {
   AdminUserSummary,
   BreadcrumbEntry,
   DriveItem,
-  FileRecord,
 } from "./api/types";
 import {
   getAccessToken,
@@ -49,7 +48,7 @@ export default function App() {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([ROOT_BREADCRUMB]);
   const [currentItems, setCurrentItems] = useState<DriveItem[]>([]);
   const [trashItems, setTrashItems] = useState<DriveItem[]>([]);
-  const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
+  const [searchResults, setSearchResults] = useState<DriveItem[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
   const [adminAudit, setAdminAudit] = useState<AdminAuditEvent[]>([]);
@@ -174,7 +173,7 @@ export default function App() {
 
     try {
       setIsBusy(true);
-      const payload = await api.search(searchQuery.trim());
+      const payload = await api.search(searchQuery.trim(), { kind: "all" });
       startTransition(() => setSearchResults(payload));
       setError(null);
     } catch (searchError) {
@@ -753,7 +752,7 @@ export default function App() {
           <form className="stack" onSubmit={handleSearch}>
             <input
               type="search"
-              placeholder="Search by filename or tag"
+              placeholder="Search files and folders"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
@@ -762,23 +761,49 @@ export default function App() {
             </button>
           </form>
           <div className="results">
-            {!searchQuery.trim() ? <p className="muted">Search for a file by filename or tag.</p> : null}
+            {!searchQuery.trim() ? <p className="muted">Search files and folders by name, type, or tag.</p> : null}
             {searchQuery.trim() && searchResults.length === 0 ? (
-              <p className="muted">No matching files yet.</p>
+              <p className="muted">No matching files or folders yet.</p>
             ) : null}
-            {searchResults.map((file) => (
-              <div className="result-card" key={file.file_id}>
+            {searchResults.map((item) => (
+              <div className="result-card drive-item-card" key={item.item_id}>
                 <div>
-                  <strong>{file.filename}</strong>
-                  <p>{file.tags.join(", ") || "No tags"}</p>
+                  <div className="drive-item-title-row">
+                    <span className={`item-kind-badge item-kind-${item.kind}`}>{item.kind}</span>
+                    <strong>{item.name}</strong>
+                  </div>
+                  {item.kind === "folder" ? (
+                    <p>Folder • Open to browse contents</p>
+                  ) : (
+                    <>
+                      <p>
+                        {item.mime_type || "Unknown type"} • {item.size ?? 0} bytes
+                      </p>
+                      <p>{item.tags.join(", ") || "No tags"}</p>
+                    </>
+                  )}
                 </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void handleDownload(file.file_id, file.filename)}
-                >
-                  Download
-                </button>
+                <div className="drive-item-actions">
+                  {item.kind === "folder" ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void handleOpenFolder(item)}
+                      disabled={isBusy}
+                    >
+                      Open
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void handleDownload(item.item_id, item.name)}
+                      disabled={isBusy}
+                    >
+                      Download
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

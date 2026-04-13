@@ -31,14 +31,14 @@ def build_router(service: SearchService) -> APIRouter:
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok", "service": settings.service_name}
 
-    @router.get("/api/search", response_model=list[FileRecord])
+    @router.get("/api/search", response_model=list[DriveItem])
     def search_files(
         q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
         include_trashed: bool = Query(default=False),
-        kind: Literal["file", "folder", "all"] = Query(default="file"),
+        kind: Literal["file", "folder", "all"] = Query(default="all"),
         parent_id: str | None = Query(default=None),
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> list[FileRecord]:
+    ) -> list[DriveItem]:
         return service.search(
             user,
             q,

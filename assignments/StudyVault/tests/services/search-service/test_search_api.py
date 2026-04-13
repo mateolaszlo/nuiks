@@ -36,7 +36,8 @@ def test_search_matches_filename_and_tag_for_authenticated_user() -> None:
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["owner_id"] == "test-user"
-    assert payload[0]["filename"] == "Linear Algebra Notes.pdf"
+    assert payload[0]["name"] == "Linear Algebra Notes.pdf"
+    assert payload[0]["kind"] == "file"
 
 
 def test_search_repository_stores_drive_items_internally() -> None:
@@ -59,7 +60,7 @@ def test_search_repository_stores_drive_items_internally() -> None:
     assert stored.name == record.filename
 
 
-def test_search_skips_folder_items_while_public_api_remains_file_only() -> None:
+def test_search_returns_mixed_file_and_folder_items() -> None:
     module = load_service_module("search")
     file_record = FileRecord.create(
         owner_id="test-user",
@@ -77,8 +78,9 @@ def test_search_skips_folder_items_while_public_api_remains_file_only() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) == 1
-    assert payload[0]["file_id"] == file_record.file_id
+    assert len(payload) == 2
+    assert {item["item_id"] for item in payload} == {file_record.file_id, folder_record.folder_id}
+    assert {item["kind"] for item in payload} == {"file", "folder"}
 
 
 def test_search_rejects_overlong_query() -> None:
@@ -131,7 +133,7 @@ def test_search_excludes_trashed_files_by_default() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert [item["file_id"] for item in payload] == [active.file_id]
+    assert [item["item_id"] for item in payload] == [active.file_id]
 
 
 def test_search_includes_trashed_files_when_requested() -> None:
@@ -163,7 +165,7 @@ def test_search_includes_trashed_files_when_requested() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert {item["file_id"] for item in payload} == {active.file_id, trashed.file_id}
+    assert {item["item_id"] for item in payload} == {active.file_id, trashed.file_id}
 
 
 def test_search_include_trashed_still_respects_owner_scope() -> None:
@@ -198,7 +200,7 @@ def test_search_include_trashed_still_respects_owner_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
-    assert payload[0]["file_id"] == own_trashed.file_id
+    assert payload[0]["item_id"] == own_trashed.file_id
 
 
 def test_search_kind_file_returns_only_matching_files() -> None:
@@ -220,10 +222,11 @@ def test_search_kind_file_returns_only_matching_files() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
-    assert payload[0]["file_id"] == file_record.file_id
+    assert payload[0]["item_id"] == file_record.file_id
+    assert payload[0]["kind"] == "file"
 
 
-def test_search_kind_folder_returns_empty_list_while_public_api_remains_file_only() -> None:
+def test_search_kind_folder_returns_matching_folder_items() -> None:
     module = load_service_module("search")
     folder_record = FolderRecord.create(owner_id="test-user", name="Math Folder")
     repository = module.InMemorySearchRepository(seed=[DriveItem.from_folder(folder_record)])
@@ -233,10 +236,13 @@ def test_search_kind_folder_returns_empty_list_while_public_api_remains_file_onl
         response = client.get("/api/search?q=math&kind=folder", headers={"authorization": "Bearer fake"})
 
     assert response.status_code == 200
-    assert response.json() == []
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["item_id"] == folder_record.folder_id
+    assert payload[0]["kind"] == "folder"
 
 
-def test_search_kind_all_still_returns_only_file_records_publicly() -> None:
+def test_search_kind_all_returns_both_matching_files_and_folders() -> None:
     module = load_service_module("search")
     file_record = FileRecord.create(
         owner_id="test-user",
@@ -254,8 +260,8 @@ def test_search_kind_all_still_returns_only_file_records_publicly() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload) == 1
-    assert payload[0]["file_id"] == file_record.file_id
+    assert len(payload) == 2
+    assert {item["item_id"] for item in payload} == {file_record.file_id, folder_record.folder_id}
 
 
 def test_search_parent_id_filters_to_direct_parent_folder() -> None:
@@ -290,7 +296,7 @@ def test_search_parent_id_filters_to_direct_parent_folder() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
-    assert payload[0]["file_id"] == matching.file_id
+    assert payload[0]["item_id"] == matching.file_id
 
 
 def test_search_include_trashed_works_with_kind_and_parent_id() -> None:
@@ -318,7 +324,7 @@ def test_search_include_trashed_works_with_kind_and_parent_id() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
-    assert payload[0]["file_id"] == file_record.file_id
+    assert payload[0]["item_id"] == file_record.file_id
 
 
 def test_internal_search_delete_requires_internal_token() -> None:
@@ -382,7 +388,7 @@ def test_internal_search_item_upsert_rejects_item_id_mismatch() -> None:
     assert response.json()["detail"] == "Item id mismatch"
 
 
-def test_internal_search_item_upsert_stores_folder_document_without_publicly_returning_it() -> None:
+def test_internal_search_item_upsert_stores_folder_document_and_public_search_returns_it() -> None:
     module = load_service_module("search")
     folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
     repository = module.InMemorySearchRepository()
@@ -399,7 +405,10 @@ def test_internal_search_item_upsert_stores_folder_document_without_publicly_ret
     assert upsert_response.status_code == 200
     assert repository._records[folder.item_id].kind == "folder"
     assert search_response.status_code == 200
-    assert search_response.json() == []
+    payload = search_response.json()
+    assert len(payload) == 1
+    assert payload[0]["item_id"] == folder.item_id
+    assert payload[0]["kind"] == "folder"
 
 
 def test_internal_search_delete_removes_item_from_results() -> None:
