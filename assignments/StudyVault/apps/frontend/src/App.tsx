@@ -55,6 +55,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState("");
+  const [selectedItem, setSelectedItem] = useState<DriveItem | null>(null);
+  const [renameName, setRenameName] = useState("");
   const [showCreateFolderForm, setShowCreateFolderForm] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -199,6 +201,35 @@ export default function App() {
     }
   }
 
+  async function handleRenameItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedItem) {
+      return;
+    }
+    const trimmedName = renameName.trim();
+    if (!trimmedName) {
+      setError("Enter a name.");
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      if (selectedItem.kind === "folder") {
+        await api.renameFolder(selectedItem.item_id, trimmedName);
+      } else {
+        await api.renameFile(selectedItem.item_id, trimmedName);
+      }
+      setSelectedItem(null);
+      setRenameName("");
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "Rename failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleDownload(fileId: string, filename: string) {
     try {
       setIsBusy(true);
@@ -217,6 +248,18 @@ export default function App() {
     } finally {
       setIsBusy(false);
     }
+  }
+
+  function handleStartRename(item: DriveItem) {
+    setSelectedItem(item);
+    setRenameName(item.name);
+    setError(null);
+  }
+
+  function handleCancelRename() {
+    setSelectedItem(null);
+    setRenameName("");
+    setError(null);
   }
 
   async function handleOpenFolder(item: DriveItem) {
@@ -701,26 +744,62 @@ export default function App() {
                       <p>{item.tags.join(", ") || "No tags"}</p>
                     </>
                   )}
+                  {selectedItem?.item_id === item.item_id ? (
+                    <form className="stack rename-item-form" onSubmit={handleRenameItem}>
+                      <label className="stack">
+                        <span>Rename {item.kind}</span>
+                        <input
+                          type="text"
+                          value={renameName}
+                          onChange={(event) => setRenameName(event.target.value)}
+                          disabled={isBusy}
+                        />
+                      </label>
+                      <div className="action-row">
+                        <button className="primary-button" type="submit" disabled={isBusy}>
+                          {isBusy ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={handleCancelRename}
+                          disabled={isBusy}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
                 </div>
-                {item.kind === "folder" ? (
+                <div className="drive-item-actions">
                   <button
                     className="secondary-button"
                     type="button"
-                    onClick={() => void handleOpenFolder(item)}
+                    onClick={() => handleStartRename(item)}
                     disabled={isBusy}
                   >
-                    Open
+                    Rename
                   </button>
-                ) : (
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    onClick={() => void handleDownload(item.item_id, item.name)}
-                    disabled={isBusy}
-                  >
-                    Download
-                  </button>
-                )}
+                  {item.kind === "folder" ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void handleOpenFolder(item)}
+                      disabled={isBusy}
+                    >
+                      Open
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void handleDownload(item.item_id, item.name)}
+                      disabled={isBusy}
+                    >
+                      Download
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

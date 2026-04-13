@@ -55,6 +55,22 @@ export class ApiClient {
     });
   }
 
+  renameFile(fileId: string, name: string): Promise<FileRecord> {
+    return this.request<FileRecord>(`/api/files/${encodeURIComponent(fileId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  renameFolder(folderId: string, name: string): Promise<FolderRecord> {
+    return this.request<FolderRecord>(`/api/catalog/folders/${encodeURIComponent(folderId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  }
+
   search(query: string): Promise<FileRecord[]> {
     return this.request<FileRecord[]>(`/api/search?q=${encodeURIComponent(query)}`);
   }
