@@ -23,6 +23,12 @@ class CatalogExpiredTrashResponse(BaseModel):
     folders: list[FolderRecord]
 
 
+class CatalogItemExportResponse(BaseModel):
+    items: list[DriveItem]
+    next_offset: int | None = None
+    has_more: bool = False
+
+
 class CatalogRestoreResponse(BaseModel):
     folder_id: str
     restored_to_parent_folder_id: str | None = None
@@ -33,6 +39,7 @@ class CatalogRestoreResponse(BaseModel):
 __all__ = [
     "CatalogBreadcrumbsResponse",
     "CatalogExpiredTrashResponse",
+    "CatalogItemExportResponse",
     "CatalogItemsResponse",
     "CatalogRestoreResponse",
     "CatalogTrashResponse",

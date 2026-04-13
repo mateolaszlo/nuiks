@@ -15,6 +15,8 @@ class SearchRepository(Protocol):
 
     def index_file(self, file_record: FileRecord) -> FileRecord: ...
 
+    def clear_all(self) -> None: ...
+
     def delete_item(self, item_id: str) -> None: ...
 
     def search(
@@ -44,6 +46,9 @@ class InMemorySearchRepository:
     def index_file(self, file_record: FileRecord) -> FileRecord:
         item = self.index_item(DriveItem.from_file(file_record))
         return file_record
+
+    def clear_all(self) -> None:
+        self._records.clear()
 
     def delete_item(self, item_id: str) -> None:
         self._records.pop(item_id, None)
@@ -105,6 +110,9 @@ class MongoSearchRepository:
     def index_file(self, file_record: FileRecord) -> FileRecord:
         self.index_item(DriveItem.from_file(file_record))
         return file_record
+
+    def clear_all(self) -> None:
+        self.collection.delete_many({})
 
     def delete_item(self, item_id: str) -> None:
         self.collection.delete_one({"item_id": item_id})

@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
+    CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
     CatalogTrashResponse,
@@ -131,6 +132,22 @@ def build_router(service: CatalogService) -> APIRouter:
         limit: int = Query(default=100, ge=1, le=500),
     ) -> CatalogExpiredTrashResponse:
         return service.list_expired_trash(before=before, limit=limit)
+
+    @router.get(
+        "/internal/catalog/items/export",
+        response_model=CatalogItemExportResponse,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def export_items(
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=500),
+        include_trashed: bool = Query(default=True),
+    ) -> CatalogItemExportResponse:
+        return service.export_items(
+            offset=offset,
+            limit=limit,
+            include_trashed=include_trashed,
+        )
 
     @router.post(
         "/internal/catalog/files",

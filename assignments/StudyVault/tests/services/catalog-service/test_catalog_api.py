@@ -201,6 +201,99 @@ def test_catalog_internal_file_get_returns_not_found_for_unknown_file() -> None:
     assert response.json()["detail"] == "File not found"
 
 
+def test_catalog_internal_export_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        unauthorized = client.get("/internal/catalog/items/export")
+        authorized = client.get(
+            "/internal/catalog/items/export",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json() == {"items": [], "next_offset": None, "has_more": False}
+
+
+def test_catalog_internal_export_returns_paginated_drive_items() -> None:
+    module = load_service_module("catalog")
+    early_folder = FolderRecord.create(owner_id="owner-a", name="Alpha")
+    early_folder.created_at = datetime(2026, 4, 10, 8, tzinfo=timezone.utc)
+    early_folder.updated_at = early_folder.created_at
+    later_file = FileRecord.create(
+        owner_id="owner-a",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=["study"],
+    )
+    later_file.created_at = datetime(2026, 4, 10, 9, tzinfo=timezone.utc)
+    later_file.updated_at = later_file.created_at
+    other_owner_folder = FolderRecord.create(owner_id="owner-b", name="Beta")
+    other_owner_folder.created_at = datetime(2026, 4, 10, 7, tzinfo=timezone.utc)
+    other_owner_folder.updated_at = other_owner_folder.created_at
+
+    repository = module.InMemoryCatalogRepository(
+        seed=[later_file],
+        folder_seed=[other_owner_folder, early_folder],
+    )
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        first_page = client.get(
+            "/internal/catalog/items/export?offset=0&limit=2",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+        second_page = client.get(
+            "/internal/catalog/items/export?offset=2&limit=2",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+    assert [item["item_id"] for item in first_payload["items"]] == [
+        early_folder.folder_id,
+        later_file.file_id,
+    ]
+    assert first_payload["next_offset"] == 2
+    assert first_payload["has_more"] is True
+
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+    assert [item["item_id"] for item in second_payload["items"]] == [other_owner_folder.folder_id]
+    assert second_payload["next_offset"] is None
+    assert second_payload["has_more"] is False
+
+
+def test_catalog_internal_export_can_exclude_trashed_items() -> None:
+    module = load_service_module("catalog")
+    active_file = FileRecord.create(
+        owner_id="test-user",
+        filename="active.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    trashed_folder = FolderRecord.create(owner_id="test-user", name="Trash Folder")
+    trashed_folder.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    trashed_folder.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[active_file], folder_seed=[trashed_folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/internal/catalog/items/export?include_trashed=false",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["item_id"] for item in payload["items"]] == [active_file.file_id]
+
+
 def test_catalog_internal_file_move_requires_internal_token() -> None:
     module = load_service_module("catalog")
     record = FileRecord.create(

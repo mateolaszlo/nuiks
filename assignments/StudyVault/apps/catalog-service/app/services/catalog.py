@@ -27,6 +27,7 @@ from app.services.downstream import SearchPublisher
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
+    CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
     CatalogTrashResponse,
@@ -988,6 +989,38 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogExpiredTrashResponse(files=files, folders=folders)
+
+    def export_items(
+        self,
+        *,
+        offset: int,
+        limit: int,
+        include_trashed: bool,
+    ) -> CatalogItemExportResponse:
+        exported_items = self.repository.export_items(
+            offset=offset,
+            limit=limit + 1,
+            include_trashed=include_trashed,
+        )
+        has_more = len(exported_items) > limit
+        items = exported_items[:limit]
+        next_offset = offset + len(items) if has_more else None
+        logger.info(
+            "catalog items exported",
+            event_name="catalog_items_exported",
+            event_category="catalog",
+            offset=offset,
+            limit=limit,
+            include_trashed=include_trashed,
+            result_count=len(items),
+            has_more=has_more,
+            status="succeeded",
+        )
+        return CatalogItemExportResponse(
+            items=items,
+            next_offset=next_offset,
+            has_more=has_more,
+        )
 
     def get_breadcrumbs(self, user: AuthenticatedUser, folder_id: str) -> CatalogBreadcrumbsResponse:
         folder = self.repository.get_folder(user.subject, folder_id)

@@ -52,6 +52,14 @@ class CatalogRepository(Protocol):
 
     def list_trashed_items(self, owner_id: str) -> list[DriveItem]: ...
 
+    def export_items(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        include_trashed: bool = True,
+    ) -> list[DriveItem]: ...
+
     def get_folder_ancestors(self, owner_id: str, folder_id: str) -> list[FolderRecord]: ...
 
     def list_expired_trashed_files(self, now: datetime) -> list[FileRecord]: ...
@@ -174,6 +182,21 @@ class InMemoryCatalogRepository:
         ]
         return sorted(folders + files, key=self._trashed_item_sort_key)
 
+    def export_items(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        include_trashed: bool = True,
+    ) -> list[DriveItem]:
+        folders = [DriveItem.from_folder(record) for record in self._folders.values()]
+        files = [DriveItem.from_file(record) for record in self._records.values()]
+        items = folders + files
+        if not include_trashed:
+            items = [item for item in items if item.trashed_at is None]
+        ordered_items = sorted(items, key=self._export_item_sort_key)
+        return ordered_items[offset : offset + limit]
+
     def get_folder_ancestors(self, owner_id: str, folder_id: str) -> list[FolderRecord]:
         ancestors: list[FolderRecord] = []
         current = self.get_folder(owner_id, folder_id)
@@ -213,6 +236,10 @@ class InMemoryCatalogRepository:
     def _trashed_item_sort_key(item: DriveItem) -> tuple[datetime, int, str, str]:
         trashed_at = item.trashed_at or item.created_at
         return (trashed_at, 0 if item.kind == "folder" else 1, item.name.casefold(), item.item_id)
+
+    @staticmethod
+    def _export_item_sort_key(item: DriveItem) -> tuple[str, int, datetime, str]:
+        return (item.owner_id, 0 if item.kind == "folder" else 1, item.created_at, item.item_id)
 
 
 class SqlAlchemyCatalogRepository:
@@ -445,6 +472,27 @@ class SqlAlchemyCatalogRepository:
         items = [DriveItem.from_folder(self._to_folder_record(row)) for row in folder_rows]
         items.extend(DriveItem.from_file(self._to_record(row)) for row in file_rows)
         return sorted(items, key=self._trashed_item_sort_key)
+
+    def export_items(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+        include_trashed: bool = True,
+    ) -> list[DriveItem]:
+        with self.session_factory() as session:
+            folder_statement = select(FolderRow)
+            file_statement = select(FileRow)
+            if not include_trashed:
+                folder_statement = folder_statement.where(FolderRow.trashed_at.is_(None))
+                file_statement = file_statement.where(FileRow.trashed_at.is_(None))
+            folder_rows = session.scalars(folder_statement).all()
+            file_rows = session.scalars(file_statement).all()
+
+        items = [DriveItem.from_folder(self._to_folder_record(row)) for row in folder_rows]
+        items.extend(DriveItem.from_file(self._to_record(row)) for row in file_rows)
+        ordered_items = sorted(items, key=self._export_item_sort_key)
+        return ordered_items[offset : offset + limit]
 
     def get_folder_ancestors(self, owner_id: str, folder_id: str) -> list[FolderRecord]:
         with self.session_factory() as session:

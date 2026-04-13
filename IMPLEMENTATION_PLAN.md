@@ -1669,6 +1669,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add internal file restore endpoint
 - [x] Add internal file hard-delete endpoint
 - [x] Add internal folder hard-delete endpoint
+- [x] Add internal catalog export route
 
 ## 16.3 `apps/file-service`
 
@@ -1687,7 +1688,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add folder indexing
 - [x] Add delete by `item_id`
 - [x] Add filters for trashed and kind
-- [ ] Add reindex script
+- [x] Add reindex script
 
 ## 16.5 `apps/activity-service`
 

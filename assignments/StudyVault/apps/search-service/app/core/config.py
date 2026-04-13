@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     keycloak_client_id: str = "studyvault-frontend"
     search_mongodb_url: str = "mongodb://mongodb:27017"
     search_database_name: str = "studyvault_search"
+    catalog_internal_url: str = "http://catalog-service:8000"
+    search_reindex_batch_size: int = 500
     internal_token: str = "studyvault-internal-token-change-me"
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
@@ -23,6 +25,8 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=os.environ.get("STUDYVAULT_AUTH_DISABLED", "false").lower() == "true",
+        catalog_internal_url=os.environ.get("CATALOG_INTERNAL_URL", "http://catalog-service:8000"),
+        search_reindex_batch_size=int(os.environ.get("SEARCH_REINDEX_BATCH_SIZE", "500")),
         internal_token=os.environ.get(
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",
