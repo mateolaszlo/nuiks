@@ -1702,7 +1702,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add breadcrumbs
 - [x] Add create folder UI
 - [x] Add rename UI
-- [ ] Add move UI
+- [x] Add move UI
 - [ ] Add trash page
 - [ ] Update search results to support folders
 

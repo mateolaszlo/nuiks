@@ -71,6 +71,22 @@ export class ApiClient {
     });
   }
 
+  moveFile(fileId: string, parentFolderId?: string | null): Promise<FileRecord> {
+    return this.request<FileRecord>(`/api/files/${encodeURIComponent(fileId)}/move`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
+    });
+  }
+
+  moveFolder(folderId: string, parentFolderId?: string | null): Promise<FolderRecord> {
+    return this.request<FolderRecord>(`/api/catalog/folders/${encodeURIComponent(folderId)}/move`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
+    });
+  }
+
   search(query: string): Promise<FileRecord[]> {
     return this.request<FileRecord[]>(`/api/search?q=${encodeURIComponent(query)}`);
   }

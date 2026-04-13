@@ -17,7 +17,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -201,6 +202,14 @@ a {
   border: 1px solid rgba(20, 33, 61, 0.08);
 }
 
+.move-item-form {
+  margin-top: 0.9rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(20, 33, 61, 0.08);
+}
+
 .drive-item-card {
   align-items: flex-start;
 }
@@ -283,7 +292,8 @@ a {
 
 input[type="search"],
 input[type="text"],
-input[type="file"] {
+input[type="file"],
+select {
   width: 100%;
   padding: 0.9rem 1rem;
   border-radius: 16px;

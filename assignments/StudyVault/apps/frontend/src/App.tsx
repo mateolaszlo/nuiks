@@ -55,8 +55,10 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [tagInput, setTagInput] = useState("");
-  const [selectedItem, setSelectedItem] = useState<DriveItem | null>(null);
+  const [renameItem, setRenameItem] = useState<DriveItem | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [moveItem, setMoveItem] = useState<DriveItem | null>(null);
+  const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("");
   const [showCreateFolderForm, setShowCreateFolderForm] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isBusy, setIsBusy] = useState(false);
@@ -64,6 +66,21 @@ export default function App() {
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
+  const moveDestinations = useMemo(() => {
+    const destinations = new Map<string, { value: string; label: string }>();
+    destinations.set("", { value: "", label: "My Drive" });
+    for (const entry of breadcrumbs) {
+      if (entry.folder_id !== null) {
+        destinations.set(entry.folder_id, { value: entry.folder_id, label: entry.name });
+      }
+    }
+    for (const item of currentItems) {
+      if (item.kind === "folder" && item.item_id !== moveItem?.item_id) {
+        destinations.set(item.item_id, { value: item.item_id, label: item.name });
+      }
+    }
+    return Array.from(destinations.values());
+  }, [breadcrumbs, currentItems, moveItem]);
 
   async function loadFolder(folderId: string | null) {
     const catalogPromise = api.listCatalogItems(folderId);
@@ -203,7 +220,7 @@ export default function App() {
 
   async function handleRenameItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedItem) {
+    if (!renameItem) {
       return;
     }
     const trimmedName = renameName.trim();
@@ -214,17 +231,42 @@ export default function App() {
 
     try {
       setIsBusy(true);
-      if (selectedItem.kind === "folder") {
-        await api.renameFolder(selectedItem.item_id, trimmedName);
+      if (renameItem.kind === "folder") {
+        await api.renameFolder(renameItem.item_id, trimmedName);
       } else {
-        await api.renameFile(selectedItem.item_id, trimmedName);
+        await api.renameFile(renameItem.item_id, trimmedName);
       }
-      setSelectedItem(null);
+      setRenameItem(null);
       setRenameName("");
       await loadFolder(currentFolderId);
       setError(null);
     } catch (renameError) {
       setError(renameError instanceof Error ? renameError.message : "Rename failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleMoveItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!moveItem) {
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      const targetFolderId = moveTargetFolderId || null;
+      if (moveItem.kind === "folder") {
+        await api.moveFolder(moveItem.item_id, targetFolderId);
+      } else {
+        await api.moveFile(moveItem.item_id, targetFolderId);
+      }
+      setMoveItem(null);
+      setMoveTargetFolderId("");
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : "Move failed");
     } finally {
       setIsBusy(false);
     }
@@ -251,14 +293,30 @@ export default function App() {
   }
 
   function handleStartRename(item: DriveItem) {
-    setSelectedItem(item);
+    setMoveItem(null);
+    setMoveTargetFolderId("");
+    setRenameItem(item);
     setRenameName(item.name);
     setError(null);
   }
 
   function handleCancelRename() {
-    setSelectedItem(null);
+    setRenameItem(null);
     setRenameName("");
+    setError(null);
+  }
+
+  function handleStartMove(item: DriveItem) {
+    setRenameItem(null);
+    setRenameName("");
+    setMoveItem(item);
+    setMoveTargetFolderId(item.parent_folder_id ?? "");
+    setError(null);
+  }
+
+  function handleCancelMove() {
+    setMoveItem(null);
+    setMoveTargetFolderId("");
     setError(null);
   }
 
@@ -744,7 +802,7 @@ export default function App() {
                       <p>{item.tags.join(", ") || "No tags"}</p>
                     </>
                   )}
-                  {selectedItem?.item_id === item.item_id ? (
+                  {renameItem?.item_id === item.item_id ? (
                     <form className="stack rename-item-form" onSubmit={handleRenameItem}>
                       <label className="stack">
                         <span>Rename {item.kind}</span>
@@ -770,6 +828,37 @@ export default function App() {
                       </div>
                     </form>
                   ) : null}
+                  {moveItem?.item_id === item.item_id ? (
+                    <form className="stack move-item-form" onSubmit={handleMoveItem}>
+                      <label className="stack">
+                        <span>Move {item.kind} to</span>
+                        <select
+                          value={moveTargetFolderId}
+                          onChange={(event) => setMoveTargetFolderId(event.target.value)}
+                          disabled={isBusy}
+                        >
+                          {moveDestinations.map((destination) => (
+                            <option key={destination.value || "root"} value={destination.value}>
+                              {destination.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="action-row">
+                        <button className="primary-button" type="submit" disabled={isBusy}>
+                          {isBusy ? "Moving…" : "Move"}
+                        </button>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={handleCancelMove}
+                          disabled={isBusy}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
                 </div>
                 <div className="drive-item-actions">
                   <button
@@ -779,6 +868,14 @@ export default function App() {
                     disabled={isBusy}
                   >
                     Rename
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => handleStartMove(item)}
+                    disabled={isBusy}
+                  >
+                    Move
                   </button>
                   {item.kind === "folder" ? (
                     <button
