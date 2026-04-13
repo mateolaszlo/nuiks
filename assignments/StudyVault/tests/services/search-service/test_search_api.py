@@ -224,6 +224,64 @@ def test_internal_search_delete_requires_internal_token() -> None:
     assert authorized.status_code == 204
 
 
+def test_internal_search_item_upsert_requires_internal_token() -> None:
+    module = load_service_module("search")
+    folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
+    app = module.create_app(repository=module.InMemorySearchRepository())
+
+    with TestClient(app) as client:
+        unauthorized = client.put(
+            f"/internal/search/items/{folder.item_id}",
+            json=folder.model_dump(mode="json"),
+        )
+        authorized = client.put(
+            f"/internal/search/items/{folder.item_id}",
+            json=folder.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json()["item_id"] == folder.item_id
+    assert authorized.json()["kind"] == "folder"
+
+
+def test_internal_search_item_upsert_rejects_item_id_mismatch() -> None:
+    module = load_service_module("search")
+    folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
+    app = module.create_app(repository=module.InMemorySearchRepository())
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/internal/search/items/other-id",
+            json=folder.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Item id mismatch"
+
+
+def test_internal_search_item_upsert_stores_folder_document_without_publicly_returning_it() -> None:
+    module = load_service_module("search")
+    folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
+    repository = module.InMemorySearchRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        upsert_response = client.put(
+            f"/internal/search/items/{folder.item_id}",
+            json=folder.model_dump(mode="json"),
+            headers={"x-internal-token": "internal-test-token"},
+        )
+        search_response = client.get("/api/search?q=projects", headers={"authorization": "Bearer fake"})
+
+    assert upsert_response.status_code == 200
+    assert repository._records[folder.item_id].kind == "folder"
+    assert search_response.status_code == 200
+    assert search_response.json() == []
+
+
 def test_internal_search_delete_removes_item_from_results() -> None:
     module = load_service_module("search")
     record = FileRecord.create(
@@ -259,6 +317,27 @@ def test_internal_search_delete_is_idempotent_for_missing_item() -> None:
         )
 
     assert response.status_code == 204
+
+
+def test_internal_search_delete_removes_folder_document_idempotently() -> None:
+    module = load_service_module("search")
+    folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
+    repository = module.InMemorySearchRepository(seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        first = client.delete(
+            f"/internal/search/items/{folder.item_id}",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+        second = client.delete(
+            f"/internal/search/items/{folder.item_id}",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert first.status_code == 204
+    assert second.status_code == 204
+    assert folder.item_id not in repository._records
 
 
 def test_mongo_search_escapes_regex_metacharacters() -> None:
@@ -354,6 +433,29 @@ def test_mongo_index_file_replaces_drive_item_document() -> None:
     assert observed["document"]["item_id"] == record.file_id
     assert observed["document"]["kind"] == "file"
     assert observed["document"]["name"] == record.filename
+    assert observed["upsert"] is True
+
+
+def test_mongo_index_item_replaces_folder_drive_item_document() -> None:
+    module = load_service_module("search")
+    repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
+    observed = {}
+    folder = DriveItem.from_folder(FolderRecord.create(owner_id="test-user", name="Projects"))
+
+    class FakeCollection:
+        def replace_one(self, selector, document, upsert=False):
+            observed["selector"] = selector
+            observed["document"] = document
+            observed["upsert"] = upsert
+
+    repository.collection = FakeCollection()
+    indexed = repository.index_item(folder)
+
+    assert indexed == folder
+    assert observed["selector"] == {"item_id": folder.item_id}
+    assert observed["document"]["item_id"] == folder.item_id
+    assert observed["document"]["kind"] == "folder"
+    assert observed["document"]["name"] == folder.name
     assert observed["upsert"] is True
 
 

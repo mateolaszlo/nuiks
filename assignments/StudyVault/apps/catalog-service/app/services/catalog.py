@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from functools import partial
+import anyio
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +12,7 @@ from studyvault_backend_common.models import (
     AuthenticatedUser,
     BreadcrumbEntry,
     CreateFolderRequest,
+    DriveItem,
     FileRecord,
     FileRestoreResponse,
     FolderRecord,
@@ -20,6 +23,7 @@ from studyvault_backend_common.models import (
 )
 
 from app.repositories.catalog import CatalogRepository
+from app.services.downstream import SearchPublisher
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
@@ -35,8 +39,9 @@ logger = get_logger(__name__)
 class CatalogService:
     ROOT_BREADCRUMB_NAME = "My Drive"
 
-    def __init__(self, repository: CatalogRepository) -> None:
+    def __init__(self, repository: CatalogRepository, downstream: SearchPublisher | None = None) -> None:
         self.repository = repository
+        self.downstream = downstream
 
     def create_folder(self, user: AuthenticatedUser, request: CreateFolderRequest) -> FolderRecord:
         parent: FolderRecord | None = None
@@ -127,6 +132,7 @@ class CatalogService:
             path_depth=created.path_depth,
             status="succeeded",
         )
+        self._publish_search_item(DriveItem.from_folder(created), bearer_token=user.token)
         return created
 
     def rename_folder(self, user: AuthenticatedUser, folder_id: str, request: RenameItemRequest) -> FolderRecord:
@@ -237,6 +243,7 @@ class CatalogService:
             folder_name=updated.name,
             status="succeeded",
         )
+        self._publish_search_item(DriveItem.from_folder(updated), bearer_token=user.token)
         return updated
 
     def trash_folder(self, user: AuthenticatedUser, folder_id: str) -> None:
@@ -324,6 +331,9 @@ class CatalogService:
             trashed_file_count=len(file_updates),
             status="succeeded",
         )
+        trashed_root = next((item for item in folder_updates if item.folder_id == folder_id), None)
+        if trashed_root is not None:
+            self._publish_search_item(DriveItem.from_folder(trashed_root), bearer_token=user.token)
 
     def move_folder(self, user: AuthenticatedUser, folder_id: str, request: MoveItemRequest) -> FolderRecord:
         folder = self.repository.get_folder(user.subject, folder_id)
@@ -451,7 +461,9 @@ class CatalogService:
             path_depth=target_depth,
             status="succeeded",
         )
-        return self.repository.get_folder(user.subject, folder_id) or moved_root
+        updated_folder = self.repository.get_folder(user.subject, folder_id) or moved_root
+        self._publish_search_item(DriveItem.from_folder(updated_folder), bearer_token=user.token)
+        return updated_folder
 
     def restore_folder(
         self,
@@ -591,6 +603,7 @@ class CatalogService:
             restored_to_root=target_parent is None,
             status="succeeded",
         )
+        self._publish_search_item(DriveItem.from_folder(restored_root), bearer_token=user.token)
         return CatalogRestoreResponse(
             folder_id=folder_id,
             restored_to_parent_folder_id=target_parent_id,
@@ -836,6 +849,8 @@ class CatalogService:
         if existing.trashed_at is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Folder is not trashed")
 
+        self._delete_search_item(folder_id, bearer_token=None)
+
         folders_to_delete: list[FolderRecord] = []
         queue = [existing]
 
@@ -870,6 +885,16 @@ class CatalogService:
             deleted_folder_count=len(folders_to_delete),
             status="succeeded",
         )
+
+    def _publish_search_item(self, item: DriveItem, *, bearer_token: str | None) -> None:
+        if self.downstream is None:
+            return
+        anyio.from_thread.run(partial(self.downstream.publish_search_item, item, bearer_token=bearer_token or ""))
+
+    def _delete_search_item(self, item_id: str, *, bearer_token: str | None) -> None:
+        if self.downstream is None:
+            return
+        anyio.from_thread.run(partial(self.downstream.delete_search_item, item_id, bearer_token=bearer_token or ""))
 
     def get_file_for_owner(self, *, owner_id: str, file_id: str) -> FileRecord:
         record = self.repository.get_file(owner_id, file_id)

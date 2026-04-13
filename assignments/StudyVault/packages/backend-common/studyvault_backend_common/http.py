@@ -97,6 +97,32 @@ class JsonServiceClient:
         retry=retry_if_exception_type((httpx.HTTPError, ServiceClientError)),
         reraise=True,
     )
+    async def put_json(
+        self,
+        url: str,
+        payload: dict[str, Any],
+        *,
+        bearer_token: str | None = None,
+        internal_token: str | None = None,
+    ) -> dict[str, Any]:
+        headers = {"content-type": "application/json"}
+        if bearer_token:
+            headers["authorization"] = f"Bearer {bearer_token}"
+        if internal_token:
+            headers["x-internal-token"] = internal_token
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.put(url, json=payload, headers=headers)
+            if response.is_error:
+                raise ServiceClientError(f"PUT {url} failed with status {response.status_code}")
+            return response.json()
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(0.25),
+        retry=retry_if_exception_type((httpx.HTTPError, ServiceClientError)),
+        reraise=True,
+    )
     async def delete_json(
         self,
         url: str,

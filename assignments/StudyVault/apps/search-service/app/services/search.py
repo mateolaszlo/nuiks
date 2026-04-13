@@ -14,20 +14,23 @@ class SearchService:
     def __init__(self, repository: SearchRepository) -> None:
         self.repository = repository
 
-    def index_file(self, file_record: FileRecord) -> FileRecord:
-        indexed = self.repository.index_file(file_record)
+    def index_item(self, item: DriveItem) -> DriveItem:
+        indexed = self.repository.index_item(item)
         logger.info(
             "search document indexed",
             event_name="search_document_indexed",
             event_category="search",
-            file_id=file_record.file_id,
-            owner_id=file_record.owner_id,
-            filename=file_record.filename,
-            mime_type=file_record.mime_type,
-            tags_count=len(file_record.tags),
+            item_id=item.item_id,
+            item_kind=item.kind,
+            owner_id=item.owner_id,
+            item_name=item.name,
             status="succeeded",
         )
         return indexed
+
+    def index_file(self, file_record: FileRecord) -> FileRecord:
+        self.index_item(DriveItem.from_file(file_record))
+        return file_record
 
     def delete_item(self, item_id: str) -> None:
         self.repository.delete_item(item_id)

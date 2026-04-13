@@ -10,6 +10,8 @@ from studyvault_backend_common.models import DriveItem, FileRecord
 
 
 class SearchRepository(Protocol):
+    def index_item(self, item: DriveItem) -> DriveItem: ...
+
     def index_file(self, file_record: FileRecord) -> FileRecord: ...
 
     def delete_item(self, item_id: str) -> None: ...
@@ -26,9 +28,12 @@ class InMemorySearchRepository:
             item = self._to_drive_item(record)
             self._records[item.item_id] = item
 
-    def index_file(self, file_record: FileRecord) -> FileRecord:
-        item = DriveItem.from_file(file_record)
+    def index_item(self, item: DriveItem) -> DriveItem:
         self._records[item.item_id] = item
+        return item
+
+    def index_file(self, file_record: FileRecord) -> FileRecord:
+        item = self.index_item(DriveItem.from_file(file_record))
         return file_record
 
     def delete_item(self, item_id: str) -> None:
@@ -70,13 +75,16 @@ class MongoSearchRepository:
     def ping(self) -> None:
         self.client.admin.command("ping")
 
-    def index_file(self, file_record: FileRecord) -> FileRecord:
-        item = DriveItem.from_file(file_record)
+    def index_item(self, item: DriveItem) -> DriveItem:
         self.collection.replace_one(
             {"item_id": item.item_id},
             item.model_dump(mode="json"),
             upsert=True,
         )
+        return item
+
+    def index_file(self, file_record: FileRecord) -> FileRecord:
+        self.index_item(DriveItem.from_file(file_record))
         return file_record
 
     def delete_item(self, item_id: str) -> None:

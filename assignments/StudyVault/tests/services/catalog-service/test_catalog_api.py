@@ -2,8 +2,20 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from studyvault_backend_common.models import FileRecord, FolderRecord
+from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord
 from tests.conftest import load_service_module
+
+
+class FakeSearchPublisher:
+    def __init__(self) -> None:
+        self.published_items: list[DriveItem] = []
+        self.deleted_item_ids: list[str] = []
+
+    async def publish_search_item(self, item: DriveItem, *, bearer_token: str) -> None:
+        self.published_items.append(item)
+
+    async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
+        self.deleted_item_ids.append(item_id)
 
 
 def test_catalog_lists_files_for_authenticated_user_only() -> None:
@@ -2458,3 +2470,121 @@ def test_catalog_restore_folder_rejects_conflicting_active_sibling_name() -> Non
 
     assert response.status_code == 409
     assert response.json() == {"detail": "A folder with that name already exists in this location"}
+
+
+def test_catalog_create_folder_publishes_folder_search_item() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Projects"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 201
+    assert len(downstream.published_items) == 1
+    published = downstream.published_items[0]
+    assert published.kind == "folder"
+    assert published.name == "Projects"
+    assert published.item_id == response.json()["folder_id"]
+
+
+def test_catalog_rename_folder_publishes_updated_folder_search_item() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/catalog/folders/{folder.folder_id}",
+            json={"name": "Archives"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert downstream.published_items[-1].item_id == folder.folder_id
+    assert downstream.published_items[-1].name == "Archives"
+
+
+def test_catalog_move_folder_publishes_updated_parent_folder_id() -> None:
+    module = load_service_module("catalog")
+    source = FolderRecord.create(owner_id="test-user", name="Projects")
+    target = FolderRecord.create(owner_id="test-user", name="Archive")
+    repository = module.InMemoryCatalogRepository(folder_seed=[source, target])
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{source.folder_id}/move",
+            json={"parent_folder_id": target.folder_id},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert downstream.published_items[-1].item_id == source.folder_id
+    assert downstream.published_items[-1].parent_folder_id == target.folder_id
+
+
+def test_catalog_trash_folder_publishes_trashed_folder_search_item() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/catalog/folders/{folder.folder_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.published_items[-1].item_id == folder.folder_id
+    assert downstream.published_items[-1].trashed_at is not None
+
+
+def test_catalog_restore_folder_publishes_active_folder_search_item() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/catalog/folders/{folder.folder_id}/restore",
+            json={},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    assert downstream.published_items[-1].item_id == folder.folder_id
+    assert downstream.published_items[-1].trashed_at is None
+
+
+def test_catalog_internal_hard_delete_folder_deletes_search_item() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Projects")
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    folder.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    downstream = FakeSearchPublisher()
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/internal/catalog/folders/{folder.folder_id}/hard-delete?owner_id=test-user",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+
+    assert response.status_code == 204
+    assert downstream.deleted_item_ids == [folder.folder_id]

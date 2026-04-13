@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.models import AuthenticatedUser, FileRecord
+from studyvault_backend_common.models import AuthenticatedUser, DriveItem, FileRecord
 
 from app.core.config import get_settings
 from app.services.search import MAX_SEARCH_QUERY_LENGTH, SearchService
@@ -44,6 +44,16 @@ def build_router(service: SearchService) -> APIRouter:
     )
     def index_file(file_record: FileRecord) -> FileRecord:
         return service.index_file(file_record)
+
+    @router.put(
+        "/internal/search/items/{item_id}",
+        response_model=DriveItem,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def index_item(item_id: str, item: DriveItem) -> DriveItem:
+        if item_id != item.item_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Item id mismatch")
+        return service.index_item(item)
 
     @router.delete(
         "/internal/search/items/{item_id}",
