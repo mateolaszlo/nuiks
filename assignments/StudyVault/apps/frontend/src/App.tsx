@@ -8,6 +8,7 @@ import type {
   AdminHealthSummary,
   AdminPasswordResetResult,
   AdminUserSummary,
+  DriveItem,
   FileRecord,
 } from "./api/types";
 import {
@@ -22,6 +23,12 @@ import {
 } from "./auth/keycloak";
 
 type LoadState = "loading" | "ready" | "error";
+
+type OpenFolder = {
+  folderId: string;
+  name: string;
+  parentFolderId: string | null;
+};
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -40,7 +47,9 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [profileLabel, setProfileLabel] = useState("Anonymous");
   const [adminUser, setAdminUser] = useState(false);
-  const [files, setFiles] = useState<FileRecord[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [folderStack, setFolderStack] = useState<OpenFolder[]>([]);
+  const [currentItems, setCurrentItems] = useState<DriveItem[]>([]);
   const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
@@ -53,11 +62,16 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
 
-  async function refreshDashboard() {
-    const [filePayload, activityPayload] = await Promise.all([api.listFiles(), api.listActivity()]);
+  const currentFolderLabel = folderStack.length > 0 ? folderStack[folderStack.length - 1].name : "My Drive";
+  const canGoUp = folderStack.length > 0;
+
+  async function refreshUserWorkspace(folderId: string | null = currentFolderId) {
+    const [catalogPayload, activityPayload] = await Promise.all([
+      api.listCatalogItems(folderId),
+      api.listActivity(),
+    ]);
     startTransition(() => {
-      setFiles(filePayload);
-      setSearchResults(filePayload);
+      setCurrentItems(catalogPayload.items);
       setActivities(activityPayload);
     });
   }
@@ -93,7 +107,7 @@ export default function App() {
             if (adminReady) {
               await refreshAdminPanel();
             } else {
-              await refreshDashboard();
+              await refreshUserWorkspace(null);
             }
           } catch (dashboardError) {
             setError(
@@ -115,7 +129,8 @@ export default function App() {
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!searchQuery.trim()) {
-      setSearchResults(files);
+      setSearchResults([]);
+      setError(null);
       return;
     }
 
@@ -144,10 +159,10 @@ export default function App() {
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
-      await api.uploadFile(selectedFile, tags);
+      await api.uploadFile(selectedFile, tags, currentFolderId);
       setSelectedFile(null);
       setTagInput("");
-      await refreshDashboard();
+      await refreshUserWorkspace(currentFolderId);
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
@@ -171,6 +186,58 @@ export default function App() {
       setError(null);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Download failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleOpenFolder(item: DriveItem) {
+    if (item.kind !== "folder") {
+      return;
+    }
+
+    const nextStack = [
+      ...folderStack,
+      {
+        folderId: item.item_id,
+        name: item.name,
+        parentFolderId: item.parent_folder_id,
+      },
+    ];
+
+    try {
+      setIsBusy(true);
+      setFolderStack(nextStack);
+      setCurrentFolderId(item.item_id);
+      await refreshUserWorkspace(item.item_id);
+      setError(null);
+    } catch (navigationError) {
+      setFolderStack(folderStack);
+      setCurrentFolderId(currentFolderId);
+      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleGoUp() {
+    if (!canGoUp) {
+      return;
+    }
+
+    const nextStack = folderStack.slice(0, -1);
+    const nextFolderId = nextStack.length > 0 ? nextStack[nextStack.length - 1].folderId : null;
+
+    try {
+      setIsBusy(true);
+      setFolderStack(nextStack);
+      setCurrentFolderId(nextFolderId);
+      await refreshUserWorkspace(nextFolderId);
+      setError(null);
+    } catch (navigationError) {
+      setFolderStack(folderStack);
+      setCurrentFolderId(currentFolderId);
+      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
     } finally {
       setIsBusy(false);
     }
@@ -419,7 +486,7 @@ export default function App() {
         <div>
           <p className="eyebrow">Signed in</p>
           <h1>{profileLabel}</h1>
-          <p>Upload files, search by tag or filename, and verify the full flow end to end.</p>
+          <p>Browse your drive, upload into the current folder, search files, and review recent activity.</p>
         </div>
         <button className="secondary-button" onClick={() => void logout()}>
           Log Out
@@ -430,6 +497,7 @@ export default function App() {
         <article className="panel">
           <h2>Upload</h2>
           <form className="stack" onSubmit={handleUpload}>
+            <p className="muted">Destination: {currentFolderLabel}</p>
             <label className="stack">
               <span>File</span>
               <input
@@ -468,7 +536,10 @@ export default function App() {
             </button>
           </form>
           <div className="results">
-            {searchResults.length === 0 ? <p className="muted">No matching files yet.</p> : null}
+            {!searchQuery.trim() ? <p className="muted">Search for a file by filename or tag.</p> : null}
+            {searchQuery.trim() && searchResults.length === 0 ? (
+              <p className="muted">No matching files yet.</p>
+            ) : null}
             {searchResults.map((file) => (
               <div className="result-card" key={file.file_id}>
                 <div>
@@ -488,25 +559,77 @@ export default function App() {
         </article>
       </section>
 
-      <section className="grid">
-        <article className="panel">
-          <h2>My Files</h2>
+      <section className="grid drive-grid">
+        <article className="panel drive-panel">
+          <div className="drive-header">
+            <div>
+              <h2>My Drive</h2>
+              <p className="muted">
+                {currentFolderLabel} • {currentItems.length} item{currentItems.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="action-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void handleGoUp()}
+                disabled={!canGoUp || isBusy}
+              >
+                Up
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void refreshUserWorkspace(currentFolderId)}
+                disabled={isBusy}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
           <div className="results">
-            {files.length === 0 ? <p className="muted">Upload your first study file to populate the catalog.</p> : null}
-            {files.map((file) => (
-              <div className="result-card" key={file.file_id}>
+            {currentItems.length === 0 ? (
+              <p className="muted">
+                {currentFolderId ? "This folder is empty." : "Create content by uploading a file into My Drive."}
+              </p>
+            ) : null}
+            {currentItems.map((item) => (
+              <div className="result-card drive-item-card" key={item.item_id}>
                 <div>
-                  <strong>{file.filename}</strong>
-                  <p>{file.mime_type} • {file.size} bytes</p>
-                  <p>{formatDate(file.created_at)}</p>
+                  <div className="drive-item-title-row">
+                    <span className={`item-kind-badge item-kind-${item.kind}`}>{item.kind}</span>
+                    <strong>{item.name}</strong>
+                  </div>
+                  {item.kind === "folder" ? (
+                    <p>Folder • Open to view contents</p>
+                  ) : (
+                    <>
+                      <p>
+                        {item.mime_type || "Unknown type"} • {item.size ?? 0} bytes
+                      </p>
+                      <p>{item.tags.join(", ") || "No tags"}</p>
+                    </>
+                  )}
                 </div>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => void handleDownload(file.file_id, file.filename)}
-                >
-                  Download
-                </button>
+                {item.kind === "folder" ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void handleOpenFolder(item)}
+                    disabled={isBusy}
+                  >
+                    Open
+                  </button>
+                ) : (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void handleDownload(item.item_id, item.name)}
+                    disabled={isBusy}
+                  >
+                    Download
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -520,7 +643,7 @@ export default function App() {
               <div className="result-card" key={activity.activity_id}>
                 <div>
                   <strong>{activity.action}</strong>
-                  <p>{activity.filename}</p>
+                  <p>{activity.filename || "Unnamed item"}</p>
                 </div>
                 <span>{formatDate(activity.created_at)}</span>
               </div>

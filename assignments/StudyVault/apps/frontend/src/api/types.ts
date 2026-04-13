@@ -9,6 +9,29 @@ export type FileRecord = {
   created_at: string;
 };
 
+export type DriveItem = {
+  item_id: string;
+  kind: "file" | "folder";
+  owner_id: string;
+  name: string;
+  parent_folder_id: string | null;
+  created_at: string;
+  updated_at: string;
+  trashed_at: string | null;
+  purge_after: string | null;
+  size: number | null;
+  mime_type: string | null;
+  tags: string[];
+  object_key: string | null;
+  path_depth: number | null;
+  deleted_by_cascade: boolean;
+};
+
+export type CatalogItemsResponse = {
+  parent_folder_id: string | null;
+  items: DriveItem[];
+};
+
 export type ActivityRecord = {
   activity_id: string;
   owner_id: string;

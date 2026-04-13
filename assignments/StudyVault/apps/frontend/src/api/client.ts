@@ -5,6 +5,7 @@ import type {
   AdminHealthSummary,
   AdminPasswordResetResult,
   AdminUserSummary,
+  CatalogItemsResponse,
   FileRecord,
 } from "./types";
 
@@ -30,6 +31,11 @@ export class ApiClient {
     return this.request<FileRecord[]>("/api/catalog/files");
   }
 
+  listCatalogItems(parentFolderId?: string | null): Promise<CatalogItemsResponse> {
+    const query = parentFolderId ? `?parent_id=${encodeURIComponent(parentFolderId)}` : "";
+    return this.request<CatalogItemsResponse>(`/api/catalog/items${query}`);
+  }
+
   search(query: string): Promise<FileRecord[]> {
     return this.request<FileRecord[]>(`/api/search?q=${encodeURIComponent(query)}`);
   }
@@ -38,11 +44,14 @@ export class ApiClient {
     return this.request<ActivityRecord[]>("/api/activity/me");
   }
 
-  uploadFile(file: File, tags: string[]): Promise<FileRecord> {
+  uploadFile(file: File, tags: string[], parentFolderId?: string | null): Promise<FileRecord> {
     const body = new FormData();
     body.append("file", file);
     for (const tag of tags) {
       body.append("tags", tag);
+    }
+    if (parentFolderId) {
+      body.append("parent_folder_id", parentFolderId);
     }
 
     return this.request<FileRecord>("/api/files", {

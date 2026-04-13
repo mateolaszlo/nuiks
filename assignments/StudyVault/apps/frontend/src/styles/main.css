@@ -132,6 +132,51 @@ a {
   grid-template-columns: 1.4fr 1fr;
 }
 
+.drive-grid {
+  grid-template-columns: 1.35fr 1fr;
+}
+
+.drive-panel {
+  min-height: 28rem;
+}
+
+.drive-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.drive-item-card {
+  align-items: flex-start;
+}
+
+.drive-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.4rem;
+}
+
+.item-kind-badge {
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.item-kind-folder {
+  background: rgba(217, 119, 6, 0.14);
+  color: #9a3412;
+}
+
+.item-kind-file {
+  background: rgba(13, 59, 102, 0.12);
+  color: #0d3b66;
+}
+
 .summary-number {
   font-size: 2.4rem;
   font-weight: 700;
@@ -199,5 +244,13 @@ input[type="file"] {
 
   .admin-main-grid {
     grid-template-columns: 1fr;
+  }
+
+  .drive-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-header {
+    flex-direction: column;
   }
 }
