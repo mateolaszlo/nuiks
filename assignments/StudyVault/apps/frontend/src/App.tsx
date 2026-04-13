@@ -8,6 +8,7 @@ import type {
   AdminHealthSummary,
   AdminPasswordResetResult,
   AdminUserSummary,
+  BreadcrumbEntry,
   DriveItem,
   FileRecord,
 } from "./api/types";
@@ -23,12 +24,7 @@ import {
 } from "./auth/keycloak";
 
 type LoadState = "loading" | "ready" | "error";
-
-type OpenFolder = {
-  folderId: string;
-  name: string;
-  parentFolderId: string | null;
-};
+const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -48,7 +44,7 @@ export default function App() {
   const [profileLabel, setProfileLabel] = useState("Anonymous");
   const [adminUser, setAdminUser] = useState(false);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  const [folderStack, setFolderStack] = useState<OpenFolder[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([ROOT_BREADCRUMB]);
   const [currentItems, setCurrentItems] = useState<DriveItem[]>([]);
   const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
@@ -62,15 +58,23 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
 
-  const currentFolderLabel = folderStack.length > 0 ? folderStack[folderStack.length - 1].name : "My Drive";
-  const canGoUp = folderStack.length > 0;
+  const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
+  const canGoUp = breadcrumbs.length > 1;
 
-  async function refreshUserWorkspace(folderId: string | null = currentFolderId) {
-    const [catalogPayload, activityPayload] = await Promise.all([
-      api.listCatalogItems(folderId),
+  async function loadFolder(folderId: string | null) {
+    const catalogPromise = api.listCatalogItems(folderId);
+    const breadcrumbsPromise =
+      folderId === null
+        ? Promise.resolve({ breadcrumbs: [ROOT_BREADCRUMB] })
+        : api.getBreadcrumbs(folderId);
+    const [catalogPayload, breadcrumbPayload, activityPayload] = await Promise.all([
+      catalogPromise,
+      breadcrumbsPromise,
       api.listActivity(),
     ]);
     startTransition(() => {
+      setCurrentFolderId(folderId);
+      setBreadcrumbs(breadcrumbPayload.breadcrumbs);
       setCurrentItems(catalogPayload.items);
       setActivities(activityPayload);
     });
@@ -107,7 +111,7 @@ export default function App() {
             if (adminReady) {
               await refreshAdminPanel();
             } else {
-              await refreshUserWorkspace(null);
+              await loadFolder(null);
             }
           } catch (dashboardError) {
             setError(
@@ -162,7 +166,7 @@ export default function App() {
       await api.uploadFile(selectedFile, tags, currentFolderId);
       setSelectedFile(null);
       setTagInput("");
-      await refreshUserWorkspace(currentFolderId);
+      await loadFolder(currentFolderId);
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
@@ -196,24 +200,11 @@ export default function App() {
       return;
     }
 
-    const nextStack = [
-      ...folderStack,
-      {
-        folderId: item.item_id,
-        name: item.name,
-        parentFolderId: item.parent_folder_id,
-      },
-    ];
-
     try {
       setIsBusy(true);
-      setFolderStack(nextStack);
-      setCurrentFolderId(item.item_id);
-      await refreshUserWorkspace(item.item_id);
+      await loadFolder(item.item_id);
       setError(null);
     } catch (navigationError) {
-      setFolderStack(folderStack);
-      setCurrentFolderId(currentFolderId);
       setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
     } finally {
       setIsBusy(false);
@@ -224,19 +215,30 @@ export default function App() {
     if (!canGoUp) {
       return;
     }
-
-    const nextStack = folderStack.slice(0, -1);
-    const nextFolderId = nextStack.length > 0 ? nextStack[nextStack.length - 1].folderId : null;
+    const nextFolderId = breadcrumbs[breadcrumbs.length - 2]?.folder_id ?? null;
 
     try {
       setIsBusy(true);
-      setFolderStack(nextStack);
-      setCurrentFolderId(nextFolderId);
-      await refreshUserWorkspace(nextFolderId);
+      await loadFolder(nextFolderId);
       setError(null);
     } catch (navigationError) {
-      setFolderStack(folderStack);
-      setCurrentFolderId(currentFolderId);
+      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleBreadcrumbClick(entry: BreadcrumbEntry) {
+    const targetFolderId = entry.folder_id;
+    if (targetFolderId === currentFolderId || (targetFolderId === null && currentFolderId === null)) {
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      await loadFolder(targetFolderId);
+      setError(null);
+    } catch (navigationError) {
       setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
     } finally {
       setIsBusy(false);
@@ -580,12 +582,34 @@ export default function App() {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => void refreshUserWorkspace(currentFolderId)}
+                onClick={() => void loadFolder(currentFolderId)}
                 disabled={isBusy}
               >
                 Refresh
               </button>
             </div>
+          </div>
+          <div className="breadcrumbs" aria-label="Breadcrumbs">
+            {breadcrumbs.map((entry, index) => {
+              const isLast = index === breadcrumbs.length - 1;
+              return (
+                <div className="breadcrumb-segment" key={`${entry.folder_id ?? "root"}-${index}`}>
+                  {index > 0 ? <span className="breadcrumb-separator">/</span> : null}
+                  {isLast ? (
+                    <span className="breadcrumb-current">{entry.name}</span>
+                  ) : (
+                    <button
+                      className="breadcrumb-button"
+                      type="button"
+                      onClick={() => void handleBreadcrumbClick(entry)}
+                      disabled={isBusy}
+                    >
+                      {entry.name}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="results">
             {currentItems.length === 0 ? (

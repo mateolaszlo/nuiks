@@ -1699,7 +1699,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 ## 16.6 `apps/frontend`
 
 - [x] Replace flat file list with folder browser
-- [ ] Add breadcrumbs
+- [x] Add breadcrumbs
 - [ ] Add create folder UI
 - [ ] Add rename/move UI
 - [ ] Add trash page

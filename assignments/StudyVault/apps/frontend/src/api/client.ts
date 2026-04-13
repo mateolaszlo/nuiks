@@ -2,6 +2,7 @@ import type {
   ActivityRecord,
   AdminAuditEvent,
   AdminErrorRecord,
+  CatalogBreadcrumbsResponse,
   AdminHealthSummary,
   AdminPasswordResetResult,
   AdminUserSummary,
@@ -34,6 +35,12 @@ export class ApiClient {
   listCatalogItems(parentFolderId?: string | null): Promise<CatalogItemsResponse> {
     const query = parentFolderId ? `?parent_id=${encodeURIComponent(parentFolderId)}` : "";
     return this.request<CatalogItemsResponse>(`/api/catalog/items${query}`);
+  }
+
+  getBreadcrumbs(folderId: string): Promise<CatalogBreadcrumbsResponse> {
+    return this.request<CatalogBreadcrumbsResponse>(
+      `/api/catalog/breadcrumbs/${encodeURIComponent(folderId)}`,
+    );
   }
 
   search(query: string): Promise<FileRecord[]> {

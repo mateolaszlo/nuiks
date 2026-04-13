@@ -147,6 +147,45 @@ a {
   align-items: flex-start;
 }
 
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.breadcrumb-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.breadcrumb-separator {
+  color: #7b879c;
+}
+
+.breadcrumb-button,
+.breadcrumb-current {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #0d3b66;
+  font: inherit;
+}
+
+.breadcrumb-button {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
+.breadcrumb-current {
+  font-weight: 700;
+  color: #14213d;
+}
+
 .drive-item-card {
   align-items: flex-start;
 }

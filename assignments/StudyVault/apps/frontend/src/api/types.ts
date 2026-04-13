@@ -32,6 +32,15 @@ export type CatalogItemsResponse = {
   items: DriveItem[];
 };
 
+export type BreadcrumbEntry = {
+  folder_id: string | null;
+  name: string;
+};
+
+export type CatalogBreadcrumbsResponse = {
+  breadcrumbs: BreadcrumbEntry[];
+};
+
 export type ActivityRecord = {
   activity_id: string;
   owner_id: string;
