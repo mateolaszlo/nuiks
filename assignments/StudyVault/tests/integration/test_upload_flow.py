@@ -21,11 +21,14 @@ class FakeDownstream:
     async def publish_activity(self, event, *, bearer_token: str) -> None:
         self.activity_records.append(
             ActivityRecord(
-                owner_id=event.file.owner_id,
+                owner_id=event.owner_id,
                 action=event.action,
-                file_id=event.file.file_id,
-                filename=event.file.filename,
-                created_at=event.file.created_at,
+                item_id=event.item_id,
+                item_kind=event.item_kind,
+                item_name=event.item_name,
+                file_id=event.file_id,
+                filename=event.filename,
+                created_at=event.created_at,
             )
         )
 
