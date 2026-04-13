@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import AuthenticatedUser, DriveItem, FileRecord
 
@@ -42,13 +44,27 @@ class SearchService:
             status="succeeded",
         )
 
-    def search(self, user: AuthenticatedUser, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
+    def search(
+        self,
+        user: AuthenticatedUser,
+        query: str,
+        *,
+        include_trashed: bool = False,
+        kind: Literal["file", "folder", "all"] = "file",
+        parent_id: str | None = None,
+    ) -> list[FileRecord]:
         if not query.strip():
             return []
         normalized_query = query.strip()
         results = [
             self._to_file_record(item)
-            for item in self.repository.search(user.subject, normalized_query, include_trashed=include_trashed)
+            for item in self.repository.search(
+                user.subject,
+                normalized_query,
+                include_trashed=include_trashed,
+                kind=kind,
+                parent_id=parent_id,
+            )
             if item.kind == "file"
         ]
         logger.info(
@@ -61,6 +77,8 @@ class SearchService:
             query=normalized_query,
             query_length=len(normalized_query),
             include_trashed=include_trashed,
+            kind=kind,
+            parent_id=parent_id,
             result_count=len(results),
             status="succeeded",
         )

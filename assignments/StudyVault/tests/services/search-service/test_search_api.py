@@ -201,6 +201,126 @@ def test_search_include_trashed_still_respects_owner_scope() -> None:
     assert payload[0]["file_id"] == own_trashed.file_id
 
 
+def test_search_kind_file_returns_only_matching_files() -> None:
+    module = load_service_module("search")
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="math-notes.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    folder_record = FolderRecord.create(owner_id="test-user", name="Math Folder")
+    repository = module.InMemorySearchRepository(seed=[file_record, DriveItem.from_folder(folder_record)])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/search?q=math&kind=file", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["file_id"] == file_record.file_id
+
+
+def test_search_kind_folder_returns_empty_list_while_public_api_remains_file_only() -> None:
+    module = load_service_module("search")
+    folder_record = FolderRecord.create(owner_id="test-user", name="Math Folder")
+    repository = module.InMemorySearchRepository(seed=[DriveItem.from_folder(folder_record)])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/search?q=math&kind=folder", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_search_kind_all_still_returns_only_file_records_publicly() -> None:
+    module = load_service_module("search")
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="math-notes.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    folder_record = FolderRecord.create(owner_id="test-user", name="Math Folder")
+    repository = module.InMemorySearchRepository(seed=[file_record, DriveItem.from_folder(folder_record)])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/search?q=math&kind=all", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["file_id"] == file_record.file_id
+
+
+def test_search_parent_id_filters_to_direct_parent_folder() -> None:
+    module = load_service_module("search")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    other_parent = FolderRecord.create(owner_id="test-user", name="Archive")
+    matching = FileRecord.create(
+        owner_id="test-user",
+        filename="math-notes.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    matching.parent_folder_id = parent.folder_id
+    non_matching = FileRecord.create(
+        owner_id="test-user",
+        filename="math-other.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    non_matching.parent_folder_id = other_parent.folder_id
+    repository = module.InMemorySearchRepository(seed=[matching, non_matching])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            f"/api/search?q=math&parent_id={parent.folder_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["file_id"] == matching.file_id
+
+
+def test_search_include_trashed_works_with_kind_and_parent_id() -> None:
+    module = load_service_module("search")
+    parent = FolderRecord.create(owner_id="test-user", name="Projects")
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="math-notes.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    file_record.parent_folder_id = parent.folder_id
+    file_record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    file_record.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    repository = module.InMemorySearchRepository(seed=[file_record])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            f"/api/search?q=math&include_trashed=true&kind=file&parent_id={parent.folder_id}",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["file_id"] == file_record.file_id
+
+
 def test_internal_search_delete_requires_internal_token() -> None:
     module = load_service_module("search")
     record = FileRecord.create(
@@ -405,6 +525,50 @@ def test_mongo_search_include_trashed_omits_default_filter() -> None:
 
     assert observed_filter["owner_id"] == "test-user"
     assert "trashed_at" not in observed_filter
+
+
+def test_mongo_search_kind_and_parent_filters_are_applied() -> None:
+    module = load_service_module("search")
+    repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
+    observed_filter = {}
+
+    class FakeCursor:
+        def sort(self, field: str, direction: int):
+            return []
+
+    class FakeCollection:
+        def find(self, query):
+            observed_filter.update(query)
+            return FakeCursor()
+
+    repository.collection = FakeCollection()
+    repository.search("test-user", "math", kind="folder", parent_id="folder-1")
+
+    assert observed_filter["owner_id"] == "test-user"
+    assert observed_filter["kind"] == "folder"
+    assert observed_filter["parent_folder_id"] == "folder-1"
+    assert observed_filter["trashed_at"] is None
+
+
+def test_mongo_search_kind_all_omits_kind_filter() -> None:
+    module = load_service_module("search")
+    repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
+    observed_filter = {}
+
+    class FakeCursor:
+        def sort(self, field: str, direction: int):
+            return []
+
+    class FakeCollection:
+        def find(self, query):
+            observed_filter.update(query)
+            return FakeCursor()
+
+    repository.collection = FakeCollection()
+    repository.search("test-user", "math", kind="all")
+
+    assert observed_filter["owner_id"] == "test-user"
+    assert "kind" not in observed_filter
 
 
 def test_mongo_index_file_replaces_drive_item_document() -> None:

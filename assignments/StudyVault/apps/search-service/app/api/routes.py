@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
@@ -33,9 +35,17 @@ def build_router(service: SearchService) -> APIRouter:
     def search_files(
         q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
         include_trashed: bool = Query(default=False),
+        kind: Literal["file", "folder", "all"] = Query(default="file"),
+        parent_id: str | None = Query(default=None),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[FileRecord]:
-        return service.search(user, q, include_trashed=include_trashed)
+        return service.search(
+            user,
+            q,
+            include_trashed=include_trashed,
+            kind=kind,
+            parent_id=parent_id,
+        )
 
     @router.post(
         "/internal/search/index",

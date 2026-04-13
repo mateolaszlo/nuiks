@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import re
+from typing import Literal
 from typing import Protocol
 
 from pymongo import DESCENDING, MongoClient
@@ -16,7 +17,15 @@ class SearchRepository(Protocol):
 
     def delete_item(self, item_id: str) -> None: ...
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]: ...
+    def search(
+        self,
+        owner_id: str,
+        query: str,
+        *,
+        include_trashed: bool = False,
+        kind: Literal["file", "folder", "all"] = "file",
+        parent_id: str | None = None,
+    ) -> list[DriveItem]: ...
 
     def ping(self) -> None: ...
 
@@ -39,13 +48,23 @@ class InMemorySearchRepository:
     def delete_item(self, item_id: str) -> None:
         self._records.pop(item_id, None)
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]:
+    def search(
+        self,
+        owner_id: str,
+        query: str,
+        *,
+        include_trashed: bool = False,
+        kind: Literal["file", "folder", "all"] = "file",
+        parent_id: str | None = None,
+    ) -> list[DriveItem]:
         lowered = query.lower()
         matches = [
             item
             for item in self._records.values()
             if item.owner_id == owner_id
             and (include_trashed or item.trashed_at is None)
+            and (kind == "all" or item.kind == kind)
+            and (parent_id is None or item.parent_folder_id == parent_id)
             and (
                 lowered in item.name.lower()
                 or lowered in (item.mime_type or "").lower()
@@ -90,7 +109,15 @@ class MongoSearchRepository:
     def delete_item(self, item_id: str) -> None:
         self.collection.delete_one({"item_id": item_id})
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]:
+    def search(
+        self,
+        owner_id: str,
+        query: str,
+        *,
+        include_trashed: bool = False,
+        kind: Literal["file", "folder", "all"] = "file",
+        parent_id: str | None = None,
+    ) -> list[DriveItem]:
         regex = {"$regex": re.escape(query), "$options": "i"}
         query_filter = {
             "owner_id": owner_id,
@@ -102,5 +129,9 @@ class MongoSearchRepository:
         }
         if not include_trashed:
             query_filter["trashed_at"] = None
+        if kind != "all":
+            query_filter["kind"] = kind
+        if parent_id is not None:
+            query_filter["parent_folder_id"] = parent_id
         cursor = self.collection.find(query_filter).sort("created_at", DESCENDING)
         return [DriveItem(**document) for document in cursor]
