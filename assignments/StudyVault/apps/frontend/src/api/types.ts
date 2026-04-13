@@ -56,6 +56,24 @@ export type CatalogBreadcrumbsResponse = {
   breadcrumbs: BreadcrumbEntry[];
 };
 
+export type CatalogTrashResponse = {
+  items: DriveItem[];
+};
+
+export type FileRestoreResponse = {
+  file_id: string;
+  restored_to_parent_folder_id: string | null;
+  restored_to_root: boolean;
+  message: string;
+};
+
+export type CatalogRestoreResponse = {
+  folder_id: string;
+  restored_to_parent_folder_id: string | null;
+  restored_to_root: boolean;
+  message: string;
+};
+
 export type ActivityRecord = {
   activity_id: string;
   owner_id: string;

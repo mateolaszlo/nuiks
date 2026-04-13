@@ -1703,7 +1703,7 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add create folder UI
 - [x] Add rename UI
 - [x] Add move UI
-- [ ] Add trash page
+- [x] Add trash page
 - [ ] Update search results to support folders
 
 ## 16.7 New worker or command

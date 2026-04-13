@@ -5,9 +5,12 @@ import type {
   CatalogBreadcrumbsResponse,
   AdminHealthSummary,
   AdminPasswordResetResult,
+  CatalogRestoreResponse,
+  CatalogTrashResponse,
   AdminUserSummary,
   CatalogItemsResponse,
   FileRecord,
+  FileRestoreResponse,
   FolderRecord,
 } from "./types";
 
@@ -26,6 +29,9 @@ export class ApiClient {
       const detail = await response.text();
       throw new Error(detail || `Request failed with status ${response.status}`);
     }
+    if (response.status === 204) {
+      return undefined as T;
+    }
     return (await response.json()) as T;
   }
 
@@ -42,6 +48,10 @@ export class ApiClient {
     return this.request<CatalogBreadcrumbsResponse>(
       `/api/catalog/breadcrumbs/${encodeURIComponent(folderId)}`,
     );
+  }
+
+  listTrash(): Promise<CatalogTrashResponse> {
+    return this.request<CatalogTrashResponse>("/api/catalog/trash");
   }
 
   createFolder(name: string, parentFolderId?: string | null): Promise<FolderRecord> {
@@ -85,6 +95,37 @@ export class ApiClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
     });
+  }
+
+  trashFile(fileId: string): Promise<void> {
+    return this.request<void>(`/api/files/${encodeURIComponent(fileId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  restoreFile(fileId: string, parentFolderId?: string | null): Promise<FileRestoreResponse> {
+    return this.request<FileRestoreResponse>(`/api/files/${encodeURIComponent(fileId)}/restore`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
+    });
+  }
+
+  trashFolder(folderId: string): Promise<void> {
+    return this.request<void>(`/api/catalog/folders/${encodeURIComponent(folderId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  restoreFolder(folderId: string, parentFolderId?: string | null): Promise<CatalogRestoreResponse> {
+    return this.request<CatalogRestoreResponse>(
+      `/api/catalog/folders/${encodeURIComponent(folderId)}/restore`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
+      },
+    );
   }
 
   search(query: string): Promise<FileRecord[]> {

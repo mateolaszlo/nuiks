@@ -214,6 +214,11 @@ a {
   align-items: flex-start;
 }
 
+.trash-item-card {
+  border: 1px solid rgba(217, 119, 6, 0.14);
+  background: rgba(255, 247, 237, 0.92);
+}
+
 .drive-item-actions {
   display: flex;
   flex-wrap: wrap;

@@ -24,6 +24,7 @@ import {
 } from "./auth/keycloak";
 
 type LoadState = "loading" | "ready" | "error";
+type DashboardView = "drive" | "trash";
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 
 function formatDate(value: string | null): string {
@@ -43,9 +44,11 @@ export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [profileLabel, setProfileLabel] = useState("Anonymous");
   const [adminUser, setAdminUser] = useState(false);
+  const [currentView, setCurrentView] = useState<DashboardView>("drive");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbEntry[]>([ROOT_BREADCRUMB]);
   const [currentItems, setCurrentItems] = useState<DriveItem[]>([]);
+  const [trashItems, setTrashItems] = useState<DriveItem[]>([]);
   const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
@@ -101,6 +104,15 @@ export default function App() {
     });
   }
 
+  async function loadTrash() {
+    const [trashPayload, activityPayload] = await Promise.all([api.listTrash(), api.listActivity()]);
+    startTransition(() => {
+      setCurrentView("trash");
+      setTrashItems(trashPayload.items);
+      setActivities(activityPayload);
+    });
+  }
+
   async function refreshAdminPanel() {
     const [usersPayload, auditPayload, healthPayload, errorsPayload] = await Promise.all([
       api.listAdminUsers(),
@@ -132,6 +144,7 @@ export default function App() {
             if (adminReady) {
               await refreshAdminPanel();
             } else {
+              setCurrentView("drive");
               await loadFolder(null);
             }
           } catch (dashboardError) {
@@ -191,6 +204,27 @@ export default function App() {
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleTrashItem(item: DriveItem) {
+    try {
+      setIsBusy(true);
+      setRenameItem(null);
+      setRenameName("");
+      setMoveItem(null);
+      setMoveTargetFolderId("");
+      if (item.kind === "folder") {
+        await api.trashFolder(item.item_id);
+      } else {
+        await api.trashFile(item.item_id);
+      }
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (trashError) {
+      setError(trashError instanceof Error ? trashError.message : "Move to trash failed");
     } finally {
       setIsBusy(false);
     }
@@ -272,6 +306,23 @@ export default function App() {
     }
   }
 
+  async function handleRestoreItem(item: DriveItem) {
+    try {
+      setIsBusy(true);
+      if (item.kind === "folder") {
+        await api.restoreFolder(item.item_id);
+      } else {
+        await api.restoreFile(item.item_id);
+      }
+      await loadTrash();
+      setError(null);
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "Restore failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function handleDownload(fileId: string, filename: string) {
     try {
       setIsBusy(true);
@@ -318,6 +369,36 @@ export default function App() {
     setMoveItem(null);
     setMoveTargetFolderId("");
     setError(null);
+  }
+
+  async function handleOpenDrive() {
+    try {
+      setIsBusy(true);
+      setCurrentView("drive");
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (navigationError) {
+      setError(navigationError instanceof Error ? navigationError.message : "Drive load failed");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleOpenTrash() {
+    try {
+      setIsBusy(true);
+      setShowCreateFolderForm(false);
+      setRenameItem(null);
+      setRenameName("");
+      setMoveItem(null);
+      setMoveTargetFolderId("");
+      await loadTrash();
+      setError(null);
+    } catch (navigationError) {
+      setError(navigationError instanceof Error ? navigationError.message : "Trash load failed");
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function handleOpenFolder(item: DriveItem) {
@@ -615,9 +696,27 @@ export default function App() {
           <h1>{profileLabel}</h1>
           <p>Browse your drive, upload into the current folder, search files, and review recent activity.</p>
         </div>
-        <button className="secondary-button" onClick={() => void logout()}>
-          Log Out
-        </button>
+        <div className="action-row">
+          <button
+            className={currentView === "drive" ? "primary-button" : "secondary-button"}
+            type="button"
+            onClick={() => void handleOpenDrive()}
+            disabled={isBusy}
+          >
+            My Drive
+          </button>
+          <button
+            className={currentView === "trash" ? "primary-button" : "secondary-button"}
+            type="button"
+            onClick={() => void handleOpenTrash()}
+            disabled={isBusy}
+          >
+            Trash
+          </button>
+          <button className="secondary-button" onClick={() => void logout()}>
+            Log Out
+          </button>
+        </div>
       </section>
 
       <section className="grid">
@@ -688,218 +787,288 @@ export default function App() {
 
       <section className="grid drive-grid">
         <article className="panel drive-panel">
-          <div className="drive-header">
-            <div>
-              <h2>My Drive</h2>
-              <p className="muted">
-                {currentFolderLabel} • {currentItems.length} item{currentItems.length === 1 ? "" : "s"}
-              </p>
-            </div>
-            <div className="action-row">
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => {
-                  setShowCreateFolderForm((value) => !value);
-                  setError(null);
-                }}
-                disabled={isBusy}
-              >
-                {showCreateFolderForm ? "Close" : "New Folder"}
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => void handleGoUp()}
-                disabled={!canGoUp || isBusy}
-              >
-                Up
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => void loadFolder(currentFolderId)}
-                disabled={isBusy}
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-          {showCreateFolderForm ? (
-            <form className="stack create-folder-form" onSubmit={handleCreateFolder}>
-              <label className="stack">
-                <span>Folder name</span>
-                <input
-                  type="text"
-                  placeholder="Lecture Notes"
-                  value={newFolderName}
-                  onChange={(event) => setNewFolderName(event.target.value)}
-                  disabled={isBusy}
-                />
-              </label>
-              <p className="muted">Location: {currentFolderLabel}</p>
-              <div className="action-row">
-                <button className="primary-button" type="submit" disabled={isBusy}>
-                  {isBusy ? "Creating…" : "Create Folder"}
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => {
-                    setShowCreateFolderForm(false);
-                    setNewFolderName("");
-                    setError(null);
-                  }}
-                  disabled={isBusy}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          ) : null}
-          <div className="breadcrumbs" aria-label="Breadcrumbs">
-            {breadcrumbs.map((entry, index) => {
-              const isLast = index === breadcrumbs.length - 1;
-              return (
-                <div className="breadcrumb-segment" key={`${entry.folder_id ?? "root"}-${index}`}>
-                  {index > 0 ? <span className="breadcrumb-separator">/</span> : null}
-                  {isLast ? (
-                    <span className="breadcrumb-current">{entry.name}</span>
-                  ) : (
-                    <button
-                      className="breadcrumb-button"
-                      type="button"
-                      onClick={() => void handleBreadcrumbClick(entry)}
-                      disabled={isBusy}
-                    >
-                      {entry.name}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="results">
-            {currentItems.length === 0 ? (
-              <p className="muted">
-                {currentFolderId ? "This folder is empty." : "Create content by uploading a file into My Drive."}
-              </p>
-            ) : null}
-            {currentItems.map((item) => (
-              <div className="result-card drive-item-card" key={item.item_id}>
+          {currentView === "drive" ? (
+            <>
+              <div className="drive-header">
                 <div>
-                  <div className="drive-item-title-row">
-                    <span className={`item-kind-badge item-kind-${item.kind}`}>{item.kind}</span>
-                    <strong>{item.name}</strong>
-                  </div>
-                  {item.kind === "folder" ? (
-                    <p>Folder • Open to view contents</p>
-                  ) : (
-                    <>
-                      <p>
-                        {item.mime_type || "Unknown type"} • {item.size ?? 0} bytes
-                      </p>
-                      <p>{item.tags.join(", ") || "No tags"}</p>
-                    </>
-                  )}
-                  {renameItem?.item_id === item.item_id ? (
-                    <form className="stack rename-item-form" onSubmit={handleRenameItem}>
-                      <label className="stack">
-                        <span>Rename {item.kind}</span>
-                        <input
-                          type="text"
-                          value={renameName}
-                          onChange={(event) => setRenameName(event.target.value)}
-                          disabled={isBusy}
-                        />
-                      </label>
-                      <div className="action-row">
-                        <button className="primary-button" type="submit" disabled={isBusy}>
-                          {isBusy ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={handleCancelRename}
-                          disabled={isBusy}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  ) : null}
-                  {moveItem?.item_id === item.item_id ? (
-                    <form className="stack move-item-form" onSubmit={handleMoveItem}>
-                      <label className="stack">
-                        <span>Move {item.kind} to</span>
-                        <select
-                          value={moveTargetFolderId}
-                          onChange={(event) => setMoveTargetFolderId(event.target.value)}
-                          disabled={isBusy}
-                        >
-                          {moveDestinations.map((destination) => (
-                            <option key={destination.value || "root"} value={destination.value}>
-                              {destination.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="action-row">
-                        <button className="primary-button" type="submit" disabled={isBusy}>
-                          {isBusy ? "Moving…" : "Move"}
-                        </button>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          onClick={handleCancelMove}
-                          disabled={isBusy}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  ) : null}
+                  <h2>My Drive</h2>
+                  <p className="muted">
+                    {currentFolderLabel} • {currentItems.length} item{currentItems.length === 1 ? "" : "s"}
+                  </p>
                 </div>
-                <div className="drive-item-actions">
+                <div className="action-row">
                   <button
-                    className="secondary-button"
+                    className="primary-button"
                     type="button"
-                    onClick={() => handleStartRename(item)}
+                    onClick={() => {
+                      setShowCreateFolderForm((value) => !value);
+                      setError(null);
+                    }}
                     disabled={isBusy}
                   >
-                    Rename
+                    {showCreateFolderForm ? "Close" : "New Folder"}
                   </button>
                   <button
                     className="secondary-button"
                     type="button"
-                    onClick={() => handleStartMove(item)}
+                    onClick={() => void handleGoUp()}
+                    disabled={!canGoUp || isBusy}
+                  >
+                    Up
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void loadFolder(currentFolderId)}
                     disabled={isBusy}
                   >
-                    Move
+                    Refresh
                   </button>
-                  {item.kind === "folder" ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => void handleOpenFolder(item)}
-                      disabled={isBusy}
-                    >
-                      Open
-                    </button>
-                  ) : (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => void handleDownload(item.item_id, item.name)}
-                      disabled={isBusy}
-                    >
-                      Download
-                    </button>
-                  )}
                 </div>
               </div>
-            ))}
-          </div>
+              {showCreateFolderForm ? (
+                <form className="stack create-folder-form" onSubmit={handleCreateFolder}>
+                  <label className="stack">
+                    <span>Folder name</span>
+                    <input
+                      type="text"
+                      placeholder="Lecture Notes"
+                      value={newFolderName}
+                      onChange={(event) => setNewFolderName(event.target.value)}
+                      disabled={isBusy}
+                    />
+                  </label>
+                  <p className="muted">Location: {currentFolderLabel}</p>
+                  <div className="action-row">
+                    <button className="primary-button" type="submit" disabled={isBusy}>
+                      {isBusy ? "Creating…" : "Create Folder"}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => {
+                        setShowCreateFolderForm(false);
+                        setNewFolderName("");
+                        setError(null);
+                      }}
+                      disabled={isBusy}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+              <div className="breadcrumbs" aria-label="Breadcrumbs">
+                {breadcrumbs.map((entry, index) => {
+                  const isLast = index === breadcrumbs.length - 1;
+                  return (
+                    <div className="breadcrumb-segment" key={`${entry.folder_id ?? "root"}-${index}`}>
+                      {index > 0 ? <span className="breadcrumb-separator">/</span> : null}
+                      {isLast ? (
+                        <span className="breadcrumb-current">{entry.name}</span>
+                      ) : (
+                        <button
+                          className="breadcrumb-button"
+                          type="button"
+                          onClick={() => void handleBreadcrumbClick(entry)}
+                          disabled={isBusy}
+                        >
+                          {entry.name}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="results">
+                {currentItems.length === 0 ? (
+                  <p className="muted">
+                    {currentFolderId ? "This folder is empty." : "Create content by uploading a file into My Drive."}
+                  </p>
+                ) : null}
+                {currentItems.map((item) => (
+                  <div className="result-card drive-item-card" key={item.item_id}>
+                    <div>
+                      <div className="drive-item-title-row">
+                        <span className={`item-kind-badge item-kind-${item.kind}`}>{item.kind}</span>
+                        <strong>{item.name}</strong>
+                      </div>
+                      {item.kind === "folder" ? (
+                        <p>Folder • Open to view contents</p>
+                      ) : (
+                        <>
+                          <p>
+                            {item.mime_type || "Unknown type"} • {item.size ?? 0} bytes
+                          </p>
+                          <p>{item.tags.join(", ") || "No tags"}</p>
+                        </>
+                      )}
+                      {renameItem?.item_id === item.item_id ? (
+                        <form className="stack rename-item-form" onSubmit={handleRenameItem}>
+                          <label className="stack">
+                            <span>Rename {item.kind}</span>
+                            <input
+                              type="text"
+                              value={renameName}
+                              onChange={(event) => setRenameName(event.target.value)}
+                              disabled={isBusy}
+                            />
+                          </label>
+                          <div className="action-row">
+                            <button className="primary-button" type="submit" disabled={isBusy}>
+                              {isBusy ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={handleCancelRename}
+                              disabled={isBusy}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
+                      {moveItem?.item_id === item.item_id ? (
+                        <form className="stack move-item-form" onSubmit={handleMoveItem}>
+                          <label className="stack">
+                            <span>Move {item.kind} to</span>
+                            <select
+                              value={moveTargetFolderId}
+                              onChange={(event) => setMoveTargetFolderId(event.target.value)}
+                              disabled={isBusy}
+                            >
+                              {moveDestinations.map((destination) => (
+                                <option key={destination.value || "root"} value={destination.value}>
+                                  {destination.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="action-row">
+                            <button className="primary-button" type="submit" disabled={isBusy}>
+                              {isBusy ? "Moving…" : "Move"}
+                            </button>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={handleCancelMove}
+                              disabled={isBusy}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
+                    </div>
+                    <div className="drive-item-actions">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => handleStartRename(item)}
+                        disabled={isBusy}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => handleStartMove(item)}
+                        disabled={isBusy}
+                      >
+                        Move
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void handleTrashItem(item)}
+                        disabled={isBusy}
+                      >
+                        Trash
+                      </button>
+                      {item.kind === "folder" ? (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => void handleOpenFolder(item)}
+                          disabled={isBusy}
+                        >
+                          Open
+                        </button>
+                      ) : (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => void handleDownload(item.item_id, item.name)}
+                          disabled={isBusy}
+                        >
+                          Download
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="drive-header">
+                <div>
+                  <h2>Trash</h2>
+                  <p className="muted">
+                    {trashItems.length} item{trashItems.length === 1 ? "" : "s"} awaiting purge or restore
+                  </p>
+                </div>
+                <div className="action-row">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void loadTrash()}
+                    disabled={isBusy}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+              <div className="results">
+                {trashItems.length === 0 ? (
+                  <p className="muted">Trash is empty.</p>
+                ) : null}
+                {trashItems.map((item) => (
+                  <div className="result-card drive-item-card trash-item-card" key={item.item_id}>
+                    <div>
+                      <div className="drive-item-title-row">
+                        <span className={`item-kind-badge item-kind-${item.kind}`}>{item.kind}</span>
+                        <strong>{item.name}</strong>
+                      </div>
+                      <p>Deleted {formatDate(item.trashed_at)}</p>
+                      <p>Purge scheduled for {formatDate(item.purge_after)}</p>
+                      {item.kind === "file" ? (
+                        <>
+                          <p>
+                            {item.mime_type || "Unknown type"} • {item.size ?? 0} bytes
+                          </p>
+                          <p>{item.tags.join(", ") || "No tags"}</p>
+                        </>
+                      ) : (
+                        <p>Folder • Restore to recover contents metadata.</p>
+                      )}
+                    </div>
+                    <div className="drive-item-actions">
+                      <button
+                        className="primary-button"
+                        type="button"
+                        onClick={() => void handleRestoreItem(item)}
+                        disabled={isBusy}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </article>
 
         <article className="panel">
