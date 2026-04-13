@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from studyvault_backend_common.models import FileRecord
+from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord
 from tests.conftest import load_service_module
 
 
@@ -37,6 +37,48 @@ def test_search_matches_filename_and_tag_for_authenticated_user() -> None:
     assert len(payload) == 1
     assert payload[0]["owner_id"] == "test-user"
     assert payload[0]["filename"] == "Linear Algebra Notes.pdf"
+
+
+def test_search_repository_stores_drive_items_internally() -> None:
+    module = load_service_module("search")
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="Linear Algebra Notes.pdf",
+        mime_type="application/pdf",
+        size=100,
+        tags=["math"],
+    )
+    repository = module.InMemorySearchRepository()
+
+    indexed = repository.index_file(record)
+
+    assert indexed == record
+    stored = repository._records[record.file_id]
+    assert stored.item_id == record.file_id
+    assert stored.kind == "file"
+    assert stored.name == record.filename
+
+
+def test_search_skips_folder_items_while_public_api_remains_file_only() -> None:
+    module = load_service_module("search")
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="math-notes.txt",
+        mime_type="text/plain",
+        size=20,
+        tags=["math"],
+    )
+    folder_record = FolderRecord.create(owner_id="test-user", name="Math Folder")
+    repository = module.InMemorySearchRepository(seed=[file_record, DriveItem.from_folder(folder_record)])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get("/api/search?q=math", headers={"authorization": "Bearer fake"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["file_id"] == file_record.file_id
 
 
 def test_search_rejects_overlong_query() -> None:
@@ -238,10 +280,10 @@ def test_mongo_search_escapes_regex_metacharacters() -> None:
 
     expected_pattern = re.escape("math.*[notes]")
     assert observed_filter["owner_id"] == "test-user"
-    assert observed_filter["$or"][0]["filename"]["$regex"] == expected_pattern
+    assert observed_filter["$or"][0]["name"]["$regex"] == expected_pattern
     assert observed_filter["$or"][1]["mime_type"]["$regex"] == expected_pattern
     assert observed_filter["$or"][2]["tags"]["$regex"] == expected_pattern
-    assert observed_filter["$or"][0]["filename"]["$options"] == "i"
+    assert observed_filter["$or"][0]["name"]["$options"] == "i"
 
 
 def test_mongo_search_excludes_trashed_files_by_default() -> None:
@@ -284,3 +326,47 @@ def test_mongo_search_include_trashed_omits_default_filter() -> None:
 
     assert observed_filter["owner_id"] == "test-user"
     assert "trashed_at" not in observed_filter
+
+
+def test_mongo_index_file_replaces_drive_item_document() -> None:
+    module = load_service_module("search")
+    repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
+    observed = {}
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="Linear Algebra Notes.pdf",
+        mime_type="application/pdf",
+        size=100,
+        tags=["math"],
+    )
+
+    class FakeCollection:
+        def replace_one(self, selector, document, upsert=False):
+            observed["selector"] = selector
+            observed["document"] = document
+            observed["upsert"] = upsert
+
+    repository.collection = FakeCollection()
+    indexed = repository.index_file(record)
+
+    assert indexed == record
+    assert observed["selector"] == {"item_id": record.file_id}
+    assert observed["document"]["item_id"] == record.file_id
+    assert observed["document"]["kind"] == "file"
+    assert observed["document"]["name"] == record.filename
+    assert observed["upsert"] is True
+
+
+def test_mongo_delete_item_uses_item_id_selector() -> None:
+    module = load_service_module("search")
+    repository = module.MongoSearchRepository("mongodb://example.test:27017", "studyvault_search")
+    observed = {}
+
+    class FakeCollection:
+        def delete_one(self, selector):
+            observed["selector"] = selector
+
+    repository.collection = FakeCollection()
+    repository.delete_item("item-123")
+
+    assert observed["selector"] == {"item_id": "item-123"}

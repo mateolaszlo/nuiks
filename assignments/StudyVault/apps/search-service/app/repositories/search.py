@@ -6,7 +6,7 @@ from typing import Protocol
 
 from pymongo import DESCENDING, MongoClient
 
-from studyvault_backend_common.models import FileRecord
+from studyvault_backend_common.models import DriveItem, FileRecord
 
 
 class SearchRepository(Protocol):
@@ -14,39 +14,49 @@ class SearchRepository(Protocol):
 
     def delete_item(self, item_id: str) -> None: ...
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]: ...
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]: ...
 
     def ping(self) -> None: ...
 
 
 class InMemorySearchRepository:
-    def __init__(self, seed: Iterable[FileRecord] | None = None) -> None:
-        self._records = {record.file_id: record for record in seed or []}
+    def __init__(self, seed: Iterable[FileRecord | DriveItem] | None = None) -> None:
+        self._records = {}
+        for record in seed or []:
+            item = self._to_drive_item(record)
+            self._records[item.item_id] = item
 
     def index_file(self, file_record: FileRecord) -> FileRecord:
-        self._records[file_record.file_id] = file_record
+        item = DriveItem.from_file(file_record)
+        self._records[item.item_id] = item
         return file_record
 
     def delete_item(self, item_id: str) -> None:
         self._records.pop(item_id, None)
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]:
         lowered = query.lower()
         matches = [
-            record
-            for record in self._records.values()
-            if record.owner_id == owner_id
-            and (include_trashed or record.trashed_at is None)
+            item
+            for item in self._records.values()
+            if item.owner_id == owner_id
+            and (include_trashed or item.trashed_at is None)
             and (
-                lowered in record.filename.lower()
-                or lowered in record.mime_type.lower()
-                or any(lowered in tag.lower() for tag in record.tags)
+                lowered in item.name.lower()
+                or lowered in (item.mime_type or "").lower()
+                or any(lowered in tag.lower() for tag in item.tags)
             )
         ]
         return sorted(matches, key=lambda item: item.created_at, reverse=True)
 
     def ping(self) -> None:
         return None
+
+    @staticmethod
+    def _to_drive_item(record: FileRecord | DriveItem) -> DriveItem:
+        if isinstance(record, DriveItem):
+            return record
+        return DriveItem.from_file(record)
 
 
 class MongoSearchRepository:
@@ -61,22 +71,23 @@ class MongoSearchRepository:
         self.client.admin.command("ping")
 
     def index_file(self, file_record: FileRecord) -> FileRecord:
+        item = DriveItem.from_file(file_record)
         self.collection.replace_one(
-            {"file_id": file_record.file_id},
-            file_record.model_dump(mode="json"),
+            {"item_id": item.item_id},
+            item.model_dump(mode="json"),
             upsert=True,
         )
         return file_record
 
     def delete_item(self, item_id: str) -> None:
-        self.collection.delete_one({"file_id": item_id})
+        self.collection.delete_one({"item_id": item_id})
 
-    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[FileRecord]:
+    def search(self, owner_id: str, query: str, *, include_trashed: bool = False) -> list[DriveItem]:
         regex = {"$regex": re.escape(query), "$options": "i"}
         query_filter = {
             "owner_id": owner_id,
             "$or": [
-                {"filename": regex},
+                {"name": regex},
                 {"mime_type": regex},
                 {"tags": regex},
             ],
@@ -84,4 +95,4 @@ class MongoSearchRepository:
         if not include_trashed:
             query_filter["trashed_at"] = None
         cursor = self.collection.find(query_filter).sort("created_at", DESCENDING)
-        return [FileRecord(**document) for document in cursor]
+        return [DriveItem(**document) for document in cursor]
