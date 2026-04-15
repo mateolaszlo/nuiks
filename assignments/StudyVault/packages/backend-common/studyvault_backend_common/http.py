@@ -14,6 +14,14 @@ class JsonServiceClient:
     def __init__(self, timeout: float = 10.0) -> None:
         self.timeout = timeout
 
+    @staticmethod
+    def _build_service_error(method: str, url: str, response: httpx.Response) -> ServiceClientError:
+        detail = response.text.strip()
+        message = f"{method} {url} failed with status {response.status_code}"
+        if detail:
+            message = f"{message} {detail}"
+        return ServiceClientError(message)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_fixed(0.25),
@@ -37,7 +45,7 @@ class JsonServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(url, json=payload, headers=headers)
             if response.is_error:
-                raise ServiceClientError(f"POST {url} failed with status {response.status_code}")
+                raise self._build_service_error("POST", url, response)
             return response.json()
 
     @retry(
@@ -62,7 +70,7 @@ class JsonServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(url, headers=headers)
             if response.is_error:
-                raise ServiceClientError(f"GET {url} failed with status {response.status_code}")
+                raise self._build_service_error("GET", url, response)
             return response.json()
 
     @retry(
@@ -88,7 +96,7 @@ class JsonServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.patch(url, json=payload, headers=headers)
             if response.is_error:
-                raise ServiceClientError(f"PATCH {url} failed with status {response.status_code}")
+                raise self._build_service_error("PATCH", url, response)
             return response.json()
 
     @retry(
@@ -114,7 +122,7 @@ class JsonServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.put(url, json=payload, headers=headers)
             if response.is_error:
-                raise ServiceClientError(f"PUT {url} failed with status {response.status_code}")
+                raise self._build_service_error("PUT", url, response)
             return response.json()
 
     @retry(
@@ -140,7 +148,7 @@ class JsonServiceClient:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.delete(url, headers=headers, params=query_params)
             if response.is_error:
-                raise ServiceClientError(f"DELETE {url} failed with status {response.status_code}")
+                raise self._build_service_error("DELETE", url, response)
             if not response.content:
                 return {}
             return response.json()

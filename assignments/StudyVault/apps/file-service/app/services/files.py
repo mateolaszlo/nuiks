@@ -62,15 +62,20 @@ class FileService:
     @staticmethod
     def _map_catalog_file_error(exc: ServiceClientError) -> HTTPException:
         message = str(exc)
+        lowered = message.lower()
         if "status 404" in message:
             return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
         if "status 422" in message:
+            if "trashed folder" in lowered:
+                return HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Cannot move file into trashed folder",
+                )
             return HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Cannot move file into trashed folder",
+                detail="File move request was invalid",
             )
         if "status 409" in message:
-            lowered = message.lower()
             if "trashed" in lowered:
                 if "rename" in lowered:
                     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")

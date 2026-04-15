@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -18,6 +19,7 @@ class FakeDownstream:
         self.activity_item_kinds: list[str] = []
         self.activity_messages: list[str | None] = []
         self.catalog_folders: dict[str, FolderRecord] = {}
+        self.move_error: ServiceClientError | None = None
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
         self.catalog_records.append(file_record)
@@ -81,6 +83,8 @@ class FakeDownstream:
         *,
         bearer_token: str,
     ) -> FileRecord:
+        if self.move_error is not None:
+            raise self.move_error
         existing = self.fetch_existing_file(file_record.file_id)
         if existing.trashed_at is not None:
             raise ServiceClientError(
@@ -217,6 +221,28 @@ class FakeDownstream:
                 f"DELETE http://catalog.test/internal/catalog/files/{file_id}/hard-delete failed with status 409"
             )
         self.catalog_records = [record for record in self.catalog_records if record.file_id != file_id]
+
+
+class RecordingJsonClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, object], str | None, str | None]] = []
+
+    async def post_json(
+        self,
+        url: str,
+        payload: dict[str, object],
+        *,
+        bearer_token: str | None = None,
+        internal_token: str | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((url, payload, bearer_token, internal_token))
+        return FileRecord.create(
+            owner_id="test-user",
+            filename="notes.txt",
+            mime_type="text/plain",
+            size=5,
+            tags=[],
+        ).model_dump(mode="json")
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -527,6 +553,37 @@ def test_file_move_rejects_trashed_target_folder() -> None:
     assert response.json()["detail"] == "Cannot move file into trashed folder"
 
 
+def test_file_move_returns_generic_invalid_request_for_non_trashed_folder_422() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    target = FolderRecord.create(owner_id="test-user", name="Target")
+    downstream.catalog_folders[target.folder_id] = target
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    downstream.move_error = ServiceClientError(
+        f"POST http://catalog.test/internal/catalog/files/{stored.file_id}/move failed with status 422 "
+        '{"detail":"Field required","errors":[{"loc":["query","owner_id"]}]}'
+    )
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/files/{stored.file_id}/move",
+            headers={"authorization": "Bearer fake"},
+            json={"parent_folder_id": target.folder_id},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "File move request was invalid"
+
+
 def test_file_move_rejects_trashed_file() -> None:
     module = load_service_module("file")
     object_store = module.InMemoryObjectStoreRepository()
@@ -551,6 +608,40 @@ def test_file_move_rejects_trashed_file() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Cannot move trashed file"
+
+
+def test_http_downstream_move_catalog_file_sends_owner_id_as_query_param() -> None:
+    module = load_service_module("file")
+    client = RecordingJsonClient()
+    downstream = module.HttpDownstreamPublisher(
+        catalog_url="http://catalog.test",
+        search_url="http://search.test",
+        activity_url="http://activity.test",
+        internal_token="internal-test-token",
+        client=client,
+    )
+    record = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+
+    anyio.run(
+        lambda: downstream.move_catalog_file(
+            record,
+            MoveItemRequest(parent_folder_id="target-folder"),
+            bearer_token="fake",
+        )
+    )
+
+    assert len(client.calls) == 1
+    url, payload, bearer_token, internal_token = client.calls[0]
+    assert url == f"http://catalog.test/internal/catalog/files/{record.file_id}/move?owner_id=test-user"
+    assert payload == {"parent_folder_id": "target-folder"}
+    assert bearer_token == "fake"
+    assert internal_token == "internal-test-token"
 
 
 def test_file_move_rejects_target_name_conflict() -> None:

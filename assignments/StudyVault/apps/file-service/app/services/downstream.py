@@ -122,9 +122,8 @@ class HttpDownstreamPublisher:
         bearer_token: str,
     ) -> FileRecord:
         payload = await self.client.post_json(
-            f"{self.catalog_url}/internal/catalog/files/{file_record.file_id}/move",
+            f"{self.catalog_url}/internal/catalog/files/{file_record.file_id}/move?owner_id={file_record.owner_id}",
             {
-                "owner_id": file_record.owner_id,
                 "parent_folder_id": request.parent_folder_id,
             },
             bearer_token=bearer_token,
