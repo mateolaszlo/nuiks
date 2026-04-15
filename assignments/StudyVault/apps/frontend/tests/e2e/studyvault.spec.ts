@@ -119,6 +119,39 @@ test("file can be dragged into a folder row", async ({ page }) => {
   await expect(driveSurface.locator(".table-row").filter({ hasText: filename })).toHaveCount(0);
 });
 
+test("folder opens on single click", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `single-click-${uniqueId}`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const folderRow = driveSurface.locator(".table-row").filter({ hasText: folderName }).first();
+  await expect(folderRow).toBeVisible({ timeout: 60_000 });
+
+  await folderRow.click();
+
+  await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
+  await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first()).toBeVisible();
+});
+
+test("refresh keeps the existing authenticated session", async ({ page }) => {
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+
+  await page.reload();
+
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toHaveCount(0);
+});
+
 test("admin login shows admin indicator", async ({ page }) => {
   await loginAs(page, "admin", "admin123");
 

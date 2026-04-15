@@ -2,6 +2,7 @@ import Keycloak from "keycloak-js";
 
 const STUDYVAULT_ADMIN_ROLE = "studyvault_admin";
 const keycloakBaseUrl = import.meta.env.VITE_KEYCLOAK_URL ?? window.location.origin;
+const silentCheckSsoRedirectUri = `${window.location.origin}/silent-check-sso.html`;
 
 const keycloak = new Keycloak({
   url: keycloakBaseUrl,
@@ -20,8 +21,10 @@ type KeycloakTokenPayload = {
 
 export async function initializeAuth(): Promise<boolean> {
   return keycloak.init({
+    onLoad: "check-sso",
     pkceMethod: "S256",
     checkLoginIframe: false,
+    silentCheckSsoRedirectUri,
   });
 }
 

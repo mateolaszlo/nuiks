@@ -5,6 +5,7 @@ import {
   startTransition,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -240,6 +241,7 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
+  const suppressFolderOpenUntilRef = useRef(0);
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
@@ -575,6 +577,7 @@ export default function App() {
   }
 
   function handleDragStart(item: DriveItem) {
+    suppressFolderOpenUntilRef.current = Date.now() + 250;
     setDraggedItem(item);
     setActiveDropTarget(null);
     setContextMenu(null);
@@ -586,7 +589,26 @@ export default function App() {
   }
 
   function handleDragEnd() {
+    suppressFolderOpenUntilRef.current = Date.now() + 250;
     clearDragState();
+  }
+
+  function shouldIgnoreRowClick(event: ReactMouseEvent<HTMLElement>): boolean {
+    const target = event.target as HTMLElement | null;
+    return Boolean(target?.closest("button, input, select, option, textarea, form, label, a"));
+  }
+
+  function handleDriveRowClick(event: ReactMouseEvent<HTMLElement>, item: DriveItem) {
+    if (item.kind !== "folder") {
+      return;
+    }
+    if (shouldIgnoreRowClick(event)) {
+      return;
+    }
+    if (Date.now() < suppressFolderOpenUntilRef.current) {
+      return;
+    }
+    void handleOpenFolder(item);
   }
 
   function handleDropTargetOver(
@@ -909,11 +931,7 @@ export default function App() {
         onDragStart={() => handleDragStart(item)}
         onDragEnd={handleDragEnd}
         onContextMenu={(event) => handleRowContextMenu(event, item)}
-        onDoubleClick={() => {
-          if (item.kind === "folder") {
-            void handleOpenFolder(item);
-          }
-        }}
+        onClick={(event) => handleDriveRowClick(event, item)}
         onDragOver={
           item.kind === "folder"
             ? (event) =>
