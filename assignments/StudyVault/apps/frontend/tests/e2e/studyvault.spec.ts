@@ -54,8 +54,11 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await expect(activityRow.getByText("file_uploaded")).toBeVisible();
   await expect(activityRow.getByText(filename)).toBeVisible();
 
+  const contextMenu = page.locator(".context-menu");
+  await driveSurface.getByRole("button", { name: `More actions for ${filename}` }).click();
+  await expect(contextMenu).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await driveRow.getByRole("button", { name: "Download" }).click();
+  await contextMenu.getByRole("button", { name: "Download" }).click();
   const download = await downloadPromise;
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -83,6 +86,37 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
       { timeout: 60_000, intervals: [1000, 2000, 5000] },
     )
     .toBeGreaterThan(0);
+});
+
+test("file can be dragged into a folder row", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `folder-${uniqueId}`;
+  const filename = `drag-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`drag test ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Upload File" }).click();
+
+  const fileRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
+  const folderRow = driveSurface.locator(".table-row").filter({ hasText: folderName }).first();
+
+  await expect(fileRow).toBeVisible({ timeout: 60_000 });
+  await expect(folderRow).toBeVisible({ timeout: 60_000 });
+
+  await fileRow.dragTo(folderRow);
+
+  await expect(driveSurface.locator(".table-row").filter({ hasText: filename })).toHaveCount(0);
 });
 
 test("admin login shows admin indicator", async ({ page }) => {

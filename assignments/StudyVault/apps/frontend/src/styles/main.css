@@ -239,6 +239,11 @@ h2 {
   color: #0b57d0;
 }
 
+.nav-button-drop-target {
+  background: #d7f0db;
+  color: #137333;
+}
+
 .nav-icon {
   width: 1.25rem;
   text-align: center;
@@ -390,6 +395,12 @@ h2 {
   font-weight: 600;
 }
 
+.breadcrumb-drop-target {
+  background: #e8f0fe;
+  border-radius: 12px;
+  padding: 0.15rem 0.45rem;
+}
+
 .table-list {
   display: grid;
 }
@@ -426,6 +437,22 @@ h2 {
   margin-bottom: 0;
 }
 
+.table-row {
+  position: relative;
+  cursor: default;
+}
+
+.table-row-dragging {
+  opacity: 0.48;
+}
+
+.table-row-drop-target {
+  background: #e8f0fe;
+  border-radius: 18px;
+  padding-inline: 0.9rem;
+  border-top-color: transparent;
+}
+
 .table-row-trash {
   background: rgba(251, 188, 5, 0.06);
   margin: 0 -1rem;
@@ -453,6 +480,27 @@ h2 {
   border-radius: 18px;
   border: 1px solid #dfe5ec;
   background: #f8fafd;
+}
+
+.row-hint {
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.row-menu-button {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #5f6368;
+  cursor: pointer;
+}
+
+.row-menu-button:hover {
+  background: #eef3fb;
+  color: #202124;
 }
 
 .item-kind-badge {
@@ -535,6 +583,42 @@ h2 {
 
 .empty-state-compact {
   padding: 0.25rem 0;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 190px;
+  padding: 0.45rem;
+  border-radius: 18px;
+  border: 1px solid #dde4eb;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.context-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #202124;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background: #eef3fb;
+}
+
+.context-menu-item-danger {
+  color: #b3261e;
+}
+
+.context-menu-item-danger:hover {
+  background: #fde8e7;
 }
 
 .activity-list {

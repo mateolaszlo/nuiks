@@ -1,4 +1,12 @@
-import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
+import {
+  type DragEvent as ReactDragEvent,
+  type FormEvent,
+  type MouseEvent as ReactMouseEvent,
+  startTransition,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { ApiClient } from "./api/client";
 import type {
@@ -25,6 +33,8 @@ import {
 type LoadState = "loading" | "ready" | "error";
 type DashboardView = "drive" | "trash";
 type MoveDestination = { value: string; label: string };
+type DropTargetKey = "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
+type ContextMenuState = { item: DriveItem; x: number; y: number };
 
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 
@@ -104,14 +114,35 @@ function NavButton(props: {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
+  onDragOver?: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  onDragLeave?: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  onDrop?: (event: ReactDragEvent<HTMLButtonElement>) => void;
 }) {
-  const { active = false, icon, label, onClick, disabled = false } = props;
+  const {
+    active = false,
+    icon,
+    label,
+    onClick,
+    disabled = false,
+    className = "",
+    onDragOver,
+    onDragLeave,
+    onDrop,
+  } = props;
+  const classes = [active ? "nav-button nav-button-active" : "nav-button", className]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <button
-      className={active ? "nav-button nav-button-active" : "nav-button"}
+      className={classes}
       type="button"
       onClick={onClick}
       disabled={disabled}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
       <span className="nav-icon" aria-hidden="true">
         {icon}
@@ -204,6 +235,9 @@ export default function App() {
   const [moveTargetFolderId, setMoveTargetFolderId] = useState<string>("");
   const [showCreateFolderForm, setShowCreateFolderForm] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [draggedItem, setDraggedItem] = useState<DriveItem | null>(null);
+  const [activeDropTarget, setActiveDropTarget] = useState<DropTargetKey | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
 
@@ -230,6 +264,29 @@ export default function App() {
     return Array.from(destinations.values());
   }, [breadcrumbs, currentItems, moveItem]);
 
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    function handlePointerDown() {
+      setContextMenu(null);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu]);
+
   async function loadFolder(folderId: string | null) {
     const catalogPromise = api.listCatalogItems(folderId);
     const breadcrumbsPromise =
@@ -245,6 +302,8 @@ export default function App() {
       setBreadcrumbs(breadcrumbPayload.breadcrumbs);
       setCurrentItems(catalogPayload.items);
       setActivities(activityPayload);
+      setContextMenu(null);
+      setActiveDropTarget(null);
     });
   }
 
@@ -254,6 +313,8 @@ export default function App() {
       setCurrentView("trash");
       setTrashItems(trashPayload.items);
       setActivities(activityPayload);
+      setContextMenu(null);
+      setActiveDropTarget(null);
     });
   }
 
@@ -483,6 +544,144 @@ export default function App() {
     }
   }
 
+  function clearDragState() {
+    setDraggedItem(null);
+    setActiveDropTarget(null);
+  }
+
+  function isSameParentTarget(item: DriveItem, targetFolderId: string | null): boolean {
+    return (item.parent_folder_id ?? null) === targetFolderId;
+  }
+
+  function canDropIntoFolder(item: DriveItem | null, targetFolderId: string): boolean {
+    if (!item) {
+      return false;
+    }
+    if (item.kind === "folder" && item.item_id === targetFolderId) {
+      return false;
+    }
+    return !isSameParentTarget(item, targetFolderId);
+  }
+
+  function canDropIntoParent(item: DriveItem | null, targetFolderId: string | null): boolean {
+    if (!item) {
+      return false;
+    }
+    return !isSameParentTarget(item, targetFolderId);
+  }
+
+  function canDropIntoTrash(item: DriveItem | null): boolean {
+    return item !== null;
+  }
+
+  function handleDragStart(item: DriveItem) {
+    setDraggedItem(item);
+    setActiveDropTarget(null);
+    setContextMenu(null);
+    setRenameItem(null);
+    setRenameName("");
+    setMoveItem(null);
+    setMoveTargetFolderId("");
+    setError(null);
+  }
+
+  function handleDragEnd() {
+    clearDragState();
+  }
+
+  function handleDropTargetOver(
+    event: ReactDragEvent<HTMLElement>,
+    targetKey: DropTargetKey,
+    canDrop: boolean,
+  ) {
+    if (!canDrop || isBusy) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (activeDropTarget !== targetKey) {
+      setActiveDropTarget(targetKey);
+    }
+  }
+
+  function handleDropTargetLeave(targetKey: DropTargetKey) {
+    if (activeDropTarget === targetKey) {
+      setActiveDropTarget(null);
+    }
+  }
+
+  async function moveDraggedItemTo(targetFolderId: string | null) {
+    if (!draggedItem || isSameParentTarget(draggedItem, targetFolderId)) {
+      clearDragState();
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      if (draggedItem.kind === "folder") {
+        await api.moveFolder(draggedItem.item_id, targetFolderId);
+      } else {
+        await api.moveFile(draggedItem.item_id, targetFolderId);
+      }
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : "Move failed");
+    } finally {
+      clearDragState();
+      setIsBusy(false);
+    }
+  }
+
+  async function trashDraggedItem() {
+    if (!draggedItem) {
+      clearDragState();
+      return;
+    }
+
+    try {
+      setIsBusy(true);
+      if (draggedItem.kind === "folder") {
+        await api.trashFolder(draggedItem.item_id);
+      } else {
+        await api.trashFile(draggedItem.item_id);
+      }
+      await loadFolder(currentFolderId);
+      setError(null);
+    } catch (trashError) {
+      setError(trashError instanceof Error ? trashError.message : "Move to trash failed");
+    } finally {
+      clearDragState();
+      setIsBusy(false);
+    }
+  }
+
+  function handleRowContextMenu(event: ReactMouseEvent<HTMLElement>, item: DriveItem) {
+    event.preventDefault();
+    setContextMenu({ item, x: event.clientX, y: event.clientY });
+    setError(null);
+  }
+
+  function handleContextMenuTriggerClick(
+    event: ReactMouseEvent<HTMLButtonElement>,
+    item: DriveItem,
+  ) {
+    event.stopPropagation();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setContextMenu({ item, x: bounds.right - 8, y: bounds.bottom + 8 });
+    setError(null);
+  }
+
+  function openRenameFromMenu(item: DriveItem) {
+    setContextMenu(null);
+    handleStartRename(item);
+  }
+
+  function openMoveFromMenu(item: DriveItem) {
+    setContextMenu(null);
+    handleStartMove(item);
+  }
+
   function handleStartRename(item: DriveItem) {
     setMoveItem(null);
     setMoveTargetFolderId("");
@@ -697,7 +896,44 @@ export default function App() {
 
   function renderDriveRows(items: DriveItem[]) {
     return items.map((item) => (
-      <div className="table-row" key={item.item_id}>
+      <div
+        className={[
+          "table-row",
+          draggedItem?.item_id === item.item_id ? "table-row-dragging" : "",
+          item.kind === "folder" && activeDropTarget === `folder:${item.item_id}` ? "table-row-drop-target" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        key={item.item_id}
+        draggable={!isBusy}
+        onDragStart={() => handleDragStart(item)}
+        onDragEnd={handleDragEnd}
+        onContextMenu={(event) => handleRowContextMenu(event, item)}
+        onDoubleClick={() => {
+          if (item.kind === "folder") {
+            void handleOpenFolder(item);
+          }
+        }}
+        onDragOver={
+          item.kind === "folder"
+            ? (event) =>
+                handleDropTargetOver(event, `folder:${item.item_id}`, canDropIntoFolder(draggedItem, item.item_id))
+            : undefined
+        }
+        onDragLeave={
+          item.kind === "folder"
+            ? () => handleDropTargetLeave(`folder:${item.item_id}`)
+            : undefined
+        }
+        onDrop={
+          item.kind === "folder"
+            ? (event) => {
+                event.preventDefault();
+                void moveDraggedItemTo(item.item_id);
+              }
+            : undefined
+        }
+      >
         <div className="table-main">
           <div className="table-title-row">
             <ItemKindBadge kind={item.kind} />
@@ -758,34 +994,77 @@ export default function App() {
               </div>
             </form>
           ) : null}
+          <p className="row-hint muted">Right-click for actions. Drag onto folders, breadcrumbs, or Trash.</p>
         </div>
-        <div className="table-actions">
-          <button className="secondary-button" type="button" onClick={() => handleStartRename(item)} disabled={isBusy}>
-            Rename
-          </button>
-          <button className="secondary-button" type="button" onClick={() => handleStartMove(item)} disabled={isBusy}>
-            Move
-          </button>
-          <button className="secondary-button" type="button" onClick={() => void handleTrashItem(item)} disabled={isBusy}>
-            Trash
-          </button>
-          {item.kind === "folder" ? (
-            <button className="secondary-button" type="button" onClick={() => void handleOpenFolder(item)} disabled={isBusy}>
-              Open
-            </button>
-          ) : (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => void handleDownload(item.item_id, item.name)}
-              disabled={isBusy}
-            >
-              Download
-            </button>
-          )}
-        </div>
+        <button
+          className="row-menu-button"
+          type="button"
+          aria-label={`More actions for ${item.name}`}
+          onClick={(event) => handleContextMenuTriggerClick(event, item)}
+          disabled={isBusy}
+        >
+          ⋮
+        </button>
       </div>
     ));
+  }
+
+  function renderContextMenu() {
+    if (!contextMenu) {
+      return null;
+    }
+
+    const { item, x, y } = contextMenu;
+    const left = Math.min(x, window.innerWidth - 220);
+    const top = Math.min(y, window.innerHeight - 220);
+
+    return (
+      <div
+        className="context-menu"
+        style={{ left, top }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {item.kind === "folder" ? (
+          <button
+            className="context-menu-item"
+            type="button"
+            onClick={() => {
+              setContextMenu(null);
+              void handleOpenFolder(item);
+            }}
+          >
+            Open
+          </button>
+        ) : (
+          <button
+            className="context-menu-item"
+            type="button"
+            onClick={() => {
+              setContextMenu(null);
+              void handleDownload(item.item_id, item.name);
+            }}
+          >
+            Download
+          </button>
+        )}
+        <button className="context-menu-item" type="button" onClick={() => openRenameFromMenu(item)}>
+          Rename
+        </button>
+        <button className="context-menu-item" type="button" onClick={() => openMoveFromMenu(item)}>
+          Move to…
+        </button>
+        <button
+          className="context-menu-item context-menu-item-danger"
+          type="button"
+          onClick={() => {
+            setContextMenu(null);
+            void handleTrashItem(item);
+          }}
+        >
+          Move to Trash
+        </button>
+      </div>
+    );
   }
 
   function renderDriveWorkspace() {
@@ -807,7 +1086,20 @@ export default function App() {
           </div>
           <nav className="sidebar-nav" aria-label="Primary">
             <NavButton active={currentView === "drive"} icon="▣" label="My Drive" onClick={() => void handleOpenDrive()} disabled={isBusy} />
-            <NavButton active={currentView === "trash"} icon="⌦" label="Trash" onClick={() => void handleOpenTrash()} disabled={isBusy} />
+            <NavButton
+              active={currentView === "trash"}
+              icon="⌦"
+              label="Trash"
+              onClick={() => void handleOpenTrash()}
+              disabled={isBusy}
+              className={activeDropTarget === "trash" ? "nav-button-drop-target" : ""}
+              onDragOver={(event) => handleDropTargetOver(event, "trash", canDropIntoTrash(draggedItem))}
+              onDragLeave={() => handleDropTargetLeave("trash")}
+              onDrop={(event) => {
+                event.preventDefault();
+                void trashDraggedItem();
+              }}
+            />
           </nav>
           <section className="sidebar-section side-card">
             <p className="eyebrow">Current Location</p>
@@ -889,8 +1181,30 @@ export default function App() {
                     <div className="breadcrumbs" aria-label="Breadcrumbs">
                       {breadcrumbs.map((entry, index) => {
                         const isLast = index === breadcrumbs.length - 1;
+                        const dropTargetKey: DropTargetKey =
+                          entry.folder_id === null ? "breadcrumb:root" : `breadcrumb:${entry.folder_id}`;
                         return (
-                          <div className="breadcrumb-segment" key={`${entry.folder_id ?? "root"}-${index}`}>
+                          <div
+                            className={[
+                              "breadcrumb-segment",
+                              activeDropTarget === dropTargetKey ? "breadcrumb-drop-target" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            key={`${entry.folder_id ?? "root"}-${index}`}
+                            onDragOver={(event) =>
+                              handleDropTargetOver(
+                                event,
+                                dropTargetKey,
+                                canDropIntoParent(draggedItem, entry.folder_id ?? null),
+                              )
+                            }
+                            onDragLeave={() => handleDropTargetLeave(dropTargetKey)}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              void moveDraggedItemTo(entry.folder_id ?? null);
+                            }}
+                          >
                             {index > 0 ? <span className="breadcrumb-separator">/</span> : null}
                             {isLast ? (
                               <span className="breadcrumb-current">{entry.name}</span>
@@ -1015,6 +1329,7 @@ export default function App() {
               </section>
             </aside>
           </div>
+          {renderContextMenu()}
         </section>
       </div>
     );
