@@ -20,18 +20,18 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   const filename = `notes-${uniqueId}.txt`;
   const fileContents = `StudyVault runtime smoke ${uniqueId}`;
   const tag = `tag-${uniqueId}`;
-  const myFilesPanel = page.locator("article").filter({ has: page.getByRole("heading", { name: "My Files" }) });
-  const searchPanel = page.locator("article").filter({ has: page.getByRole("heading", { name: "Search" }) });
-  const activityPanel = page
-    .locator("article")
-    .filter({ has: page.getByRole("heading", { name: "Recent Activity" }) });
-  const activityRow = activityPanel.locator(".result-card").filter({ hasText: filename });
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const activitySurface = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Recent Activity" }) })
+    .first();
+  const activityRow = activitySurface.locator(".activity-row").filter({ hasText: filename });
 
   await loginAs(page, "demo", "demo123");
 
-  await expect(page.getByRole("heading", { name: "demo" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
 
-  await page.getByLabel("File").setInputFiles({
+  await page.locator("#upload-file").setInputFiles({
     name: filename,
     mimeType: "text/plain",
     buffer: Buffer.from(fileContents, "utf-8"),
@@ -39,18 +39,23 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await page.getByLabel("Tags").fill(tag);
   await page.getByRole("button", { name: "Upload File" }).click();
 
-  await expect(myFilesPanel.getByText(filename)).toBeVisible({ timeout: 60_000 });
+  const driveRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
+  await expect(driveRow).toBeVisible({
+    timeout: 60_000,
+  });
 
-  await page.getByPlaceholder("Search by filename or tag").fill(tag);
+  await page.getByPlaceholder("Search files and folders").fill(tag);
   await page.getByRole("button", { name: "Search" }).click();
-  await expect(searchPanel.getByText(filename)).toBeVisible();
-  await expect(searchPanel.getByText(tag)).toBeVisible();
+  const searchSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "Search Results" }) }).first();
+  const searchRow = searchSurface.locator(".table-row").filter({ hasText: filename }).first();
+  await expect(searchRow).toBeVisible();
+  await expect(searchRow).toContainText(tag);
 
   await expect(activityRow.getByText("file_uploaded")).toBeVisible();
   await expect(activityRow.getByText(filename)).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await myFilesPanel.getByRole("button", { name: "Download" }).first().click();
+  await driveRow.getByRole("button", { name: "Download" }).click();
   const download = await downloadPromise;
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];
@@ -62,23 +67,28 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await expect
     .poll(
       async () => {
-        const response = await request.get(
-          `${ELASTICSEARCH_URL}/studyvault-logs-*/_search?q=service:file-service AND message:\"POST /api/files\"&size=5`,
-        );
+        const response = await request.get(`${ELASTICSEARCH_URL}/studyvault-logs-*/_search`, {
+          params: {
+            q: `service:file-service AND event_name:file_upload_succeeded AND filename:"${filename}"`,
+            size: "1",
+            sort: "@timestamp:desc",
+          },
+        });
         if (!response.ok()) {
-          return "";
+          return 0;
         }
-        return await response.text();
+        const payload = await response.json();
+        return payload.hits?.hits?.length ?? 0;
       },
       { timeout: 60_000, intervals: [1000, 2000, 5000] },
     )
-    .toContain("POST /api/files");
+    .toBeGreaterThan(0);
 });
 
 test("admin login shows admin indicator", async ({ page }) => {
   await loginAs(page, "admin", "admin123");
 
   await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Users" }) }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
 });
