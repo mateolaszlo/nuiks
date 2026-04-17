@@ -163,6 +163,15 @@ Using Playwright:
 - restore file from trash
 - trash folder with children
 - search folder and file results
+- select a file tile and show its details in the right-side panel
+- select a folder tile and show its details in the right-side panel
+- double click a folder tile to open it
+- verify single click no longer opens folders
+- click `Activity` in the top bar and show the activity panel
+- select an item while activity is open and switch the panel to details
+- use context menu `Info` to open the same details panel
+- confirm drag-and-drop into folder tiles still works in grid layout
+- confirm `Search Results` and `Trash` remain list-based in this phase
 
 ## 4.4 Docker/test environment rule
 
@@ -209,6 +218,26 @@ Allowed.
 Optional.
 
 For MVP, it is acceptable to show only restore in the trash UI and rely on automatic purge. Adding “Delete forever” is a nice enhancement but not required.
+
+### 5.8 Main Drive layout scope
+
+**Decision:** apply grid layout only to the main `My Drive` browser in this phase.
+
+### 5.9 Selection model
+
+**Decision:** allow only single selection.
+
+### 5.10 Folder open interaction
+
+**Decision:** folders open on double click, not single click.
+
+### 5.11 Right-side panel precedence
+
+**Decision:** the shared right-side panel shows either details or activity, never both at once. Item selection overrides activity view.
+
+### 5.12 Item metadata visibility
+
+**Decision:** item metadata moves out of the main grid and into the details panel. The grid shows only minimal item identity.
 
 ---
 
@@ -281,6 +310,119 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add move UI
 - [x] Add trash page
 - [x] Update search results to support folders
+- [ ] Replace the main `My Drive` list view with a Google Drive-style responsive grid
+- [ ] Show only file/folder name and kind in grid tiles
+- [ ] Add single-selection state for current Drive items
+- [ ] Open selected item details in the right-side panel
+- [ ] Change folder navigation from single click to double click
+- [ ] Add topbar `Activity` button and move activity feed into the right-side panel
+- [ ] Hide the right-side panel when no item is selected and activity is closed
+- [ ] Add `Info` action to the file/folder context menu
+- [ ] Keep drag-and-drop move working with folder tiles
+- [ ] Keep `Search` and `Trash` as list views in this phase
+
+### 6.6.1 Drive browser UX refresh
+
+The current Drive browser shows a vertical list with inline metadata and opens folders on single click. This phase changes the main `My Drive` view to behave more like Google Drive.
+
+#### Goals
+
+- make the main browser visually scan like a grid of items instead of a table
+- reduce clutter by moving metadata out of the main surface
+- support selection-first interaction with a contextual info panel
+- keep existing backend APIs and file/folder operations intact
+
+#### Main view behavior
+
+- apply the new layout only to the main `My Drive` browser
+- do not change `Search Results` or `Trash` in this phase
+- render files and folders as responsive tiles
+- each tile displays item name and a visual file/folder distinction
+- do not display path, size, tags, created time, updated time, or row hints inline in the grid
+
+#### Selection behavior
+
+- single click selects one item
+- selecting an item opens the right-side details panel
+- only one item can be selected at a time
+- selecting a new item replaces the current selection
+- selection is cleared when entering another folder, refreshing folder contents, switching to trash, or after destructive actions remove the selected item from view
+
+#### Open behavior
+
+- double click on a folder opens that folder
+- single click on a folder only selects it
+- double click on a file does nothing in this phase
+- breadcrumb navigation remains unchanged
+
+#### Right-side panel behavior
+
+The right-side column becomes a shared contextual panel with three states:
+
+- hidden
+- details
+- activity
+
+Rules:
+
+- if the user selects an item, show `details`
+- if the user clicks the topbar `Activity` button, show `activity`
+- if neither is active, hide the panel
+- selection takes precedence over activity
+- clicking `Activity` while details are open switches the panel to activity
+- selecting an item while activity is open switches the panel to details
+
+#### Details panel contents
+
+For the selected file or folder, show:
+
+- name
+- kind
+- full path derived from breadcrumbs plus item name
+- size for files
+- mime type for files when present
+- tags
+- created time
+- updated time
+
+Folder-specific display:
+
+- show folder as kind `Folder`
+- no file size value is required for folders
+
+#### Context menu changes
+
+Keep existing actions:
+
+- Open or Download
+- Rename
+- Move to…
+- Move to Trash
+
+Add:
+
+- Info
+
+`Info` behavior:
+
+- closes the context menu
+- selects the clicked item
+- opens the right-side details panel for that item
+
+#### Editing actions
+
+- keep rename and move functionality
+- remove inline rename/move editors from item tiles
+- expose rename and move through the existing context menu or overflow actions
+- render rename and move UI outside the grid so tile layout remains stable
+
+#### Layout expectations
+
+- preserve drag-and-drop support for moving items into folders
+- selected tile must have a clear selected state
+- hover, selected, and drop-target states must be visually distinct
+- avoid horizontal overflow on desktop and mobile
+- on narrower screens, stack or reposition the contextual panel below the main content if needed
 
 ## 6.7 New worker or command
 
@@ -290,4 +432,3 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add batch processing
 - [x] Add retries/logging
 - [x] Make schedule configurable
-
