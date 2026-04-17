@@ -38,8 +38,21 @@ type DropTargetKey = "trash" | `folder:${string}` | `breadcrumb:${string}` | "br
 type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
 type DrivePanelMode = "hidden" | "details" | "activity";
+type UploadStatus = "queued" | "uploading" | "processing" | "done" | "failed";
+type UploadQueueItem = {
+  queue_id: string;
+  file: File;
+  parent_folder_id: string | null;
+  destination_label: string;
+  tags: string[];
+  status: UploadStatus;
+  progress: number;
+  persisted_file_id?: string;
+  error_message?: string;
+};
 
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
+const MAX_ACTIVE_UPLOADS = 2;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -271,7 +284,8 @@ export default function App() {
   const [adminErrors, setAdminErrors] = useState<AdminErrorRecord[]>([]);
   const [adminHealth, setAdminHealth] = useState<AdminHealthSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [renameItem, setRenameItem] = useState<DriveItem | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -291,6 +305,10 @@ export default function App() {
   const [searchModeActive, setSearchModeActive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const suppressFolderOpenUntilRef = useRef(0);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const currentFolderIdRef = useRef<string | null>(null);
+  const currentViewRef = useRef<DashboardView>("drive");
+  const inFlightUploadIdsRef = useRef<Set<string>>(new Set());
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
   const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
@@ -301,6 +319,9 @@ export default function App() {
     currentView === "drive"
       ? `${currentItems.length} item${currentItems.length === 1 ? "" : "s"}`
       : `${trashItems.length} item${trashItems.length === 1 ? "" : "s"}`;
+  const activeUploadCount = uploadQueue.filter(
+    (item) => item.status === "uploading" || item.status === "processing",
+  ).length;
 
   const moveDestinations = useMemo<MoveDestination[]>(() => {
     const destinations = new Map<string, MoveDestination>();
@@ -317,6 +338,14 @@ export default function App() {
     }
     return Array.from(destinations.values());
   }, [breadcrumbs, currentItems, moveItem]);
+
+  useEffect(() => {
+    currentFolderIdRef.current = currentFolderId;
+  }, [currentFolderId]);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -500,6 +529,21 @@ export default function App() {
     return () => observer.disconnect();
   }, [adminUser]);
 
+  useEffect(() => {
+    const availableSlots = MAX_ACTIVE_UPLOADS - activeUploadCount;
+    if (availableSlots <= 0) {
+      return;
+    }
+
+    const queuedItems = uploadQueue
+      .filter((item) => item.status === "queued" && !inFlightUploadIdsRef.current.has(item.queue_id))
+      .slice(0, availableSlots);
+    for (const item of queuedItems) {
+      inFlightUploadIdsRef.current.add(item.queue_id);
+      void processUploadQueueItem(item);
+    }
+  }, [activeUploadCount, uploadQueue]);
+
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!searchQuery.trim()) {
@@ -525,27 +569,35 @@ export default function App() {
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedFile) {
-      setError("Choose a file before uploading.");
+    if (pendingUploadFiles.length === 0) {
+      setError("Choose at least one file before uploading.");
       return;
     }
 
-    try {
-      setIsBusy(true);
-      const tags = tagInput
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean);
-      await api.uploadFile(selectedFile, tags, currentFolderId);
-      setSelectedFile(null);
-      setTagInput("");
-      await loadFolder(currentFolderId);
-      setError(null);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
-    } finally {
-      setIsBusy(false);
+    const tags = tagInput
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const destinationFolderId = currentFolderId;
+    const destinationLabel = currentFolderLabel;
+
+    setUploadQueue((current) => [
+      ...current,
+      ...pendingUploadFiles.map((file) => ({
+        queue_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        file,
+        parent_folder_id: destinationFolderId,
+        destination_label: destinationLabel,
+        tags,
+        status: "queued" as const,
+        progress: 0,
+      })),
+    ]);
+    setPendingUploadFiles([]);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = "";
     }
+    setError(null);
   }
 
   async function handleTrashItem(item: DriveItem) {
@@ -979,6 +1031,84 @@ export default function App() {
     }
   }
 
+  function updateUploadQueueItem(queueId: string, updater: (item: UploadQueueItem) => UploadQueueItem) {
+    setUploadQueue((current) =>
+      current.map((item) => (item.queue_id === queueId ? updater(item) : item)),
+    );
+  }
+
+  async function processUploadQueueItem(item: UploadQueueItem) {
+    updateUploadQueueItem(item.queue_id, (current) => ({
+      ...current,
+      status: "uploading",
+      progress: current.progress > 0 ? current.progress : 0,
+      error_message: undefined,
+    }));
+
+    try {
+      const uploaded = await api.uploadFileWithProgress(item.file, item.tags, item.parent_folder_id, {
+        onProgress: (percent) => {
+          updateUploadQueueItem(item.queue_id, (current) => ({
+            ...current,
+            status: current.status === "processing" ? "processing" : "uploading",
+            progress: percent,
+          }));
+        },
+        onProcessing: () => {
+          updateUploadQueueItem(item.queue_id, (current) => ({
+            ...current,
+            status: "processing",
+            progress: 100,
+          }));
+        },
+      });
+
+      updateUploadQueueItem(item.queue_id, (current) => ({
+        ...current,
+        status: "done",
+        progress: 100,
+        persisted_file_id: uploaded.file_id,
+        error_message: undefined,
+      }));
+
+      if (
+        currentViewRef.current === "drive" &&
+        (item.parent_folder_id ?? null) === (currentFolderIdRef.current ?? null)
+      ) {
+        await loadFolder(currentFolderIdRef.current);
+      } else {
+        const latestActivity = await api.listActivity();
+        startTransition(() => {
+          setActivities(latestActivity);
+        });
+      }
+      setError(null);
+    } catch (uploadError) {
+      updateUploadQueueItem(item.queue_id, (current) => ({
+        ...current,
+        status: "failed",
+        error_message: uploadError instanceof Error ? uploadError.message : "Upload failed",
+      }));
+      setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
+    } finally {
+      inFlightUploadIdsRef.current.delete(item.queue_id);
+    }
+  }
+
+  function retryUpload(queueId: string) {
+    updateUploadQueueItem(queueId, (item) => ({
+      ...item,
+      status: "queued",
+      progress: 0,
+      error_message: undefined,
+    }));
+    setError(null);
+  }
+
+  function dismissUpload(queueId: string) {
+    setUploadQueue((current) => current.filter((item) => item.queue_id !== queueId));
+  }
+
   function renderSearchResults() {
     if (!searchModeActive) {
       return null;
@@ -1050,6 +1180,70 @@ export default function App() {
                     Download
                   </button>
                 )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  function renderUploadQueue() {
+    if (currentView !== "drive" || uploadQueue.length === 0) {
+      return null;
+    }
+
+    return (
+      <section className="upload-queue-panel" aria-label="Upload Queue">
+        <div className="section-header section-header-compact">
+          <div>
+            <p className="eyebrow">Uploads</p>
+            <h3>Upload Queue</h3>
+          </div>
+          <span className="section-meta">
+            {activeUploadCount} active / {uploadQueue.length} total
+          </span>
+        </div>
+        <div className="upload-queue-list">
+          {uploadQueue.map((item) => (
+            <div className={`upload-queue-row upload-status-${item.status}`} key={item.queue_id}>
+              <div className="upload-queue-main">
+                <div className="upload-queue-title-row">
+                  <strong title={item.file.name}>{item.file.name}</strong>
+                  <span className="upload-status-pill">{item.status}</span>
+                </div>
+                <p className="muted">
+                  Destination: {item.destination_label}
+                  {item.tags.length > 0 ? ` • Tags: ${item.tags.join(", ")}` : ""}
+                </p>
+                {item.status === "uploading" || item.status === "processing" ? (
+                  <div className="upload-progress-block">
+                    <div
+                      className="upload-progress-bar"
+                      aria-hidden="true"
+                      style={{ ["--upload-progress" as string]: `${item.progress}%` }}
+                    />
+                    <span className="upload-progress-label">
+                      {item.status === "processing" ? "Processing…" : `${item.progress}% uploaded`}
+                    </span>
+                  </div>
+                ) : null}
+                {item.status === "done" ? <p className="muted">Upload finished.</p> : null}
+                {item.status === "failed" && item.error_message ? (
+                  <p className="error-text">Upload failed: {item.error_message}</p>
+                ) : null}
+              </div>
+              <div className="table-actions table-actions-inline">
+                {item.status === "failed" ? (
+                  <button className="secondary-button" type="button" onClick={() => retryUpload(item.queue_id)}>
+                    Retry
+                  </button>
+                ) : null}
+                {item.status === "failed" || item.status === "done" ? (
+                  <button className="secondary-button" type="button" onClick={() => dismissUpload(item.queue_id)}>
+                    Dismiss
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}
@@ -1368,13 +1562,20 @@ export default function App() {
                 <form className="stack" onSubmit={handleUpload}>
                   <p className="muted">Destination: {currentFolderLabel}</p>
                   <label className="stack">
-                    <span>File</span>
+                    <span>Files</span>
                     <input
                       id="upload-file"
                       type="file"
-                      onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                      ref={uploadInputRef}
+                      multiple
+                      onChange={(event) => setPendingUploadFiles(Array.from(event.target.files ?? []))}
                     />
                   </label>
+                  {pendingUploadFiles.length > 0 ? (
+                    <p className="muted">
+                      {pendingUploadFiles.length} file{pendingUploadFiles.length === 1 ? "" : "s"} selected
+                    </p>
+                  ) : null}
                   <label className="stack">
                     <span>Tags</span>
                     <input
@@ -1385,8 +1586,8 @@ export default function App() {
                       onChange={(event) => setTagInput(event.target.value)}
                     />
                   </label>
-                  <button className="primary-button" type="submit" disabled={isBusy}>
-                    {isBusy ? "Uploading…" : "Upload File"}
+                  <button className="primary-button" type="submit" disabled={pendingUploadFiles.length === 0}>
+                    Add to Upload Queue
                   </button>
                 </form>
               </section>
@@ -1451,6 +1652,7 @@ export default function App() {
 
                 {currentView === "drive" ? (
                   <>
+                    {renderUploadQueue()}
                     <div className="breadcrumbs" aria-label="Breadcrumbs">
                       {breadcrumbs.map((entry, index) => {
                         const isLast = index === breadcrumbs.length - 1;

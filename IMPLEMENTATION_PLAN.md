@@ -365,8 +365,8 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add restore file endpoint
 - [x] Add hard delete method for purge worker
 - [x] Add `delete()` to object store abstraction
-- [ ] Keep the existing single-file `/api/files` contract as the backend primitive for queued uploads
-- [ ] Document in code/comments that upload completion happens only after downstream sync, so frontend `processing` state is expected
+- [x] Keep the existing single-file `/api/files` contract as the backend primitive for queued uploads
+- [x] Document in code/comments that upload completion happens only after downstream sync, so frontend `processing` state is expected
 
 ## 6.4 `apps/search-service`
 
@@ -408,13 +408,16 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Move `New Folder` into the `My Drive` action row
 - [x] Add collapsible Drive sidebar with icon-only collapsed rail
 - [x] Handle excessively long file/folder names in the grid and details view
-- [ ] Replace single-file sidebar upload state with queue-based state
-- [ ] Accept multiple files from the sidebar file input
+- [x] Replace single-file sidebar upload state with queue-based state
+- [x] Accept multiple files from the sidebar file input
 - [ ] Add external file drag-and-drop upload on the current drive surface
 - [ ] Add external file drag-and-drop upload onto folder tiles and breadcrumbs
 - [ ] Preserve internal drag-and-drop move behavior while external upload is added
-- [ ] Add per-file upload progress UI with `Queued`, `Uploading`, `Processing`, `Done`, and `Failed` states
-- [ ] Keep failed uploads retryable from the queue
+- [x] Add per-file upload progress UI with `Queued`, `Uploading`, `Processing`, `Done`, and `Failed` states
+- [x] Keep failed uploads retryable from the queue
+- [x] Add a dedicated upload method in `api/client.ts` that uses `XMLHttpRequest`
+- [x] Add a small upload scheduler that runs at most two active uploads at once
+- [x] Reduce reliance on global `isBusy` during upload queue execution
 
 ### 6.6.1 Drive browser UX refresh
 
@@ -530,27 +533,27 @@ Add:
 
 The current frontend already has in-app drag-and-drop for moving `DriveItem` records between folders and trash. That behavior is implemented in `assignments/StudyVault/apps/frontend/src/App.tsx` with `draggedItem` and `activeDropTarget`.
 
-The current upload flow is different:
+The remaining upload work is now limited to external drag-and-drop. The queue foundation already exists:
 
-- sidebar form stores one `selectedFile` in React state
-- `handleUpload()` calls `api.uploadFile(...)`
-- `ApiClient.uploadFile()` in `assignments/StudyVault/apps/frontend/src/api/client.ts` uses `fetch()`
-- `fetch()` does not provide a dependable upload progress event model for this use case
+- sidebar form stores multiple pending files before enqueue
+- `handleUpload()` adds queue entries with destination and tag snapshots
+- `ApiClient.uploadFileWithProgress()` in `assignments/StudyVault/apps/frontend/src/api/client.ts` now uses `XMLHttpRequest`
+- external drag-and-drop still needs to feed that same queue/transport path
 
 Because of that, implement the next upload UX phase as a frontend refactor, not a backend rewrite.
 
 #### Required frontend changes
 
-- [ ] Replace `selectedFile: File | null` with an upload queue collection that can hold many pending files
-- [ ] Introduce an `UploadQueueItem` model with at least: local id, `File`, destination folder id, tags snapshot, status, progress percent, server file id (optional), and error message
-- [ ] Add a dedicated upload method in `assignments/StudyVault/apps/frontend/src/api/client.ts` that uses `XMLHttpRequest` so `xhr.upload.onprogress` can update the queue
-- [ ] Keep the existing generic `request()` helper for non-upload API calls
+- [x] Replace `selectedFile: File | null` with an upload queue collection that can hold many pending files
+- [x] Introduce an `UploadQueueItem` model with at least: local id, `File`, destination folder id, tags snapshot, status, progress percent, server file id (optional), and error message
+- [x] Add a dedicated upload method in `assignments/StudyVault/apps/frontend/src/api/client.ts` that uses `XMLHttpRequest` so `xhr.upload.onprogress` can update the queue
+- [x] Keep the existing generic `request()` helper for non-upload API calls
 - [ ] Add enqueue helpers for both file input selection and external drag-and-drop
-- [ ] Add a small upload scheduler that runs at most two active uploads at once
-- [ ] On each success, update the queue entry to `done` and refresh the visible folder contents when appropriate
-- [ ] On each failure, update the queue entry to `failed` without discarding it
-- [ ] Add `Retry` and `Dismiss` actions for failed entries
-- [ ] Reduce reliance on global `isBusy` so browsing, selection, and search are not frozen for the full duration of a multi-file upload batch
+- [x] Add a small upload scheduler that runs at most two active uploads at once
+- [x] On each success, update the queue entry to `done` and refresh the visible folder contents when appropriate
+- [x] On each failure, update the queue entry to `failed` without discarding it
+- [x] Add `Retry` and `Dismiss` actions for failed entries
+- [x] Reduce reliance on global `isBusy` so browsing, selection, and search are not frozen for the full duration of a multi-file upload batch
 
 #### External drag-and-drop surfaces
 
@@ -569,7 +572,7 @@ This preserves the existing internal move semantics while enabling desktop file 
 
 #### Queue UI behavior
 
-Add a visible queue panel in the sidebar upload card or directly below it. Each row should show:
+Add a visible queue panel directly below the `My Drive` header. Each row should show:
 
 - file name
 - destination label

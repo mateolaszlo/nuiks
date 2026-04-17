@@ -118,6 +118,7 @@ a {
 
 h1,
 h2,
+h3,
 p {
   margin-top: 0;
 }
@@ -133,6 +134,13 @@ h2 {
   font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+h3 {
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .action-row,
@@ -394,6 +402,10 @@ h2 {
   margin-bottom: 0.4rem;
 }
 
+.section-header-compact {
+  margin-bottom: 0.75rem;
+}
+
 .section-meta,
 .muted,
 .table-time {
@@ -451,6 +463,91 @@ h2 {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1rem;
   align-items: start;
+}
+
+.upload-queue-panel {
+  margin: 1rem 0 1.2rem;
+  padding: 1rem;
+  border: 1px solid #dfe6ee;
+  border-radius: 20px;
+  background: #f8fbff;
+}
+
+.upload-queue-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.upload-queue-row {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid #e4e9ef;
+  background: #fff;
+}
+
+.upload-queue-main {
+  min-width: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.upload-queue-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.upload-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: #eef3fb;
+  color: #3c4043;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.upload-status-uploading .upload-status-pill,
+.upload-status-processing .upload-status-pill {
+  background: #d3e3fd;
+  color: #0b57d0;
+}
+
+.upload-status-done .upload-status-pill {
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.upload-status-failed .upload-status-pill {
+  background: #fce8e6;
+  color: #b3261e;
+}
+
+.upload-progress-block {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.upload-progress-bar {
+  --upload-progress: 0%;
+  width: min(320px, 100%);
+  height: 10px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, #1a73e8 var(--upload-progress), #e6edf7 var(--upload-progress));
+}
+
+.upload-progress-label {
+  font-size: 0.88rem;
+  color: #5f6368;
 }
 
 .table-row,
@@ -919,6 +1016,7 @@ input[type="file"] {
   }
 
   .section-header-actions,
+  .upload-queue-row,
   .table-row,
   .activity-row,
   .table-actions,

@@ -15,6 +15,11 @@ import type {
   FolderRecord,
 } from "./types";
 
+type UploadProgressOptions = {
+  onProgress?: (percent: number) => void;
+  onProcessing?: () => void;
+};
+
 export class ApiClient {
   constructor(private readonly getToken: () => Promise<string | undefined>) {}
 
@@ -151,6 +156,15 @@ export class ApiClient {
   }
 
   uploadFile(file: File, tags: string[], parentFolderId?: string | null): Promise<FileRecord> {
+    return this.uploadFileWithProgress(file, tags, parentFolderId);
+  }
+
+  async uploadFileWithProgress(
+    file: File,
+    tags: string[],
+    parentFolderId?: string | null,
+    options?: UploadProgressOptions,
+  ): Promise<FileRecord> {
     const body = new FormData();
     body.append("file", file);
     for (const tag of tags) {
@@ -159,10 +173,47 @@ export class ApiClient {
     if (parentFolderId) {
       body.append("parent_folder_id", parentFolderId);
     }
+    const token = await this.getToken();
 
-    return this.request<FileRecord>("/api/files", {
-      method: "POST",
-      body,
+    return await new Promise<FileRecord>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/files");
+      xhr.responseType = "text";
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+        const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+        options?.onProgress?.(percent);
+      };
+
+      // Upload byte completion happens before the API responds, because the server
+      // only returns after downstream metadata/search/activity sync completes.
+      xhr.upload.onload = () => {
+        options?.onProgress?.(100);
+        options?.onProcessing?.();
+      };
+
+      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.onabort = () => reject(new Error("Upload was aborted"));
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(readErrorDetail(xhr.responseText, xhr.status)));
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(xhr.responseText) as FileRecord);
+        } catch (parseError) {
+          reject(parseError instanceof Error ? parseError : new Error("Upload response parsing failed"));
+        }
+      };
+
+      xhr.send(body);
     });
   }
 
@@ -217,5 +268,18 @@ export class ApiClient {
 
   listAdminErrors(limit = 50): Promise<AdminErrorRecord[]> {
     return this.request<AdminErrorRecord[]>(`/api/admin/errors?limit=${limit}`);
+  }
+}
+
+function readErrorDetail(responseText: string, status: number): string {
+  if (!responseText) {
+    return `Request failed with status ${status}`;
+  }
+
+  try {
+    const payload = JSON.parse(responseText) as { detail?: string };
+    return payload.detail || responseText || `Request failed with status ${status}`;
+  } catch {
+    return responseText || `Request failed with status ${status}`;
   }
 }

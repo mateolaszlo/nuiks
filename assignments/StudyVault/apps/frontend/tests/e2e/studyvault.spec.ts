@@ -33,7 +33,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
     buffer: Buffer.from(fileContents, "utf-8"),
   });
   await page.getByLabel("Tags").fill(tag);
-  await page.getByRole("button", { name: "Upload File" }).click();
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
 
   const driveTile = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
   await expect(driveTile).toBeVisible({
@@ -101,7 +101,7 @@ test("file can be dragged into a folder tile", async ({ page }) => {
   await loginAs(page, "demo", "demo123");
   await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
   await page.getByRole("button", { name: "Create Folder" }).click();
 
@@ -110,7 +110,7 @@ test("file can be dragged into a folder tile", async ({ page }) => {
     mimeType: "text/plain",
     buffer: Buffer.from(`drag test ${uniqueId}`, "utf-8"),
   });
-  await page.getByRole("button", { name: "Upload File" }).click();
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
 
   const fileRow = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
   const folderRow = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
@@ -131,7 +131,7 @@ test("single click selects a folder and double click navigates into it", async (
   await loginAs(page, "demo", "demo123");
   await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole("button", { name: "New" }).click();
+  await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
   await page.getByRole("button", { name: "Create Folder" }).click();
 
@@ -186,7 +186,7 @@ test("context menu info opens details and selection overrides activity panel", a
     buffer: Buffer.from(`info test ${uniqueId}`, "utf-8"),
   });
   await page.getByLabel("Tags").fill(tag);
-  await page.getByRole("button", { name: "Upload File" }).click();
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
 
   const fileRow = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
   await expect(fileRow).toBeVisible({ timeout: 60_000 });
@@ -216,7 +216,7 @@ test("long file names expose full value in grid tooltip and details panel", asyn
     mimeType: "text/plain",
     buffer: Buffer.from(`long name ${uniqueId}`, "utf-8"),
   });
-  await page.getByRole("button", { name: "Upload File" }).click();
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
 
   const fileTile = driveSurface.locator(".drive-tile").filter({ has: page.locator(`.drive-tile-name[title="${filename}"]`) }).first();
   await expect(fileTile).toBeVisible({ timeout: 60_000 });
@@ -266,4 +266,87 @@ test("admin login shows admin indicator", async ({ page }) => {
   await expect(detailToggle).toHaveAttribute("aria-expanded", "false");
   await detailToggle.click();
   await expect(detailToggle).toHaveAttribute("aria-expanded", "true");
+});
+
+test("multiple files can be queued from the picker and complete in the shared upload queue", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const firstFilename = `queue-a-${uniqueId}.txt`;
+  const secondFilename = `queue-b-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles([
+    {
+      name: firstFilename,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`queue first ${uniqueId}`, "utf-8"),
+    },
+    {
+      name: secondFilename,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`queue second ${uniqueId}`, "utf-8"),
+    },
+  ]);
+  await page.getByLabel("Tags").fill(`queue-tag-${uniqueId}`);
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  await expect(queuePanel).toBeVisible();
+  await expect(queuePanel).toContainText(firstFilename);
+  await expect(queuePanel).toContainText(secondFilename);
+
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: firstFilename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: secondFilename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(queuePanel.locator(".upload-status-done")).toHaveCount(2, { timeout: 60_000 });
+});
+
+test("failed queued uploads stay visible with retry and dismiss actions", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `retry-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+  let failNextUpload = true;
+
+  await page.route("**/api/files", async (route, request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/files" && failNextUpload) {
+      failNextUpload = false;
+      await route.fulfill({
+        status: 500,
+        contentType: "text/plain",
+        body: "forced upload failure",
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`retry upload ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const queueRow = queuePanel.locator(".upload-queue-row").filter({ hasText: filename }).first();
+  await expect(queueRow).toBeVisible({ timeout: 60_000 });
+  await expect(queueRow).toContainText("forced upload failure");
+  await expect(queueRow.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(queueRow.getByRole("button", { name: "Dismiss" })).toBeVisible();
+
+  await queueRow.getByRole("button", { name: "Retry" }).click();
+
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(queueRow).toContainText("done");
 });
