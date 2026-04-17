@@ -132,6 +132,7 @@ function NavButton(props: {
   onDragOver?: (event: ReactDragEvent<HTMLButtonElement>) => void;
   onDragLeave?: (event: ReactDragEvent<HTMLButtonElement>) => void;
   onDrop?: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  hideLabel?: boolean;
 }) {
   const {
     active = false,
@@ -143,6 +144,7 @@ function NavButton(props: {
     onDragOver,
     onDragLeave,
     onDrop,
+    hideLabel = false,
   } = props;
   const classes = [active ? "nav-button nav-button-active" : "nav-button", className]
     .filter(Boolean)
@@ -155,6 +157,8 @@ function NavButton(props: {
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
+      aria-label={hideLabel ? label : undefined}
+      title={label}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -162,7 +166,7 @@ function NavButton(props: {
       <span className="nav-icon" aria-hidden="true">
         {icon}
       </span>
-      <span>{label}</span>
+      {!hideLabel ? <span>{label}</span> : null}
     </button>
   );
 }
@@ -284,6 +288,8 @@ export default function App() {
   const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
   const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
   const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
+  const [searchModeActive, setSearchModeActive] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const suppressFolderOpenUntilRef = useRef(0);
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
@@ -354,6 +360,8 @@ export default function App() {
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
+      setSearchModeActive(false);
+      setSearchResults([]);
     });
   }
 
@@ -367,6 +375,8 @@ export default function App() {
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
+      setSearchModeActive(false);
+      setSearchResults([]);
     });
   }
 
@@ -410,6 +420,11 @@ export default function App() {
 
   function toggleDriveActivityPanel() {
     setDrivePanelMode((current) => (current === "activity" ? "hidden" : "activity"));
+  }
+
+  function clearSearchMode() {
+    setSearchResults([]);
+    setSearchModeActive(false);
   }
 
   useEffect(() => {
@@ -488,7 +503,7 @@ export default function App() {
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!searchQuery.trim()) {
-      setSearchResults([]);
+      clearSearchMode();
       setError(null);
       return;
     }
@@ -496,7 +511,10 @@ export default function App() {
     try {
       setIsBusy(true);
       const payload = await api.search(searchQuery.trim(), { kind: "all" });
-      startTransition(() => setSearchResults(payload));
+      startTransition(() => {
+        setSearchResults(payload);
+        setSearchModeActive(true);
+      });
       setError(null);
     } catch (searchError) {
       setError(searchError instanceof Error ? searchError.message : "Search failed");
@@ -962,18 +980,8 @@ export default function App() {
   }
 
   function renderSearchResults() {
-    if (!searchQuery.trim() && searchResults.length === 0) {
-      return (
-        <section className="surface content-surface">
-          <div className="section-header">
-            <div>
-              <p className="eyebrow">Search</p>
-              <h2>Search</h2>
-            </div>
-          </div>
-          <p className="muted">Search files and folders by name, type, or tag.</p>
-        </section>
-      );
+    if (!searchModeActive) {
+      return null;
     }
 
     return (
@@ -983,9 +991,21 @@ export default function App() {
             <p className="eyebrow">Search</p>
             <h2>Search Results</h2>
           </div>
-          <span className="section-meta">
-            {searchResults.length} match{searchResults.length === 1 ? "" : "es"}
-          </span>
+          <div className="section-header-actions">
+            <span className="section-meta">
+              {searchResults.length} match{searchResults.length === 1 ? "" : "es"}
+            </span>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                clearSearchMode();
+              }}
+            >
+              Close Search
+            </button>
+          </div>
         </div>
         <div className="table-list">
           {searchResults.length === 0 ? (
@@ -999,7 +1019,7 @@ export default function App() {
               <div className="table-main">
                 <div className="table-title-row">
                   <ItemKindBadge kind={item.kind} />
-                  <strong>{item.name}</strong>
+                  <strong title={item.name}>{item.name}</strong>
                 </div>
                 {item.kind === "folder" ? (
                   <p className="muted">Folder available in My Drive.</p>
@@ -1079,7 +1099,9 @@ export default function App() {
         <div className="drive-tile-main">
           <div className="drive-tile-title">
             <ItemKindBadge kind={item.kind} />
-            <strong className="drive-tile-name">{item.name}</strong>
+            <strong className="drive-tile-name" title={item.name}>
+              {item.name}
+            </strong>
           </div>
           {renameItem?.item_id === item.item_id ? (
             <form className="inline-editor drive-tile-editor" onSubmit={handleRenameItem}>
@@ -1134,6 +1156,7 @@ export default function App() {
             className="row-menu-button"
             type="button"
             aria-label={`More actions for ${item.name}`}
+            title={`More actions for ${item.name}`}
             onClick={(event) => handleContextMenuTriggerClick(event, item)}
             disabled={isBusy}
           >
@@ -1296,28 +1319,34 @@ export default function App() {
   function renderDriveWorkspace() {
     return (
       <div className="app-shell">
-        <aside className="sidebar">
+        <aside className={sidebarCollapsed ? "sidebar sidebar-collapsed" : "sidebar"}>
           <div className="sidebar-section">
             <button
-              className="primary-button sidebar-primary"
+              className="secondary-button sidebar-toggle"
               type="button"
-              onClick={() => {
-                setShowCreateFolderForm((value) => !value);
-                setError(null);
-              }}
-              disabled={isBusy}
+              onClick={() => setSidebarCollapsed((value) => !value)}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {showCreateFolderForm ? "Close" : "New"}
+              {sidebarCollapsed ? "☰" : "⟨"}
             </button>
           </div>
           <nav className="sidebar-nav" aria-label="Primary">
-            <NavButton active={currentView === "drive"} icon="▣" label="My Drive" onClick={() => void handleOpenDrive()} disabled={isBusy} />
+            <NavButton
+              active={currentView === "drive"}
+              icon="▣"
+              label="My Drive"
+              onClick={() => void handleOpenDrive()}
+              disabled={isBusy}
+              hideLabel={sidebarCollapsed}
+            />
             <NavButton
               active={currentView === "trash"}
               icon="⌦"
               label="Trash"
               onClick={() => void handleOpenTrash()}
               disabled={isBusy}
+              hideLabel={sidebarCollapsed}
               className={activeDropTarget === "trash" ? "nav-button-drop-target" : ""}
               onDragOver={(event) => handleDropTargetOver(event, "trash", canDropIntoTrash(draggedItem))}
               onDragLeave={() => handleDropTargetLeave("trash")}
@@ -1327,38 +1356,42 @@ export default function App() {
               }}
             />
           </nav>
-          <section className="sidebar-section side-card">
-            <p className="eyebrow">Current Location</p>
-            <strong>{currentFolderLabel}</strong>
-            <p className="muted">{driveCountLabel}</p>
-          </section>
-          <section className="sidebar-section side-card">
-            <h2>Upload</h2>
-            <form className="stack" onSubmit={handleUpload}>
-              <p className="muted">Destination: {currentFolderLabel}</p>
-              <label className="stack">
-                <span>File</span>
-                <input
-                  id="upload-file"
-                  type="file"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                />
-              </label>
-              <label className="stack">
-                <span>Tags</span>
-                <input
-                  id="upload-tags"
-                  type="text"
-                  placeholder="math, notes, finals"
-                  value={tagInput}
-                  onChange={(event) => setTagInput(event.target.value)}
-                />
-              </label>
-              <button className="primary-button" type="submit" disabled={isBusy}>
-                {isBusy ? "Uploading…" : "Upload File"}
-              </button>
-            </form>
-          </section>
+          {!sidebarCollapsed ? (
+            <>
+              <section className="sidebar-section side-card">
+                <p className="eyebrow">Current Location</p>
+                <strong>{currentFolderLabel}</strong>
+                <p className="muted">{driveCountLabel}</p>
+              </section>
+              <section className="sidebar-section side-card">
+                <h2>Upload</h2>
+                <form className="stack" onSubmit={handleUpload}>
+                  <p className="muted">Destination: {currentFolderLabel}</p>
+                  <label className="stack">
+                    <span>File</span>
+                    <input
+                      id="upload-file"
+                      type="file"
+                      onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  <label className="stack">
+                    <span>Tags</span>
+                    <input
+                      id="upload-tags"
+                      type="text"
+                      placeholder="math, notes, finals"
+                      value={tagInput}
+                      onChange={(event) => setTagInput(event.target.value)}
+                    />
+                  </label>
+                  <button className="primary-button" type="submit" disabled={isBusy}>
+                    {isBusy ? "Uploading…" : "Upload File"}
+                  </button>
+                </form>
+              </section>
+            </>
+          ) : null}
         </aside>
 
         <section className="workspace">
@@ -1390,6 +1423,17 @@ export default function App() {
                   <div className="action-row">
                     {currentView === "drive" ? (
                       <>
+                        <button
+                          className="primary-button"
+                          type="button"
+                          onClick={() => {
+                            setShowCreateFolderForm((value) => !value);
+                            setError(null);
+                          }}
+                          disabled={isBusy}
+                        >
+                          {showCreateFolderForm ? "Close" : "New Folder"}
+                        </button>
                         <button className="secondary-button" type="button" onClick={() => void handleGoUp()} disabled={!canGoUp || isBusy}>
                           Up
                         </button>

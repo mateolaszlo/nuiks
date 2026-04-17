@@ -321,6 +321,10 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Keep drag-and-drop move working with folder tiles
 - [x] Keep `Search` and `Trash` as list views in this phase
 - [x] Keep folder navigation usable during the transition away from single-click open
+- [x] Hide `Search Results` when not in search mode
+- [x] Move `New Folder` into the `My Drive` action row
+- [x] Add collapsible Drive sidebar with icon-only collapsed rail
+- [x] Handle excessively long file/folder names in the grid and details view
 
 ### 6.6.1 Drive browser UX refresh
 
@@ -372,6 +376,13 @@ Rules:
 - selection takes precedence over activity
 - clicking `Activity` while details are open switches the panel to activity
 - selecting an item while activity is open switches the panel to details
+
+### 6.6.2 Drive workspace polish
+
+- hide the upper `Search Results` surface until the user submits a non-empty search
+- move `New Folder` into the `My Drive` action row beside navigation actions
+- allow the Drive sidebar to collapse into an icon-only rail
+- keep long file and folder names clamped by default, reveal more on hover/focus, and preserve the full name in details view/tooltips
 
 #### Details panel contents
 

@@ -25,6 +25,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await loginAs(page, "demo", "demo123");
 
   await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Search Results" })).toHaveCount(0);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -45,6 +46,8 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   const searchRow = searchSurface.locator(".table-row").filter({ hasText: filename }).first();
   await expect(searchRow).toBeVisible();
   await expect(searchRow).toContainText(tag);
+  await searchSurface.getByRole("button", { name: "Close Search" }).click();
+  await expect(page.getByRole("heading", { name: "Search Results" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Activity" }).click();
   const activitySurface = page
@@ -147,6 +150,27 @@ test("single click selects a folder and double click navigates into it", async (
   await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first()).toBeVisible();
 });
 
+test("new folder action moved into drive header and sidebar can collapse", async ({ page }) => {
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const sidebar = page.locator("aside.sidebar").first();
+
+  await expect(page.getByRole("button", { name: /^New$/ })).toHaveCount(0);
+  await expect(driveSurface.getByRole("button", { name: "New Folder" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(sidebar).toHaveClass(/sidebar-collapsed/);
+  await expect(sidebar.getByText("Current Location")).toHaveCount(0);
+  await expect(sidebar.getByRole("button", { name: "My Drive" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "Trash" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(sidebar).not.toHaveClass(/sidebar-collapsed/);
+  await expect(sidebar.getByText("Current Location")).toBeVisible();
+});
+
 test("context menu info opens details and selection overrides activity panel", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const filename = `info-${uniqueId}.txt`;
@@ -177,6 +201,32 @@ test("context menu info opens details and selection overrides activity panel", a
   await expect(detailsPanel).toBeVisible();
   await expect(detailsPanel).toContainText(tag);
   await expect(page.getByRole("heading", { name: "Recent Activity" })).toHaveCount(0);
+});
+
+test("long file names expose full value in grid tooltip and details panel", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `very-long-studyvault-file-name-${uniqueId}-with-extra-description-to-test-hover-expansion-and-tooltips.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`long name ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Upload File" }).click();
+
+  const fileTile = driveSurface.locator(".drive-tile").filter({ has: page.locator(`.drive-tile-name[title="${filename}"]`) }).first();
+  await expect(fileTile).toBeVisible({ timeout: 60_000 });
+
+  const tileName = fileTile.locator(".drive-tile-name");
+  await expect(tileName).toHaveAttribute("title", filename);
+  await fileTile.click();
+
+  const detailsPanel = page.locator("aside").filter({ has: page.getByRole("heading", { name: filename }) }).first();
+  await expect(detailsPanel).toBeVisible();
 });
 
 test("refresh keeps the existing authenticated session", async ({ page }) => {
