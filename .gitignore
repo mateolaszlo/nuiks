@@ -231,6 +231,7 @@ build/
 # LLMs
 .AGENTS/
 AGENTS.md
+.codex
 
 # Instructions
 IMPLEMENTATION_PLAN.md
