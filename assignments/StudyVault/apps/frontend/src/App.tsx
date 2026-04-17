@@ -724,6 +724,13 @@ export default function App() {
     showDriveItemDetails(item);
   }
 
+  function handleDriveRowDoubleClick(event: ReactMouseEvent<HTMLElement>, item: DriveItem) {
+    if (item.kind !== "folder" || shouldIgnoreRowClick(event)) {
+      return;
+    }
+    void handleOpenFolder(item);
+  }
+
   function handleDropTargetOver(
     event: ReactDragEvent<HTMLElement>,
     targetKey: DropTargetKey,
@@ -1035,10 +1042,10 @@ export default function App() {
     return items.map((item) => (
       <div
         className={[
-          "table-row",
-          selectedDriveItem?.item_id === item.item_id && drivePanelMode === "details" ? "table-row-selected" : "",
-          draggedItem?.item_id === item.item_id ? "table-row-dragging" : "",
-          item.kind === "folder" && activeDropTarget === `folder:${item.item_id}` ? "table-row-drop-target" : "",
+          "drive-tile",
+          selectedDriveItem?.item_id === item.item_id && drivePanelMode === "details" ? "drive-tile-selected" : "",
+          draggedItem?.item_id === item.item_id ? "drive-tile-dragging" : "",
+          item.kind === "folder" && activeDropTarget === `folder:${item.item_id}` ? "drive-tile-drop-target" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -1048,6 +1055,7 @@ export default function App() {
         onDragEnd={handleDragEnd}
         onContextMenu={(event) => handleRowContextMenu(event, item)}
         onClick={(event) => handleDriveRowClick(event, item)}
+        onDoubleClick={(event) => handleDriveRowDoubleClick(event, item)}
         onDragOver={
           item.kind === "folder"
             ? (event) =>
@@ -1068,21 +1076,13 @@ export default function App() {
             : undefined
         }
       >
-        <div className="table-main">
-          <div className="table-title-row">
+        <div className="drive-tile-main">
+          <div className="drive-tile-title">
             <ItemKindBadge kind={item.kind} />
-            <strong>{item.name}</strong>
+            <strong className="drive-tile-name">{item.name}</strong>
           </div>
-          {item.kind === "folder" ? (
-            <p className="muted">Folder • Open to browse contents.</p>
-          ) : (
-            <p className="muted">
-              {item.mime_type || "Unknown type"} • {formatBytes(item.size)} •{" "}
-              {item.tags.join(", ") || "No tags"}
-            </p>
-          )}
           {renameItem?.item_id === item.item_id ? (
-            <form className="inline-editor" onSubmit={handleRenameItem}>
+            <form className="inline-editor drive-tile-editor" onSubmit={handleRenameItem}>
               <label className="stack">
                 <span>Rename {item.kind}</span>
                 <input
@@ -1103,7 +1103,7 @@ export default function App() {
             </form>
           ) : null}
           {moveItem?.item_id === item.item_id ? (
-            <form className="inline-editor" onSubmit={handleMoveItem}>
+            <form className="inline-editor drive-tile-editor" onSubmit={handleMoveItem}>
               <label className="stack">
                 <span>Move {item.kind} to</span>
                 <select
@@ -1128,19 +1128,8 @@ export default function App() {
               </div>
             </form>
           ) : null}
-          <p className="row-hint muted">Right-click for actions. Drag onto folders, breadcrumbs, or Trash.</p>
         </div>
-        <div className="table-actions table-actions-inline">
-          {item.kind === "folder" ? (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => void handleOpenFolder(item)}
-              disabled={isBusy}
-            >
-              Open
-            </button>
-          ) : null}
+        <div className="drive-tile-actions">
           <button
             className="row-menu-button"
             type="button"
@@ -1494,7 +1483,7 @@ export default function App() {
                         </div>
                       </form>
                     ) : null}
-                    <div className="table-list">
+                    <div className="drive-grid">
                       {currentItems.length === 0 ? (
                         <div className="empty-state">
                           <strong>{currentFolderId ? "This folder is empty." : "Your drive is empty."}</strong>

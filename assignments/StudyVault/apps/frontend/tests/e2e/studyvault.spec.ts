@@ -34,8 +34,8 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await page.getByLabel("Tags").fill(tag);
   await page.getByRole("button", { name: "Upload File" }).click();
 
-  const driveRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
-  await expect(driveRow).toBeVisible({
+  const driveTile = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
+  await expect(driveTile).toBeVisible({
     timeout: 60_000,
   });
 
@@ -89,7 +89,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
     .toBeGreaterThan(0);
 });
 
-test("file can be dragged into a folder row", async ({ page }) => {
+test("file can be dragged into a folder tile", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `folder-${uniqueId}`;
   const filename = `drag-${uniqueId}.txt`;
@@ -109,18 +109,18 @@ test("file can be dragged into a folder row", async ({ page }) => {
   });
   await page.getByRole("button", { name: "Upload File" }).click();
 
-  const fileRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
-  const folderRow = driveSurface.locator(".table-row").filter({ hasText: folderName }).first();
+  const fileRow = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
+  const folderRow = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
 
   await expect(fileRow).toBeVisible({ timeout: 60_000 });
   await expect(folderRow).toBeVisible({ timeout: 60_000 });
 
   await fileRow.dragTo(folderRow);
 
-  await expect(driveSurface.locator(".table-row").filter({ hasText: filename })).toHaveCount(0);
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
 });
 
-test("single click selects a folder and open button navigates into it", async ({ page }) => {
+test("single click selects a folder and double click navigates into it", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `single-click-${uniqueId}`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
@@ -132,7 +132,7 @@ test("single click selects a folder and open button navigates into it", async ({
   await page.getByLabel("Folder name").fill(folderName);
   await page.getByRole("button", { name: "Create Folder" }).click();
 
-  const folderRow = driveSurface.locator(".table-row").filter({ hasText: folderName }).first();
+  const folderRow = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
   await expect(folderRow).toBeVisible({ timeout: 60_000 });
 
   await folderRow.click();
@@ -141,7 +141,7 @@ test("single click selects a folder and open button navigates into it", async ({
   await expect(detailsPanel).toBeVisible();
   await expect(page.locator(".breadcrumb-current")).not.toContainText(folderName);
 
-  await folderRow.getByRole("button", { name: "Open" }).click();
+  await folderRow.dblclick();
 
   await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
   await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first()).toBeVisible();
@@ -164,7 +164,7 @@ test("context menu info opens details and selection overrides activity panel", a
   await page.getByLabel("Tags").fill(tag);
   await page.getByRole("button", { name: "Upload File" }).click();
 
-  const fileRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
+  const fileRow = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
   await expect(fileRow).toBeVisible({ timeout: 60_000 });
 
   await page.getByRole("button", { name: "Activity" }).click();

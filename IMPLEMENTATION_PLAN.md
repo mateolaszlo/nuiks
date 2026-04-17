@@ -310,16 +310,16 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add move UI
 - [x] Add trash page
 - [x] Update search results to support folders
-- [ ] Replace the main `My Drive` list view with a Google Drive-style responsive grid
-- [ ] Show only file/folder name and kind in grid tiles
+- [x] Replace the main `My Drive` list view with a Google Drive-style responsive grid
+- [x] Show only file/folder name and kind in grid tiles
 - [x] Add single-selection state for current Drive items
 - [x] Open selected item details in the right-side panel
-- [ ] Change folder navigation from single click to double click
+- [x] Change folder navigation from single click to double click
 - [x] Add topbar `Activity` button and move activity feed into the right-side panel
 - [x] Hide the right-side panel when no item is selected and activity is closed
 - [x] Add `Info` action to the file/folder context menu
-- [ ] Keep drag-and-drop move working with folder tiles
-- [ ] Keep `Search` and `Trash` as list views in this phase
+- [x] Keep drag-and-drop move working with folder tiles
+- [x] Keep `Search` and `Trash` as list views in this phase
 - [x] Keep folder navigation usable during the transition away from single-click open
 
 ### 6.6.1 Drive browser UX refresh
