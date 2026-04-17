@@ -6,7 +6,7 @@
 
 - **Target repo:** `mateolaszlo/nuiks` → `assignments/StudyVault`
 - **Goal:** evolve the current StudyVault from a flat personal file vault into a single-user, Google Drive–style file manager
-- **Included in scope:** folders, nested navigation, rename, move, trash, restore, 30-day retention purge
+- **Included in scope:** folders, nested navigation, rename, move, trash, restore, 30-day retention purge, external file drag-and-drop upload, queued uploads, per-file upload progress
 - **Development assumption:** this repo is still pre-release, runs mainly in Docker, and development/test data can be reset when schema changes require it
 
 ---
@@ -25,6 +25,8 @@ StudyVault already has the major platform pieces needed for a Drive-like persona
 - Keycloak-based authentication
 
 This means the feature does **not** require a rewrite, but it **does** require a meaningful domain-model expansion.
+
+For the next UX step — drag files from the desktop into the browser and show Google Drive–style upload progress — the repo is also in a good position. The existing backend already accepts one multipart upload per request and already accepts `parent_folder_id`. That means the missing pieces are primarily in the frontend: external drop handling, a client-side upload queue, and an upload transport that can surface progress events.
 
 The most important architectural decision in this plan is:
 
@@ -55,6 +57,11 @@ Users can:
 - delete folders to trash
 - restore folders from trash
 - upload files into a selected folder
+- drag files from the operating system file explorer into the current Drive view to start upload automatically
+- drag files from the operating system file explorer onto a folder tile to upload directly into that folder
+- select or drop multiple files and queue them for upload
+- see per-file upload status (`queued`, `uploading`, `processing`, `done`, `failed`)
+- retry failed uploads from the queue
 - rename files
 - move files
 - delete files to trash
@@ -76,6 +83,10 @@ Do **not** implement in this phase:
 - file version history
 - recovery beyond 30 days
 - quota/billing
+- drag-and-drop of directories/folders from the operating system in this phase
+- resumable uploads or background uploads that survive page refresh
+- true Google Drive–style cross-session upload persistence
+- per-file tag editing inside the queue in this phase
 
 
 
@@ -93,6 +104,26 @@ If search or activity is temporarily inconsistent, catalog data wins.
 
 This should also be reflected in operational tooling.
 
+### 3.2 Upload queue authority and progress semantics
+
+Catalog-service / PostgreSQL remains authoritative for completed uploads.
+
+The browser is authoritative only for transient upload queue state before the API request finishes.
+
+That means:
+
+- `queued` means the file exists only in frontend state and no request has started yet
+- `uploading` means bytes are currently moving from browser to nginx/file-service
+- `processing` means the browser has sent all bytes, but the server has not yet returned success because `file-service` is still storing the object and publishing to catalog/search/activity
+- `done` means the upload request returned success and the normal folder reload can treat the item as persisted
+- `failed` means the request failed or was aborted and the queue entry should stay visible until the user retries or dismisses it
+
+Important UI rule:
+
+> **100% uploaded does not mean fully complete yet. Show `Processing…` until the `/api/files` request resolves successfully.**
+
+This matters in this repository because `apps/file-service/app/services/files.py` performs downstream synchronization after the object bytes are accepted.
+
 ---
 
 ## 4. Testing plan
@@ -105,6 +136,9 @@ This should also be reflected in operational tooling.
 - invalid folder names
 - normalization rules
 - restore destination resolution
+- upload queue state transitions (`queued` → `uploading` → `processing` → `done` / `failed`)
+- enqueue destination snapshot logic
+- dropped external files are classified differently from internal item move drag state
 
 ### Catalog-service
 
@@ -127,6 +161,7 @@ This should also be reflected in operational tooling.
 - trash file
 - restore file
 - hard delete file deletes object store entry
+- repeated queued uploads still publish the same metadata/search/activity side effects as single manual uploads
 
 ### Search-service
 
@@ -143,6 +178,7 @@ This should also be reflected in operational tooling.
 ## 4.2 API/integration tests
 
 - create folder → upload file into folder → list folder contents
+- repeated single-file uploads (as executed by the frontend queue) into the same folder
 - nested folder navigation
 - file move between folders
 - folder move between folders
@@ -157,6 +193,11 @@ Using Playwright:
 - create folder from root
 - navigate with breadcrumbs
 - upload file into current folder
+- select multiple files in the picker and confirm they enter a visible queue
+- drag a file from the desktop onto the current Drive surface and confirm upload starts automatically
+- drag a file from the desktop onto a folder tile and confirm it lands in that folder
+- confirm upload progress reaches `Uploading` and then `Processing` before success
+- confirm a failed upload remains in the queue with retry/dismiss actions
 - rename file
 - move file
 - trash file
@@ -239,6 +280,46 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 
 **Decision:** item metadata moves out of the main grid and into the details panel. The grid shows only minimal item identity.
 
+### 5.13 External file drag-and-drop classification
+
+**Decision:** when `event.dataTransfer.files` is non-empty and no internal `draggedItem` is active, treat the interaction as an upload, not a move.
+
+This is required so new desktop-to-browser uploads do not break the existing in-app drag-and-drop move behavior.
+
+### 5.14 Upload destination rule
+
+**Decision:** dropping onto the main drive surface uploads into `currentFolderId`; dropping onto a folder tile uploads into that folder; dropping onto a breadcrumb uploads into that breadcrumb folder.
+
+### 5.15 Queue destination snapshot
+
+**Decision:** capture `parent_folder_id` and tag input at enqueue time, not when the request finally starts.
+
+Otherwise a user could change folders while files are still queued and accidentally upload files into the wrong destination.
+
+### 5.16 Upload progress wording
+
+**Decision:** use five visible statuses: `Queued`, `Uploading`, `Processing`, `Done`, `Failed`.
+
+`Processing` is mandatory because the current backend finishes catalog/search/activity work after the browser has finished sending bytes.
+
+### 5.17 Failed upload behavior
+
+**Decision:** keep failed entries visible in the queue and allow `Retry` and `Dismiss`.
+
+### 5.18 Queue concurrency
+
+**Decision:** start with a small fixed concurrency limit of `2`.
+
+That is enough to feel responsive, but conservative for the current Docker-first stack and simpler than fully parallel uploads.
+
+### 5.19 File picker behavior
+
+**Decision:** the sidebar file input should accept multiple files and enqueue immediately after selection or explicit submit, depending on the chosen UI wiring. The plan below assumes explicit submit remains available for parity with the current form.
+
+### 5.20 Dropped operating-system folders
+
+**Decision:** out of scope for this phase. Accept only regular files from the browser `FileList`.
+
 ---
 
 ## 6. Repo-level task list
@@ -284,6 +365,8 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Add restore file endpoint
 - [x] Add hard delete method for purge worker
 - [x] Add `delete()` to object store abstraction
+- [ ] Keep the existing single-file `/api/files` contract as the backend primitive for queued uploads
+- [ ] Document in code/comments that upload completion happens only after downstream sync, so frontend `processing` state is expected
 
 ## 6.4 `apps/search-service`
 
@@ -325,6 +408,13 @@ For MVP, it is acceptable to show only restore in the trash UI and rely on autom
 - [x] Move `New Folder` into the `My Drive` action row
 - [x] Add collapsible Drive sidebar with icon-only collapsed rail
 - [x] Handle excessively long file/folder names in the grid and details view
+- [ ] Replace single-file sidebar upload state with queue-based state
+- [ ] Accept multiple files from the sidebar file input
+- [ ] Add external file drag-and-drop upload on the current drive surface
+- [ ] Add external file drag-and-drop upload onto folder tiles and breadcrumbs
+- [ ] Preserve internal drag-and-drop move behavior while external upload is added
+- [ ] Add per-file upload progress UI with `Queued`, `Uploading`, `Processing`, `Done`, and `Failed` states
+- [ ] Keep failed uploads retryable from the queue
 
 ### 6.6.1 Drive browser UX refresh
 
@@ -436,6 +526,98 @@ Add:
 - avoid horizontal overflow on desktop and mobile
 - on narrower screens, stack or reposition the contextual panel below the main content if needed
 
+### 6.6.3 External drag-and-drop upload, queue, and progress
+
+The current frontend already has in-app drag-and-drop for moving `DriveItem` records between folders and trash. That behavior is implemented in `assignments/StudyVault/apps/frontend/src/App.tsx` with `draggedItem` and `activeDropTarget`.
+
+The current upload flow is different:
+
+- sidebar form stores one `selectedFile` in React state
+- `handleUpload()` calls `api.uploadFile(...)`
+- `ApiClient.uploadFile()` in `assignments/StudyVault/apps/frontend/src/api/client.ts` uses `fetch()`
+- `fetch()` does not provide a dependable upload progress event model for this use case
+
+Because of that, implement the next upload UX phase as a frontend refactor, not a backend rewrite.
+
+#### Required frontend changes
+
+- [ ] Replace `selectedFile: File | null` with an upload queue collection that can hold many pending files
+- [ ] Introduce an `UploadQueueItem` model with at least: local id, `File`, destination folder id, tags snapshot, status, progress percent, server file id (optional), and error message
+- [ ] Add a dedicated upload method in `assignments/StudyVault/apps/frontend/src/api/client.ts` that uses `XMLHttpRequest` so `xhr.upload.onprogress` can update the queue
+- [ ] Keep the existing generic `request()` helper for non-upload API calls
+- [ ] Add enqueue helpers for both file input selection and external drag-and-drop
+- [ ] Add a small upload scheduler that runs at most two active uploads at once
+- [ ] On each success, update the queue entry to `done` and refresh the visible folder contents when appropriate
+- [ ] On each failure, update the queue entry to `failed` without discarding it
+- [ ] Add `Retry` and `Dismiss` actions for failed entries
+- [ ] Reduce reliance on global `isBusy` so browsing, selection, and search are not frozen for the full duration of a multi-file upload batch
+
+#### External drag-and-drop surfaces
+
+Handle operating-system file drops in these places:
+
+- [ ] the main drive content surface for upload into the current folder
+- [ ] folder tiles for upload directly into that folder
+- [ ] breadcrumb buttons for upload into an ancestor folder
+
+Use this rule in `App.tsx`:
+
+- if `draggedItem` is set, treat drag/drop as an internal move
+- else if `event.dataTransfer.files.length > 0`, treat drag/drop as an external upload
+
+This preserves the existing internal move semantics while enabling desktop file drops.
+
+#### Queue UI behavior
+
+Add a visible queue panel in the sidebar upload card or directly below it. Each row should show:
+
+- file name
+- destination label
+- status text
+- progress bar for `uploading`
+- `Processing…` indicator after bytes reach 100% but before the API resolves
+- retry/dismiss controls for failed items
+
+The queue should be visible even after the sidebar file input is cleared so the user can watch batch progress.
+
+#### Suggested file-level edits
+
+`assignments/StudyVault/apps/frontend/src/api/client.ts`
+
+- add a specialized upload function such as `uploadFileWithProgress(...)`
+- accept callbacks or an observer object for `onProgress`, `onSuccess`, `onError`, and optional `signal`/abort handling
+- keep request authentication consistent by reusing `getToken()`
+
+`assignments/StudyVault/apps/frontend/src/App.tsx`
+
+- add queue state and queue-processing logic
+- add external drag-enter / drag-over / drag-leave / drop handlers
+- add an overlay or highlight state so the current drop target is obvious
+- adapt folder-tile and breadcrumb drop handlers so they can route either move or upload behavior
+
+`assignments/StudyVault/apps/frontend/src/styles/main.css`
+
+- add styles for external drop highlight state
+- add queue row and progress bar styles
+- ensure upload feedback works in both expanded and collapsed sidebar layouts
+
+`assignments/StudyVault/apps/frontend/tests/e2e/studyvault.spec.ts`
+
+- add coverage for multi-file queueing
+- add coverage for drag-dropping an external file into the current folder
+- add coverage for drag-dropping an external file onto a folder tile
+- add coverage for a failed upload entry and retry flow
+
+#### Backend impact
+
+For the first iteration, no new backend API is required. The queue should simply execute the already-existing `/api/files` upload request once per file.
+
+Future optimization path, explicitly out of scope here:
+
+- direct-to-object-store multipart uploads
+- resumable uploads
+- batch upload session APIs
+
 ## 6.7 New worker or command
 
 - [x] Add purge worker command
@@ -444,3 +626,7 @@ Add:
 - [x] Add batch processing
 - [x] Add retries/logging
 - [x] Make schedule configurable
+
+---
+
+Revision note: expanded the implementation plan to cover desktop file drag-and-drop, a client-side upload queue, and Google Drive–style upload progress because the current repository already has the backend primitives and now mainly needs a frontend execution plan for the next UX phase.
