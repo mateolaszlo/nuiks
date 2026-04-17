@@ -277,6 +277,12 @@ h2 {
   border-color: transparent;
 }
 
+.topbar-toggle-active {
+  background: #d3e3fd;
+  color: #0b57d0;
+  border-color: #c2d7fb;
+}
+
 .profile-chip {
   display: inline-flex;
   align-items: center;
@@ -442,6 +448,13 @@ h2 {
   cursor: default;
 }
 
+.table-row-selected {
+  background: #eef4ff;
+  border-radius: 18px;
+  padding-inline: 0.9rem;
+  border-top-color: transparent;
+}
+
 .table-row-dragging {
   opacity: 0.48;
 }
@@ -505,6 +518,10 @@ h2 {
 .row-menu-button:hover {
   background: #eef3fb;
   color: #202124;
+}
+
+.table-actions-inline {
+  align-items: center;
 }
 
 .item-kind-badge {
@@ -577,6 +594,31 @@ h2 {
 .health-detail-toggle:hover {
   color: #0b57d0;
   text-decoration: underline;
+}
+
+.detail-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.detail-row {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.detail-row dt {
+  color: #5f6368;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.detail-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .status-ok,

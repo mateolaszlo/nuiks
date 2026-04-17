@@ -21,11 +21,6 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   const fileContents = `StudyVault runtime smoke ${uniqueId}`;
   const tag = `tag-${uniqueId}`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
-  const activitySurface = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Recent Activity" }) })
-    .first();
-  const activityRow = activitySurface.locator(".activity-row").filter({ hasText: filename });
 
   await loginAs(page, "demo", "demo123");
 
@@ -51,6 +46,12 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
   await expect(searchRow).toBeVisible();
   await expect(searchRow).toContainText(tag);
 
+  await page.getByRole("button", { name: "Activity" }).click();
+  const activitySurface = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: "Recent Activity" }) })
+    .first();
+  const activityRow = activitySurface.locator(".activity-row").filter({ hasText: filename });
   await expect(activityRow.getByText("file_uploaded")).toBeVisible();
   await expect(activityRow.getByText(filename)).toBeVisible();
 
@@ -119,7 +120,7 @@ test("file can be dragged into a folder row", async ({ page }) => {
   await expect(driveSurface.locator(".table-row").filter({ hasText: filename })).toHaveCount(0);
 });
 
-test("folder opens on single click", async ({ page }) => {
+test("single click selects a folder and open button navigates into it", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `single-click-${uniqueId}`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
@@ -136,8 +137,46 @@ test("folder opens on single click", async ({ page }) => {
 
   await folderRow.click();
 
+  const detailsPanel = page.locator("aside").filter({ has: page.getByRole("heading", { name: folderName }) }).first();
+  await expect(detailsPanel).toBeVisible();
+  await expect(page.locator(".breadcrumb-current")).not.toContainText(folderName);
+
+  await folderRow.getByRole("button", { name: "Open" }).click();
+
   await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
   await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first()).toBeVisible();
+});
+
+test("context menu info opens details and selection overrides activity panel", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `info-${uniqueId}.txt`;
+  const tag = `info-tag-${uniqueId}`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`info test ${uniqueId}`, "utf-8"),
+  });
+  await page.getByLabel("Tags").fill(tag);
+  await page.getByRole("button", { name: "Upload File" }).click();
+
+  const fileRow = driveSurface.locator(".table-row").filter({ hasText: filename }).first();
+  await expect(fileRow).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "Activity" }).click();
+  await expect(page.getByRole("heading", { name: "Recent Activity" })).toBeVisible();
+
+  await fileRow.getByRole("button", { name: `More actions for ${filename}` }).click();
+  await page.locator(".context-menu").getByRole("button", { name: "Info" }).click();
+
+  const detailsPanel = page.locator("aside").filter({ has: page.getByRole("heading", { name: filename }) }).first();
+  await expect(detailsPanel).toBeVisible();
+  await expect(detailsPanel).toContainText(tag);
+  await expect(page.getByRole("heading", { name: "Recent Activity" })).toHaveCount(0);
 });
 
 test("refresh keeps the existing authenticated session", async ({ page }) => {

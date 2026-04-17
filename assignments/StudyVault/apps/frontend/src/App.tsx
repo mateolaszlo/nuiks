@@ -37,6 +37,7 @@ type MoveDestination = { value: string; label: string };
 type DropTargetKey = "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
 type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
+type DrivePanelMode = "hidden" | "details" | "activity";
 
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 
@@ -71,6 +72,10 @@ function getHealthDetailPreview(detail: string, maxLength = 96): string {
     return detail;
   }
   return `${detail.slice(0, maxLength).trimEnd()}…`;
+}
+
+function buildDriveItemPath(breadcrumbs: BreadcrumbEntry[], item: DriveItem): string {
+  return [...breadcrumbs.map((entry) => entry.name), item.name].join(" / ");
 }
 
 function AuthScreen(props: {
@@ -170,8 +175,22 @@ function AppTopBar(props: {
   onLogout: () => void;
   isBusy: boolean;
   title: string;
+  secondaryActionLabel?: string;
+  secondaryActionActive?: boolean;
+  onSecondaryAction?: () => void;
 }) {
-  const { profileLabel, searchQuery, onSearchQueryChange, onSearch, onLogout, isBusy, title } = props;
+  const {
+    profileLabel,
+    searchQuery,
+    onSearchQueryChange,
+    onSearch,
+    onLogout,
+    isBusy,
+    title,
+    secondaryActionLabel,
+    secondaryActionActive = false,
+    onSecondaryAction,
+  } = props;
 
   return (
     <header className="topbar">
@@ -204,6 +223,17 @@ function AppTopBar(props: {
         </button>
       </form>
       <div className="topbar-actions">
+        {secondaryActionLabel && onSecondaryAction ? (
+          <button
+            className={secondaryActionActive ? "secondary-button topbar-toggle-active" : "secondary-button"}
+            type="button"
+            onClick={onSecondaryAction}
+            disabled={isBusy}
+            aria-pressed={secondaryActionActive}
+          >
+            {secondaryActionLabel}
+          </button>
+        ) : null}
         <div className="profile-chip">
           <span className="profile-avatar" aria-hidden="true">
             {profileLabel.slice(0, 1).toUpperCase()}
@@ -252,6 +282,8 @@ export default function App() {
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
   const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("users");
   const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
+  const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
+  const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
   const suppressFolderOpenUntilRef = useRef(0);
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
@@ -320,6 +352,8 @@ export default function App() {
       setActivities(activityPayload);
       setContextMenu(null);
       setActiveDropTarget(null);
+      setSelectedDriveItem(null);
+      setDrivePanelMode("hidden");
     });
   }
 
@@ -331,6 +365,8 @@ export default function App() {
       setActivities(activityPayload);
       setContextMenu(null);
       setActiveDropTarget(null);
+      setSelectedDriveItem(null);
+      setDrivePanelMode("hidden");
     });
   }
 
@@ -364,6 +400,16 @@ export default function App() {
       ...current,
       [serviceName]: !current[serviceName],
     }));
+  }
+
+  function showDriveItemDetails(item: DriveItem) {
+    setSelectedDriveItem(item);
+    setDrivePanelMode("details");
+    setContextMenu(null);
+  }
+
+  function toggleDriveActivityPanel() {
+    setDrivePanelMode((current) => (current === "activity" ? "hidden" : "activity"));
   }
 
   useEffect(() => {
@@ -672,16 +718,10 @@ export default function App() {
   }
 
   function handleDriveRowClick(event: ReactMouseEvent<HTMLElement>, item: DriveItem) {
-    if (item.kind !== "folder") {
-      return;
-    }
     if (shouldIgnoreRowClick(event)) {
       return;
     }
-    if (Date.now() < suppressFolderOpenUntilRef.current) {
-      return;
-    }
-    void handleOpenFolder(item);
+    showDriveItemDetails(item);
   }
 
   function handleDropTargetOver(
@@ -769,11 +809,13 @@ export default function App() {
 
   function openRenameFromMenu(item: DriveItem) {
     setContextMenu(null);
+    showDriveItemDetails(item);
     handleStartRename(item);
   }
 
   function openMoveFromMenu(item: DriveItem) {
     setContextMenu(null);
+    showDriveItemDetails(item);
     handleStartMove(item);
   }
 
@@ -994,6 +1036,7 @@ export default function App() {
       <div
         className={[
           "table-row",
+          selectedDriveItem?.item_id === item.item_id && drivePanelMode === "details" ? "table-row-selected" : "",
           draggedItem?.item_id === item.item_id ? "table-row-dragging" : "",
           item.kind === "folder" && activeDropTarget === `folder:${item.item_id}` ? "table-row-drop-target" : "",
         ]
@@ -1087,15 +1130,27 @@ export default function App() {
           ) : null}
           <p className="row-hint muted">Right-click for actions. Drag onto folders, breadcrumbs, or Trash.</p>
         </div>
-        <button
-          className="row-menu-button"
-          type="button"
-          aria-label={`More actions for ${item.name}`}
-          onClick={(event) => handleContextMenuTriggerClick(event, item)}
-          disabled={isBusy}
-        >
-          ⋮
-        </button>
+        <div className="table-actions table-actions-inline">
+          {item.kind === "folder" ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void handleOpenFolder(item)}
+              disabled={isBusy}
+            >
+              Open
+            </button>
+          ) : null}
+          <button
+            className="row-menu-button"
+            type="button"
+            aria-label={`More actions for ${item.name}`}
+            onClick={(event) => handleContextMenuTriggerClick(event, item)}
+            disabled={isBusy}
+          >
+            ⋮
+          </button>
+        </div>
       </div>
     ));
   }
@@ -1138,6 +1193,9 @@ export default function App() {
             Download
           </button>
         )}
+        <button className="context-menu-item" type="button" onClick={() => showDriveItemDetails(item)}>
+          Info
+        </button>
         <button className="context-menu-item" type="button" onClick={() => openRenameFromMenu(item)}>
           Rename
         </button>
@@ -1155,6 +1213,94 @@ export default function App() {
           Move to Trash
         </button>
       </div>
+    );
+  }
+
+  function renderDriveDetailsPanel() {
+    if (drivePanelMode === "activity") {
+      return (
+        <aside className="activity-column">
+          <section className="surface side-card">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">Recent Activity</p>
+                <h2>Recent Activity</h2>
+              </div>
+            </div>
+            <div className="table-list activity-list">
+              {activities.length === 0 ? (
+                <div className="empty-state empty-state-compact">
+                  <strong>No activity yet.</strong>
+                  <p>Activity will appear after the first upload.</p>
+                </div>
+              ) : null}
+              {activities.map((activity) => (
+                <div className="activity-row" key={activity.activity_id}>
+                  <div>
+                    <strong>{activity.action}</strong>
+                    <p>{activity.filename || "Unnamed item"}</p>
+                  </div>
+                  <span>{formatDate(activity.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+      );
+    }
+
+    if (drivePanelMode !== "details" || !selectedDriveItem) {
+      return null;
+    }
+
+    return (
+      <aside className="activity-column">
+        <section className="surface side-card">
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Details</p>
+              <h2>{selectedDriveItem.name}</h2>
+            </div>
+            <button className="secondary-button" type="button" onClick={() => setDrivePanelMode("hidden")}>
+              Close
+            </button>
+          </div>
+          <dl className="detail-list">
+            <div className="detail-row">
+              <dt>Kind</dt>
+              <dd>{selectedDriveItem.kind === "folder" ? "Folder" : "File"}</dd>
+            </div>
+            <div className="detail-row">
+              <dt>Path</dt>
+              <dd>{buildDriveItemPath(breadcrumbs, selectedDriveItem)}</dd>
+            </div>
+            {selectedDriveItem.kind === "file" ? (
+              <div className="detail-row">
+                <dt>Size</dt>
+                <dd>{formatBytes(selectedDriveItem.size)}</dd>
+              </div>
+            ) : null}
+            {selectedDriveItem.kind === "file" && selectedDriveItem.mime_type ? (
+              <div className="detail-row">
+                <dt>Type</dt>
+                <dd>{selectedDriveItem.mime_type}</dd>
+              </div>
+            ) : null}
+            <div className="detail-row">
+              <dt>Tags</dt>
+              <dd>{selectedDriveItem.tags.join(", ") || "No tags"}</dd>
+            </div>
+            <div className="detail-row">
+              <dt>Created</dt>
+              <dd>{formatDate(selectedDriveItem.created_at)}</dd>
+            </div>
+            <div className="detail-row">
+              <dt>Updated</dt>
+              <dd>{formatDate(selectedDriveItem.updated_at)}</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
     );
   }
 
@@ -1235,6 +1381,9 @@ export default function App() {
             onLogout={() => void logout()}
             isBusy={isBusy}
             title="Drive"
+            secondaryActionLabel="Activity"
+            secondaryActionActive={drivePanelMode === "activity"}
+            onSecondaryAction={toggleDriveActivityPanel}
           />
 
           {error ? <div className="error-banner">{error}</div> : null}
@@ -1392,33 +1541,7 @@ export default function App() {
               </section>
             </div>
 
-            <aside className="activity-column">
-              <section className="surface side-card">
-                <div className="section-header">
-                  <div>
-                    <p className="eyebrow">Recent Activity</p>
-                    <h2>Recent Activity</h2>
-                  </div>
-                </div>
-                <div className="table-list activity-list">
-                  {activities.length === 0 ? (
-                    <div className="empty-state empty-state-compact">
-                      <strong>No activity yet.</strong>
-                      <p>Activity will appear after the first upload.</p>
-                    </div>
-                  ) : null}
-                  {activities.map((activity) => (
-                    <div className="activity-row" key={activity.activity_id}>
-                      <div>
-                        <strong>{activity.action}</strong>
-                        <p>{activity.filename || "Unnamed item"}</p>
-                      </div>
-                      <span>{formatDate(activity.created_at)}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </aside>
+            {renderDriveDetailsPanel()}
           </div>
           {renderContextMenu()}
         </section>
