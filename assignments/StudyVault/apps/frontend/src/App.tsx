@@ -36,6 +36,7 @@ type DashboardView = "drive" | "trash";
 type MoveDestination = { value: string; label: string };
 type DropTargetKey = "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
 type ContextMenuState = { item: DriveItem; x: number; y: number };
+type AdminSection = "users" | "audit" | "errors";
 
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 
@@ -63,6 +64,13 @@ function formatBytes(value: number | null | undefined): string {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function getHealthDetailPreview(detail: string, maxLength = 96): string {
+  if (detail.length <= maxLength) {
+    return detail;
+  }
+  return `${detail.slice(0, maxLength).trimEnd()}…`;
 }
 
 function AuthScreen(props: {
@@ -141,6 +149,7 @@ function NavButton(props: {
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={active}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
@@ -241,7 +250,12 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [passwordResetResult, setPasswordResetResult] = useState<AdminPasswordResetResult | null>(null);
+  const [activeAdminSection, setActiveAdminSection] = useState<AdminSection>("users");
+  const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
   const suppressFolderOpenUntilRef = useRef(0);
+  const adminUsersSectionRef = useRef<HTMLElement | null>(null);
+  const adminAuditSectionRef = useRef<HTMLElement | null>(null);
+  const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
@@ -335,6 +349,23 @@ export default function App() {
     });
   }
 
+  function scrollToAdminSection(section: AdminSection) {
+    const targets: Record<AdminSection, HTMLElement | null> = {
+      users: adminUsersSectionRef.current,
+      audit: adminAuditSectionRef.current,
+      errors: adminErrorsSectionRef.current,
+    };
+    setActiveAdminSection(section);
+    targets[section]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function toggleHealthDetail(serviceName: string) {
+    setExpandedHealthDetails((current) => ({
+      ...current,
+      [serviceName]: !current[serviceName],
+    }));
+  }
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -365,6 +396,48 @@ export default function App() {
 
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!adminUser) {
+      return;
+    }
+
+    const sections: Array<{ key: AdminSection; element: HTMLElement | null }> = [
+      { key: "users", element: adminUsersSectionRef.current },
+      { key: "audit", element: adminAuditSectionRef.current },
+      { key: "errors", element: adminErrorsSectionRef.current },
+    ];
+    const visibleSections = sections.filter((section) => section.element !== null);
+    if (visibleSections.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+        if (!visibleEntry) {
+          return;
+        }
+        const nextSection = visibleSections.find((section) => section.element === visibleEntry.target);
+        if (nextSection) {
+          setActiveAdminSection((current) => (current === nextSection.key ? current : nextSection.key));
+        }
+      },
+      {
+        root: null,
+        threshold: [0.2, 0.45, 0.7],
+        rootMargin: "-100px 0px -45% 0px",
+      },
+    );
+
+    for (const section of visibleSections) {
+      observer.observe(section.element!);
+    }
+
+    return () => observer.disconnect();
+  }, [adminUser]);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1363,9 +1436,27 @@ export default function App() {
             <p className="muted">Operational oversight for users, audit, and service health.</p>
           </div>
           <nav className="sidebar-nav" aria-label="Admin">
-            <NavButton active icon="◫" label="Users" onClick={() => void refreshAdminPanel()} disabled={isBusy} />
-            <NavButton icon="◪" label="Audit" onClick={() => void refreshAdminPanel()} disabled={isBusy} />
-            <NavButton icon="⚠" label="Errors" onClick={() => void refreshAdminPanel()} disabled={isBusy} />
+            <NavButton
+              active={activeAdminSection === "users"}
+              icon="◫"
+              label="Users"
+              onClick={() => scrollToAdminSection("users")}
+              disabled={isBusy}
+            />
+            <NavButton
+              active={activeAdminSection === "audit"}
+              icon="◪"
+              label="Audit"
+              onClick={() => scrollToAdminSection("audit")}
+              disabled={isBusy}
+            />
+            <NavButton
+              active={activeAdminSection === "errors"}
+              icon="⚠"
+              label="Errors"
+              onClick={() => scrollToAdminSection("errors")}
+              disabled={isBusy}
+            />
           </nav>
         </aside>
 
@@ -1406,7 +1497,7 @@ export default function App() {
                 </article>
               </section>
 
-              <section className="surface content-surface">
+              <section className="surface content-surface" ref={adminUsersSectionRef}>
                 <div className="section-header">
                   <div>
                     <p className="eyebrow">User Management</p>
@@ -1476,7 +1567,7 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="split-grid">
+              <section className="split-grid" ref={adminAuditSectionRef}>
                 <article className="surface content-surface">
                   <div className="section-header">
                     <div>
@@ -1512,21 +1603,41 @@ export default function App() {
                   </div>
                   <div className="table-list">
                     {(adminHealth?.services ?? []).map((service) => (
-                      <div className="table-row compact-row" key={service.service}>
+                      <div className="table-row admin-health-row" key={service.service}>
                         <div className="table-main">
-                          <strong>{service.service}</strong>
-                          <p className="muted">{service.detail || "No detail"}</p>
+                          <div className="table-title-row">
+                            <strong>{service.service}</strong>
+                            <span className={service.status === "healthy" ? "status-ok" : "status-bad"}>
+                              {service.status}
+                            </span>
+                          </div>
+                          {service.detail ? (
+                            <div className="health-detail-block">
+                              <p className="muted health-detail-preview">
+                                {expandedHealthDetails[service.service]
+                                  ? service.detail
+                                  : getHealthDetailPreview(service.detail)}
+                              </p>
+                              <button
+                                className="health-detail-toggle"
+                                type="button"
+                                onClick={() => toggleHealthDetail(service.service)}
+                                aria-expanded={expandedHealthDetails[service.service] ? "true" : "false"}
+                              >
+                                {expandedHealthDetails[service.service] ? "Collapse detail" : "Show detail"}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="muted">No detail</p>
+                          )}
                         </div>
-                        <span className={service.status === "healthy" ? "status-ok" : "status-bad"}>
-                          {service.status}
-                        </span>
                       </div>
                     ))}
                   </div>
                 </article>
               </section>
 
-              <section className="surface content-surface">
+              <section className="surface content-surface" ref={adminErrorsSectionRef}>
                 <div className="section-header">
                   <div>
                     <p className="eyebrow">Operational Errors</p>

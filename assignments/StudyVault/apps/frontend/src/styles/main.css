@@ -473,6 +473,10 @@ h2 {
   align-items: center;
 }
 
+.admin-health-row {
+  align-items: flex-start;
+}
+
 .inline-editor,
 .create-folder-panel {
   margin-top: 0.8rem;
@@ -547,6 +551,32 @@ h2 {
   border-radius: 18px;
   background: #e8f0fe;
   color: #1f1f1f;
+}
+
+.health-detail-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.health-detail-preview {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.health-detail-toggle {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #1a73e8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.health-detail-toggle:hover {
+  color: #0b57d0;
+  text-decoration: underline;
 }
 
 .status-ok,

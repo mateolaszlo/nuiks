@@ -158,4 +158,23 @@ test("admin login shows admin indicator", async ({ page }) => {
   await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
   await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Users" }) }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
+
+  const usersNav = page.getByRole("button", { name: "Users" }).first();
+  const auditNav = page.getByRole("button", { name: "Audit" }).first();
+  const errorsNav = page.getByRole("button", { name: "Errors" }).first();
+
+  await expect(usersNav).toHaveAttribute("aria-pressed", "true");
+  await auditNav.click();
+  await expect(auditNav).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "Audit Events" })).toBeInViewport();
+
+  await errorsNav.click();
+  await expect(errorsNav).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "Errors / Low-Level Info" })).toBeInViewport();
+
+  const systemHealth = page.locator("article").filter({ has: page.getByRole("heading", { name: "System Health" }) });
+  const detailToggle = systemHealth.getByRole("button", { name: "Show detail" }).first();
+  await expect(detailToggle).toHaveAttribute("aria-expanded", "false");
+  await detailToggle.click();
+  await expect(detailToggle).toHaveAttribute("aria-expanded", "true");
 });
