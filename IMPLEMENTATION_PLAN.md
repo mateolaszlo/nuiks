@@ -414,9 +414,10 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Handle excessively long file/folder names in the grid and details view
 - [x] Replace single-file sidebar upload state with queue-based state
 - [x] Accept multiple files from the sidebar file input
-- [ ] Add external file drag-and-drop upload on the current drive surface
+- [x] Add a shared enqueue helper for both file input selection and external dropped files
+- [x] Add external file drag-and-drop upload on the current drive surface
+- [x] Preserve internal drag-and-drop move behavior while external upload is added on the main drive surface
 - [ ] Add external file drag-and-drop upload onto folder tiles and breadcrumbs
-- [ ] Preserve internal drag-and-drop move behavior while external upload is added
 - [x] Add per-file upload progress UI with `Queued`, `Uploading`, `Processing`, `Done`, and `Failed` states
 - [x] Keep failed uploads retryable from the queue
 - [x] Add a dedicated upload method in `api/client.ts` that uses `XMLHttpRequest`
@@ -552,7 +553,7 @@ Because of that, implement the next upload UX phase as a frontend refactor, not 
 - [x] Introduce an `UploadQueueItem` model with at least: local id, `File`, destination folder id, tags snapshot, status, progress percent, server file id (optional), and error message
 - [x] Add a dedicated upload method in `assignments/StudyVault/apps/frontend/src/api/client.ts` that uses `XMLHttpRequest` so `xhr.upload.onprogress` can update the queue
 - [x] Keep the existing generic `request()` helper for non-upload API calls
-- [ ] Add enqueue helpers for both file input selection and external drag-and-drop
+- [x] Add a shared enqueue helper for both file input selection and external drag-and-drop
 - [x] Add a small upload scheduler that runs at most two active uploads at once
 - [x] On each success, update the queue entry to `done` and refresh the visible folder contents when appropriate
 - [x] On each failure, update the queue entry to `failed` without discarding it
@@ -563,7 +564,7 @@ Because of that, implement the next upload UX phase as a frontend refactor, not 
 
 Handle operating-system file drops in these places:
 
-- [ ] the main drive content surface for upload into the current folder
+- [x] the main drive content surface for upload into the current folder
 - [ ] folder tiles for upload directly into that folder
 - [ ] breadcrumb buttons for upload into an ancestor folder
 

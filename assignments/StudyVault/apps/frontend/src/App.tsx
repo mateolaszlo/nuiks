@@ -34,7 +34,7 @@ import {
 type LoadState = "loading" | "ready" | "error";
 type DashboardView = "drive" | "trash";
 type MoveDestination = { value: string; label: string };
-type DropTargetKey = "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
+type DropTargetKey = "drive-surface" | "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
 type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
 type DrivePanelMode = "hidden" | "details" | "activity";
@@ -456,6 +456,51 @@ export default function App() {
     setSearchModeActive(false);
   }
 
+  function parseTagInput(value: string): string[] {
+    return value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+
+  function enqueueUploadFiles(
+    files: File[],
+    parentFolderId: string | null,
+    destinationLabel: string,
+    tags: string[],
+  ) {
+    if (files.length === 0) {
+      return false;
+    }
+
+    setUploadQueue((current) => [
+      ...current,
+      ...files.map((file) => ({
+        queue_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        file,
+        parent_folder_id: parentFolderId,
+        destination_label: destinationLabel,
+        tags,
+        status: "queued" as const,
+        progress: 0,
+      })),
+    ]);
+    setError(null);
+    return true;
+  }
+
+  function hasExternalFiles(event: ReactDragEvent<HTMLElement>): boolean {
+    if (draggedItem) {
+      return false;
+    }
+    const types = Array.from(event.dataTransfer.types ?? []);
+    return types.includes("Files") && event.dataTransfer.files.length > 0;
+  }
+
+  function getDroppedFiles(event: ReactDragEvent<HTMLElement>): File[] {
+    return Array.from(event.dataTransfer.files ?? []);
+  }
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -574,30 +619,11 @@ export default function App() {
       return;
     }
 
-    const tags = tagInput
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const destinationFolderId = currentFolderId;
-    const destinationLabel = currentFolderLabel;
-
-    setUploadQueue((current) => [
-      ...current,
-      ...pendingUploadFiles.map((file) => ({
-        queue_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-        file,
-        parent_folder_id: destinationFolderId,
-        destination_label: destinationLabel,
-        tags,
-        status: "queued" as const,
-        progress: 0,
-      })),
-    ]);
+    enqueueUploadFiles(pendingUploadFiles, currentFolderId, currentFolderLabel, parseTagInput(tagInput));
     setPendingUploadFiles([]);
     if (uploadInputRef.current) {
       uploadInputRef.current.value = "";
     }
-    setError(null);
   }
 
   async function handleTrashItem(item: DriveItem) {
@@ -820,6 +846,41 @@ export default function App() {
     if (activeDropTarget === targetKey) {
       setActiveDropTarget(null);
     }
+  }
+
+  function handleDriveSurfaceDragOver(event: ReactDragEvent<HTMLElement>) {
+    if (isBusy || !hasExternalFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    if (activeDropTarget !== "drive-surface") {
+      setActiveDropTarget("drive-surface");
+    }
+  }
+
+  function handleDriveSurfaceDragLeave(event: ReactDragEvent<HTMLElement>) {
+    if (activeDropTarget !== "drive-surface") {
+      return;
+    }
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+    setActiveDropTarget(null);
+  }
+
+  function handleDriveSurfaceDrop(event: ReactDragEvent<HTMLElement>) {
+    if (!hasExternalFiles(event)) {
+      return;
+    }
+    event.preventDefault();
+    const droppedFiles = getDroppedFiles(event);
+    setActiveDropTarget(null);
+    if (droppedFiles.length === 0) {
+      return;
+    }
+    enqueueUploadFiles(droppedFiles, currentFolderId, currentFolderLabel, parseTagInput(tagInput));
   }
 
   async function moveDraggedItemTo(targetFolderId: string | null) {
@@ -1729,6 +1790,17 @@ export default function App() {
                         </div>
                       </form>
                     ) : null}
+                    <div
+                      className={[
+                        "drive-drop-surface",
+                        activeDropTarget === "drive-surface" ? "drive-drop-surface-active" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onDragOver={handleDriveSurfaceDragOver}
+                      onDragLeave={handleDriveSurfaceDragLeave}
+                      onDrop={handleDriveSurfaceDrop}
+                    >
                     <div className="drive-grid">
                       {currentItems.length === 0 ? (
                         <div className="empty-state">
@@ -1737,6 +1809,7 @@ export default function App() {
                         </div>
                       ) : null}
                       {renderDriveRows(currentItems)}
+                    </div>
                     </div>
                   </>
                 ) : (

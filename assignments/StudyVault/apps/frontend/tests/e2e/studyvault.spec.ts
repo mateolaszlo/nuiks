@@ -123,6 +123,52 @@ test("file can be dragged into a folder tile", async ({ page }) => {
   await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
 });
 
+test("external files can be dropped onto the current drive surface and enter the upload queue", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `drop-target-${uniqueId}`;
+  const filename = `external-drop-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const folderTile = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
+  await expect(folderTile).toBeVisible({ timeout: 60_000 });
+  await folderTile.dblclick();
+
+  await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
+
+  const dropSurface = page.locator(".drive-drop-surface").first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+  await dropSurface.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `external drop ${uniqueId}` },
+  );
+  await expect(dropSurface).toHaveClass(/drive-drop-surface-active/);
+  await dropSurface.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `external drop ${uniqueId}` },
+  );
+
+  await expect(queuePanel).toBeVisible();
+  await expect(queuePanel).toContainText(filename);
+  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
 test("single click selects a folder and double click navigates into it", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `single-click-${uniqueId}`;

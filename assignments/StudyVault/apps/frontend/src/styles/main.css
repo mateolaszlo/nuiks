@@ -465,6 +465,22 @@ h3 {
   align-items: start;
 }
 
+.drive-drop-surface {
+  display: grid;
+  gap: 1rem;
+  margin-top: 0.25rem;
+  padding: 0.35rem;
+  border-radius: 24px;
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.drive-drop-surface-active {
+  background: #edf4ff;
+  box-shadow: inset 0 0 0 2px #8ab4f8;
+}
+
 .upload-queue-panel {
   margin: 1rem 0 1.2rem;
   padding: 1rem;
