@@ -423,6 +423,9 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add a dedicated upload method in `api/client.ts` that uses `XMLHttpRequest`
 - [x] Add a small upload scheduler that runs at most two active uploads at once
 - [x] Reduce reliance on global `isBusy` during upload queue execution
+- [x] Prevent default browser file-open behavior during external drag-and-drop over the Drive app
+- [x] Auto-dismiss successful upload queue entries after a short delay
+- [x] Delay `Processing…` until the browser has actually completed the upload phase
 
 ### 6.6.1 Drive browser UX refresh
 

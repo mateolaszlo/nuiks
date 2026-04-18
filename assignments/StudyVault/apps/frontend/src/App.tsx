@@ -53,6 +53,7 @@ type UploadQueueItem = {
 
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 const MAX_ACTIVE_UPLOADS = 2;
+const DONE_UPLOAD_DISMISS_DELAY_MS = 1500;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -309,6 +310,7 @@ export default function App() {
   const currentFolderIdRef = useRef<string | null>(null);
   const currentViewRef = useRef<DashboardView>("drive");
   const inFlightUploadIdsRef = useRef<Set<string>>(new Set());
+  const uploadDismissTimeoutsRef = useRef<Map<string, number>>(new Map());
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
   const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
@@ -501,6 +503,15 @@ export default function App() {
     return Array.from(event.dataTransfer.files ?? []);
   }
 
+  function clearUploadDismissTimeout(queueId: string) {
+    const timeoutId = uploadDismissTimeoutsRef.current.get(queueId);
+    if (timeoutId === undefined) {
+      return;
+    }
+    window.clearTimeout(timeoutId);
+    uploadDismissTimeoutsRef.current.delete(queueId);
+  }
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -575,6 +586,35 @@ export default function App() {
   }, [adminUser]);
 
   useEffect(() => {
+    if (!authenticated || adminUser) {
+      return;
+    }
+
+    function handleWindowFileDrag(event: DragEvent) {
+      if (draggedItem !== null) {
+        return;
+      }
+      const dataTransfer = event.dataTransfer;
+      const types = Array.from(dataTransfer?.types ?? []);
+      const hasFileDrag = types.includes("Files") || (dataTransfer?.files.length ?? 0) > 0;
+      if (!hasFileDrag) {
+        return;
+      }
+      event.preventDefault();
+      if (event.type === "dragover" && dataTransfer) {
+        dataTransfer.dropEffect = "copy";
+      }
+    }
+
+    window.addEventListener("dragover", handleWindowFileDrag);
+    window.addEventListener("drop", handleWindowFileDrag);
+    return () => {
+      window.removeEventListener("dragover", handleWindowFileDrag);
+      window.removeEventListener("drop", handleWindowFileDrag);
+    };
+  }, [adminUser, authenticated, draggedItem]);
+
+  useEffect(() => {
     const availableSlots = MAX_ACTIVE_UPLOADS - activeUploadCount;
     if (availableSlots <= 0) {
       return;
@@ -588,6 +628,39 @@ export default function App() {
       void processUploadQueueItem(item);
     }
   }, [activeUploadCount, uploadQueue]);
+
+  useEffect(() => {
+    const doneIds = new Set(uploadQueue.filter((item) => item.status === "done").map((item) => item.queue_id));
+
+    for (const item of uploadQueue) {
+      if (item.status === "done" && !uploadDismissTimeoutsRef.current.has(item.queue_id)) {
+        const timeoutId = window.setTimeout(() => {
+          uploadDismissTimeoutsRef.current.delete(item.queue_id);
+          dismissUpload(item.queue_id);
+        }, DONE_UPLOAD_DISMISS_DELAY_MS);
+        uploadDismissTimeoutsRef.current.set(item.queue_id, timeoutId);
+      }
+      if (item.status !== "done") {
+        clearUploadDismissTimeout(item.queue_id);
+      }
+    }
+
+    for (const [queueId, timeoutId] of uploadDismissTimeoutsRef.current.entries()) {
+      if (!doneIds.has(queueId)) {
+        window.clearTimeout(timeoutId);
+        uploadDismissTimeoutsRef.current.delete(queueId);
+      }
+    }
+  }, [uploadQueue]);
+
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of uploadDismissTimeoutsRef.current.values()) {
+        window.clearTimeout(timeoutId);
+      }
+      uploadDismissTimeoutsRef.current.clear();
+    };
+  }, []);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1175,6 +1248,7 @@ export default function App() {
   }
 
   function retryUpload(queueId: string) {
+    clearUploadDismissTimeout(queueId);
     updateUploadQueueItem(queueId, (item) => ({
       ...item,
       status: "queued",
@@ -1185,6 +1259,7 @@ export default function App() {
   }
 
   function dismissUpload(queueId: string) {
+    clearUploadDismissTimeout(queueId);
     setUploadQueue((current) => current.filter((item) => item.queue_id !== queueId));
   }
 

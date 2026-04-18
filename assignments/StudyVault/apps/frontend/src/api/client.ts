@@ -177,6 +177,7 @@ export class ApiClient {
 
     return await new Promise<FileRecord>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      let processingNotified = false;
       xhr.open("POST", "/api/v1/files");
       xhr.responseType = "text";
       if (token) {
@@ -191,11 +192,25 @@ export class ApiClient {
         options?.onProgress?.(percent);
       };
 
-      // Upload byte completion happens before the API responds, because the server
-      // only returns after downstream metadata/search/activity sync completes.
       xhr.upload.onload = () => {
         options?.onProgress?.(100);
+      };
+
+      const notifyProcessing = () => {
+        if (processingNotified) {
+          return;
+        }
+        processingNotified = true;
         options?.onProcessing?.();
+      };
+
+      xhr.onreadystatechange = () => {
+        if (
+          xhr.readyState >= XMLHttpRequest.HEADERS_RECEIVED &&
+          xhr.readyState < XMLHttpRequest.DONE
+        ) {
+          notifyProcessing();
+        }
       };
 
       xhr.onerror = () => reject(new Error("Upload failed"));
@@ -207,6 +222,7 @@ export class ApiClient {
         }
 
         try {
+          notifyProcessing();
           resolve(JSON.parse(xhr.responseText) as FileRecord);
         } catch (parseError) {
           reject(parseError instanceof Error ? parseError : new Error("Upload response parsing failed"));

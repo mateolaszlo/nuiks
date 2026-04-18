@@ -456,7 +456,7 @@ test("multiple files can be queued from the picker and complete in the shared up
   await expect(driveSurface.locator(".drive-tile").filter({ hasText: secondFilename }).first()).toBeVisible({
     timeout: 60_000,
   });
-  await expect(queuePanel.locator(".upload-status-done")).toHaveCount(2, { timeout: 60_000 });
+  await expect(queuePanel).toHaveCount(0, { timeout: 60_000 });
 });
 
 test("failed queued uploads stay visible with retry and dismiss actions", async ({ page }) => {
@@ -501,5 +501,5 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
   await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
     timeout: 60_000,
   });
-  await expect(queueRow).toContainText("done");
+  await expect(queueRow).toHaveCount(0, { timeout: 60_000 });
 });
