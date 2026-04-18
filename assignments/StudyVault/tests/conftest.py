@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,3 +71,29 @@ def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 if str(COMMON_PATH) not in sys.path:
     sys.path.insert(0, str(COMMON_PATH))
+
+
+@pytest.fixture(autouse=True)
+def version_public_testclient_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_request = TestClient.request
+
+    def request_with_api_version_prefix(self, method, url, *args, **kwargs):
+        headers = kwargs.get("headers")
+        skip_rewrite = False
+        if isinstance(headers, dict) and headers.get("x-test-raw-path") == "true":
+            headers = dict(headers)
+            headers.pop("x-test-raw-path", None)
+            kwargs["headers"] = headers
+            skip_rewrite = True
+
+        if (
+            not skip_rewrite
+            and isinstance(url, str)
+            and url.startswith("/api/")
+            and not url.startswith("/api/v1/")
+        ):
+            url = url.replace("/api/", "/api/v1/", 1)
+
+        return original_request(self, method, url, *args, **kwargs)
+
+    monkeypatch.setattr(TestClient, "request", request_with_api_version_prefix)

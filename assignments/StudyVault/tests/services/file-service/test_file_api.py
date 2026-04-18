@@ -51,7 +51,7 @@ class FakeDownstream:
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord:
         folder = self.catalog_folders.get(folder_id)
         if folder is None or folder.owner_id != "test-user":
-            raise ServiceClientError(f"GET http://catalog.test/api/catalog/folders/{folder_id} failed with status 404")
+            raise ServiceClientError(f"GET http://catalog.test/api/v1/catalog/folders/{folder_id} failed with status 404")
         return folder
 
     async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord:
@@ -269,6 +269,22 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     assert downstream.activity_file_ids == [payload["file_id"]]
     assert downstream.activity_actions == ["file_uploaded"]
     assert downstream.activity_item_kinds == ["file"]
+
+
+def test_file_old_unversioned_public_path_returns_not_found() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake", "x-test-raw-path": "true"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 404
 
 
 def test_file_rename_updates_filename_and_emits_downstream_events() -> None:

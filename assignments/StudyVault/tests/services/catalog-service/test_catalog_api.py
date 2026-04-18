@@ -50,6 +50,20 @@ def test_catalog_lists_files_for_authenticated_user_only() -> None:
     assert payload[0]["filename"] == "algorithms.pdf"
 
 
+def test_catalog_old_unversioned_public_path_returns_not_found() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/catalog/files",
+            headers={"authorization": "Bearer fake", "x-test-raw-path": "true"},
+        )
+
+    assert response.status_code == 404
+
+
 def test_catalog_internal_create_requires_internal_token() -> None:
     module = load_service_module("catalog")
     repository = module.InMemoryCatalogRepository()

@@ -4,10 +4,11 @@ import os
 
 from fastapi import FastAPI
 
-from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.logging import configure_logging
 from studyvault_backend_common.startup import retry_startup
+from studyvault_backend_common.versioning import build_versioned_service_app
 
-from app.api.routes import build_router
+from app.api.routes import build_internal_router, build_public_router
 from app.core.config import get_settings
 from app.repositories.activity import InMemoryActivityRepository, MongoActivityRepository
 from app.services.admin import AdminService
@@ -59,9 +60,12 @@ def create_app(repository=None, keycloak_client=None, audit_client=None, health_
         audit_logs=audit_client,
         service_health=health_client,
     )
-    app = FastAPI(title="StudyVault Activity Service")
-    install_request_logging(app)
-    app.include_router(build_router(service, admin_service))
+    app = build_versioned_service_app(
+        title="StudyVault Activity Service",
+        service_name=settings.service_name,
+        public_router=build_public_router(service, admin_service),
+        internal_router=build_internal_router(service),
+    )
     app.state.repository = repository
     app.state.keycloak_client = keycloak_client
     app.state.audit_client = audit_client

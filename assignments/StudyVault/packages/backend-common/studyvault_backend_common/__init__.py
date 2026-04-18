@@ -21,6 +21,7 @@ from .models import (
 )
 from .responses import build_attachment_content_disposition
 from .startup import retry_startup
+from .versioning import build_versioned_service_app
 
 __all__ = [
     "ActivityRecord",
@@ -43,6 +44,7 @@ __all__ = [
     "UploadActivityEvent",
     "build_auth_dependency",
     "build_attachment_content_disposition",
+    "build_versioned_service_app",
     "configure_logging",
     "get_logger",
     "install_request_logging",

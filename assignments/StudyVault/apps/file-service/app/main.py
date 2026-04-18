@@ -4,10 +4,11 @@ import os
 
 from fastapi import FastAPI
 
-from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.logging import configure_logging
 from studyvault_backend_common.startup import retry_startup
+from studyvault_backend_common.versioning import build_versioned_service_app
 
-from app.api.routes import build_router
+from app.api.routes import build_internal_router, build_public_router
 from app.core.config import get_settings
 from app.repositories.object_store import (
     InMemoryObjectStoreRepository,
@@ -49,9 +50,12 @@ def create_app(object_store=None, downstream=None, max_upload_bytes: int | None 
         downstream=downstream,
         max_upload_bytes=max_upload_bytes or settings.file_max_upload_bytes,
     )
-    app = FastAPI(title="StudyVault File Service")
-    install_request_logging(app)
-    app.include_router(build_router(service))
+    app = build_versioned_service_app(
+        title="StudyVault File Service",
+        service_name=settings.service_name,
+        public_router=build_public_router(service),
+        internal_router=build_internal_router(service),
+    )
     app.state.object_store = object_store
     app.state.downstream = downstream
     return app

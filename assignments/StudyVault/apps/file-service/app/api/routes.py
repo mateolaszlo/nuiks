@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
+from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import (
@@ -18,7 +19,7 @@ from app.core.config import get_settings
 from app.services.files import FileService
 
 
-def build_router(service: FileService) -> APIRouter:
+def build_public_router(service: FileService) -> APIRouter:
     router = APIRouter()
     settings = get_settings()
     current_user_dependency = build_auth_dependency(
@@ -30,15 +31,8 @@ def build_router(service: FileService) -> APIRouter:
         )
     )
 
-    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
-        if x_internal_token != settings.internal_token:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
-
-    @router.get("/health")
-    async def healthcheck() -> dict[str, str]:
-        return {"status": "ok", "service": settings.service_name}
-
-    @router.post("/api/files", response_model=FileRecord)
+    @router.post("/files", response_model=FileRecord)
+    @version(1)
     async def upload_file(
         file: UploadFile = File(...),
         tags: list[str] | None = Form(default=None),
@@ -52,7 +46,8 @@ def build_router(service: FileService) -> APIRouter:
             parent_folder_id=parent_folder_id,
         )
 
-    @router.get("/api/files/{file_id}/download")
+    @router.get("/files/{file_id}/download")
+    @version(1)
     async def download_file(
         file_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
@@ -66,7 +61,8 @@ def build_router(service: FileService) -> APIRouter:
             },
         )
 
-    @router.patch("/api/files/{file_id}", response_model=FileRecord)
+    @router.patch("/files/{file_id}", response_model=FileRecord)
+    @version(1)
     async def rename_file(
         file_id: str,
         request: RenameItemRequest,
@@ -74,7 +70,8 @@ def build_router(service: FileService) -> APIRouter:
     ) -> FileRecord:
         return await service.rename_file(user=user, file_id=file_id, request=request)
 
-    @router.post("/api/files/{file_id}/move", response_model=FileRecord)
+    @router.post("/files/{file_id}/move", response_model=FileRecord)
+    @version(1)
     async def move_file(
         file_id: str,
         request: MoveItemRequest,
@@ -82,20 +79,33 @@ def build_router(service: FileService) -> APIRouter:
     ) -> FileRecord:
         return await service.move_file(user=user, file_id=file_id, request=request)
 
-    @router.delete("/api/files/{file_id}", status_code=204)
+    @router.delete("/files/{file_id}", status_code=204)
+    @version(1)
     async def trash_file(
         file_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> None:
         await service.trash_file(user=user, file_id=file_id)
 
-    @router.post("/api/files/{file_id}/restore", response_model=FileRestoreResponse)
+    @router.post("/files/{file_id}/restore", response_model=FileRestoreResponse)
+    @version(1)
     async def restore_file(
         file_id: str,
         request: RestoreItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FileRestoreResponse:
         return await service.restore_file(user=user, file_id=file_id, request=request)
+
+    return router
+
+
+def build_internal_router(service: FileService) -> APIRouter:
+    router = APIRouter()
+    settings = get_settings()
+
+    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+        if x_internal_token != settings.internal_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
 
     @router.delete(
         "/internal/files/{file_id}/hard-delete",

@@ -110,7 +110,7 @@ def test_request_logging_replaces_oversized_request_id(monkeypatch) -> None:
 
 
 def test_should_log_request_for_failures() -> None:
-    assert should_log_request(path="/api/catalog/files", status_code=500, duration_ms=12.0) is True
+    assert should_log_request(path="/api/v1/catalog/files", status_code=500, duration_ms=12.0) is True
 
 
 def test_should_not_log_fast_success_health_check() -> None:
@@ -118,8 +118,8 @@ def test_should_not_log_fast_success_health_check() -> None:
 
 
 def test_should_not_log_fast_success_regular_request() -> None:
-    assert should_log_request(path="/api/catalog/files", status_code=200, duration_ms=24.0) is False
+    assert should_log_request(path="/api/v1/catalog/files", status_code=200, duration_ms=24.0) is False
 
 
 def test_should_log_slow_success_request() -> None:
-    assert should_log_request(path="/api/search", status_code=200, duration_ms=275.0) is True
+    assert should_log_request(path="/api/v1/search", status_code=200, duration_ms=275.0) is True

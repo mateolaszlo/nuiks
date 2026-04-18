@@ -6,11 +6,11 @@ StudyVault uses nginx as the public gateway. The active nginx configuration live
 
 - `/` -> frontend
 - `/realms/`, `/resources/`, `/js/` -> Keycloak
-- `/api/files*` -> `file-service`
-- `/api/catalog/*` -> `catalog-service`
-- `/api/search*` -> `search-service`
-- `/api/activity/*` -> `activity-service`
-- `/api/admin/*` -> `activity-service`
+- `/api/v1/files*` -> `file-service`
+- `/api/v1/catalog/*` -> `catalog-service`
+- `/api/v1/search*` -> `search-service`
+- `/api/v1/activity/*` -> `activity-service`
+- `/api/v1/admin/*` -> `activity-service`
 
 Internal fan-out routes are not exposed through the public gateway. `file-service`
 calls the downstream services directly on the Compose network.

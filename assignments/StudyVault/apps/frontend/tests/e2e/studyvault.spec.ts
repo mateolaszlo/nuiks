@@ -262,7 +262,7 @@ test("admin login shows admin indicator", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Errors / Low-Level Info" })).toBeInViewport();
 
   const systemHealth = page.locator("article").filter({ has: page.getByRole("heading", { name: "System Health" }) });
-  const detailToggle = systemHealth.getByRole("button", { name: "Show detail" }).first();
+  const detailToggle = systemHealth.locator("button.health-detail-toggle").first();
   await expect(detailToggle).toHaveAttribute("aria-expanded", "false");
   await detailToggle.click();
   await expect(detailToggle).toHaveAttribute("aria-expanded", "true");
@@ -313,9 +313,9 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
   const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
   let failNextUpload = true;
 
-  await page.route("**/api/files", async (route, request) => {
+  await page.route("**/api/v1/files", async (route, request) => {
     const url = new URL(request.url());
-    if (request.method() === "POST" && url.pathname === "/api/files" && failNextUpload) {
+    if (request.method() === "POST" && url.pathname === "/api/v1/files" && failNextUpload) {
       failNextUpload = false;
       await route.fulfill({
         status: 500,

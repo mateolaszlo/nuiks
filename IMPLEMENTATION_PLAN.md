@@ -320,6 +320,10 @@ That is enough to feel responsive, but conservative for the current Docker-first
 
 **Decision:** out of scope for this phase. Accept only regular files from the browser `FileList`.
 
+### 5.21 Public API versioning
+
+**Decision:** public HTTP endpoints are versioned under `/api/v1/...` only. Unversioned `/api/...` paths are removed. Internal routes remain under `/internal/...` and health checks remain under `/health`.
+
 ---
 
 ## 6. Repo-level task list
@@ -629,6 +633,42 @@ Future optimization path, explicitly out of scope here:
 - [x] Add batch processing
 - [x] Add retries/logging
 - [x] Make schedule configurable
+
+## 6.8 Public API versioning
+
+- [x] Add `fastapi-versioning` to the Python requirements
+- [x] Split each public service into versioned public routers and unversioned internal routes
+- [x] Serve public endpoints under `/api/v1/...` in catalog, file, search, and activity services
+- [x] Keep `/internal/...` routes unversioned
+- [x] Keep `/health` unversioned
+- [x] Update nginx public gateway routing to `/api/v1/...`
+- [x] Update frontend API callers to `/api/v1/...`
+- [x] Update public downstream service callers to `/api/v1/...`
+- [x] Update smoke/runtime checks and relevant frontend/service tests for `/api/v1/...`
+- [x] Add representative checks that old unversioned public paths no longer work
+
+### 6.8.1 FastAPI versioning migration
+
+This phase moves the public StudyVault HTTP surface from ad hoc `/api/...` routing to explicit versioned routes using `fastapi-versioning`.
+
+Scope:
+
+- public endpoints for `catalog-service`, `file-service`, `search-service`, and `activity-service`
+- nginx gateway forwarding for those public endpoints
+- frontend callers and runtime smoke coverage
+
+Non-scope:
+
+- `/internal/...` service routes
+- `/health` endpoints
+- any multi-version compatibility layer beyond `v1`
+
+Resulting contract:
+
+- public routes are served from `/api/v1/...`
+- old unversioned public `/api/...` routes return `404`
+- internal service-to-service routes remain under `/internal/...`
+- health checks remain under `/health`
 
 ---
 

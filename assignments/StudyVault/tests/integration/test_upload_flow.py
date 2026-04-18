@@ -44,7 +44,7 @@ def test_upload_flow_produces_metadata_search_and_activity_views() -> None:
 
     with TestClient(app) as client:
         response = client.post(
-            "/api/files",
+            "/api/v1/files",
             headers={"authorization": "Bearer fake"},
             files={"file": ("summary.md", b"# summary", "text/markdown")},
             data={"tags": "revision"},

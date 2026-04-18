@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import AuthenticatedUser, DriveItem, FileRecord
@@ -11,7 +12,7 @@ from app.core.config import get_settings
 from app.services.search import MAX_SEARCH_QUERY_LENGTH, SearchService
 
 
-def build_router(service: SearchService) -> APIRouter:
+def build_public_router(service: SearchService) -> APIRouter:
     router = APIRouter()
     settings = get_settings()
     current_user_dependency = build_auth_dependency(
@@ -23,15 +24,8 @@ def build_router(service: SearchService) -> APIRouter:
         )
     )
 
-    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
-        if x_internal_token != settings.internal_token:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
-
-    @router.get("/health")
-    async def healthcheck() -> dict[str, str]:
-        return {"status": "ok", "service": settings.service_name}
-
-    @router.get("/api/search", response_model=list[DriveItem])
+    @router.get("/search", response_model=list[DriveItem])
+    @version(1)
     def search_files(
         q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
         include_trashed: bool = Query(default=False),
@@ -46,6 +40,17 @@ def build_router(service: SearchService) -> APIRouter:
             kind=kind,
             parent_id=parent_id,
         )
+
+    return router
+
+
+def build_internal_router(service: SearchService) -> APIRouter:
+    router = APIRouter()
+    settings = get_settings()
+
+    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+        if x_internal_token != settings.internal_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
 
     @router.post(
         "/internal/search/index",

@@ -4,10 +4,10 @@
 
 ## Responsibilities
 
-- accept authenticated uploads through `POST /api/files`
+- accept authenticated uploads through `POST /api/v1/files`
 - store file content in MinIO
 - fan out file metadata to catalog, search, and activity services
-- serve authenticated downloads from `GET /api/files/{file_id}/download`
+- serve authenticated downloads from `GET /api/v1/files/{file_id}/download`
 
 ## Flow
 

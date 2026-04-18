@@ -42,26 +42,26 @@ export class ApiClient {
   }
 
   listFiles(): Promise<FileRecord[]> {
-    return this.request<FileRecord[]>("/api/catalog/files");
+    return this.request<FileRecord[]>("/api/v1/catalog/files");
   }
 
   listCatalogItems(parentFolderId?: string | null): Promise<CatalogItemsResponse> {
     const query = parentFolderId ? `?parent_id=${encodeURIComponent(parentFolderId)}` : "";
-    return this.request<CatalogItemsResponse>(`/api/catalog/items${query}`);
+    return this.request<CatalogItemsResponse>(`/api/v1/catalog/items${query}`);
   }
 
   getBreadcrumbs(folderId: string): Promise<CatalogBreadcrumbsResponse> {
     return this.request<CatalogBreadcrumbsResponse>(
-      `/api/catalog/breadcrumbs/${encodeURIComponent(folderId)}`,
+      `/api/v1/catalog/breadcrumbs/${encodeURIComponent(folderId)}`,
     );
   }
 
   listTrash(): Promise<CatalogTrashResponse> {
-    return this.request<CatalogTrashResponse>("/api/catalog/trash");
+    return this.request<CatalogTrashResponse>("/api/v1/catalog/trash");
   }
 
   createFolder(name: string, parentFolderId?: string | null): Promise<FolderRecord> {
-    return this.request<FolderRecord>("/api/catalog/folders", {
+    return this.request<FolderRecord>("/api/v1/catalog/folders", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -72,7 +72,7 @@ export class ApiClient {
   }
 
   renameFile(fileId: string, name: string): Promise<FileRecord> {
-    return this.request<FileRecord>(`/api/files/${encodeURIComponent(fileId)}`, {
+    return this.request<FileRecord>(`/api/v1/files/${encodeURIComponent(fileId)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
@@ -80,7 +80,7 @@ export class ApiClient {
   }
 
   renameFolder(folderId: string, name: string): Promise<FolderRecord> {
-    return this.request<FolderRecord>(`/api/catalog/folders/${encodeURIComponent(folderId)}`, {
+    return this.request<FolderRecord>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
@@ -88,7 +88,7 @@ export class ApiClient {
   }
 
   moveFile(fileId: string, parentFolderId?: string | null): Promise<FileRecord> {
-    return this.request<FileRecord>(`/api/files/${encodeURIComponent(fileId)}/move`, {
+    return this.request<FileRecord>(`/api/v1/files/${encodeURIComponent(fileId)}/move`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
@@ -96,7 +96,7 @@ export class ApiClient {
   }
 
   moveFolder(folderId: string, parentFolderId?: string | null): Promise<FolderRecord> {
-    return this.request<FolderRecord>(`/api/catalog/folders/${encodeURIComponent(folderId)}/move`, {
+    return this.request<FolderRecord>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}/move`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
@@ -104,13 +104,13 @@ export class ApiClient {
   }
 
   trashFile(fileId: string): Promise<void> {
-    return this.request<void>(`/api/files/${encodeURIComponent(fileId)}`, {
+    return this.request<void>(`/api/v1/files/${encodeURIComponent(fileId)}`, {
       method: "DELETE",
     });
   }
 
   restoreFile(fileId: string, parentFolderId?: string | null): Promise<FileRestoreResponse> {
-    return this.request<FileRestoreResponse>(`/api/files/${encodeURIComponent(fileId)}/restore`, {
+    return this.request<FileRestoreResponse>(`/api/v1/files/${encodeURIComponent(fileId)}/restore`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
@@ -118,14 +118,14 @@ export class ApiClient {
   }
 
   trashFolder(folderId: string): Promise<void> {
-    return this.request<void>(`/api/catalog/folders/${encodeURIComponent(folderId)}`, {
+    return this.request<void>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}`, {
       method: "DELETE",
     });
   }
 
   restoreFolder(folderId: string, parentFolderId?: string | null): Promise<CatalogRestoreResponse> {
     return this.request<CatalogRestoreResponse>(
-      `/api/catalog/folders/${encodeURIComponent(folderId)}/restore`,
+      `/api/v1/catalog/folders/${encodeURIComponent(folderId)}/restore`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -148,11 +148,11 @@ export class ApiClient {
     if (options?.parentId) {
       params.set("parent_id", options.parentId);
     }
-    return this.request<DriveItem[]>(`/api/search?${params.toString()}`);
+    return this.request<DriveItem[]>(`/api/v1/search?${params.toString()}`);
   }
 
   listActivity(): Promise<ActivityRecord[]> {
-    return this.request<ActivityRecord[]>("/api/activity/me");
+    return this.request<ActivityRecord[]>("/api/v1/activity/me");
   }
 
   uploadFile(file: File, tags: string[], parentFolderId?: string | null): Promise<FileRecord> {
@@ -177,7 +177,7 @@ export class ApiClient {
 
     return await new Promise<FileRecord>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/files");
+      xhr.open("POST", "/api/v1/files");
       xhr.responseType = "text";
       if (token) {
         xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -224,7 +224,7 @@ export class ApiClient {
       headers.set("Authorization", `Bearer ${token}`);
     }
 
-    const response = await fetch(`/api/files/${fileId}/download`, { headers });
+    const response = await fetch(`/api/v1/files/${fileId}/download`, { headers });
     if (!response.ok) {
       const detail = await response.text();
       throw new Error(detail || `Request failed with status ${response.status}`);
@@ -233,41 +233,41 @@ export class ApiClient {
   }
 
   listAdminUsers(): Promise<AdminUserSummary[]> {
-    return this.request<AdminUserSummary[]>("/api/admin/users");
+    return this.request<AdminUserSummary[]>("/api/v1/admin/users");
   }
 
   disableUser(userId: string): Promise<AdminUserSummary> {
-    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/disable`, { method: "POST" });
+    return this.request<AdminUserSummary>(`/api/v1/admin/users/${userId}/disable`, { method: "POST" });
   }
 
   enableUser(userId: string): Promise<AdminUserSummary> {
-    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/enable`, { method: "POST" });
+    return this.request<AdminUserSummary>(`/api/v1/admin/users/${userId}/enable`, { method: "POST" });
   }
 
   grantAdmin(userId: string): Promise<AdminUserSummary> {
-    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/grant-admin`, { method: "POST" });
+    return this.request<AdminUserSummary>(`/api/v1/admin/users/${userId}/grant-admin`, { method: "POST" });
   }
 
   revokeAdmin(userId: string): Promise<AdminUserSummary> {
-    return this.request<AdminUserSummary>(`/api/admin/users/${userId}/revoke-admin`, { method: "POST" });
+    return this.request<AdminUserSummary>(`/api/v1/admin/users/${userId}/revoke-admin`, { method: "POST" });
   }
 
   resetPassword(userId: string): Promise<AdminPasswordResetResult> {
-    return this.request<AdminPasswordResetResult>(`/api/admin/users/${userId}/reset-password`, {
+    return this.request<AdminPasswordResetResult>(`/api/v1/admin/users/${userId}/reset-password`, {
       method: "POST",
     });
   }
 
   listAdminAudit(limit = 100): Promise<AdminAuditEvent[]> {
-    return this.request<AdminAuditEvent[]>(`/api/admin/audit?limit=${limit}`);
+    return this.request<AdminAuditEvent[]>(`/api/v1/admin/audit?limit=${limit}`);
   }
 
   getAdminHealth(): Promise<AdminHealthSummary> {
-    return this.request<AdminHealthSummary>("/api/admin/health");
+    return this.request<AdminHealthSummary>("/api/v1/admin/health");
   }
 
   listAdminErrors(limit = 50): Promise<AdminErrorRecord[]> {
-    return this.request<AdminErrorRecord[]>(`/api/admin/errors?limit=${limit}`);
+    return this.request<AdminErrorRecord[]>(`/api/v1/admin/errors?limit=${limit}`);
   }
 }
 

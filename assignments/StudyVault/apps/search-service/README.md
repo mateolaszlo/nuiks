@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - store a denormalized search document for each uploaded file
-- serve `GET /api/search?q=...` for the authenticated user
+- serve `GET /api/v1/search?q=...` for the authenticated user
 - support internal indexing through `POST /internal/search/index`
 
 ## Search Behavior

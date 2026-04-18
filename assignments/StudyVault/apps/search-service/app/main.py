@@ -4,10 +4,11 @@ import os
 
 from fastapi import FastAPI
 
-from studyvault_backend_common.logging import configure_logging, install_request_logging
+from studyvault_backend_common.logging import configure_logging
 from studyvault_backend_common.startup import retry_startup
+from studyvault_backend_common.versioning import build_versioned_service_app
 
-from app.api.routes import build_router
+from app.api.routes import build_internal_router, build_public_router
 from app.core.config import get_settings
 from app.repositories.search import InMemorySearchRepository, MongoSearchRepository
 from app.services.search import SearchService
@@ -25,9 +26,12 @@ def create_app(repository=None) -> FastAPI:
         retry_startup(repository.ensure_indexes)
 
     service = SearchService(repository)
-    app = FastAPI(title="StudyVault Search Service")
-    install_request_logging(app)
-    app.include_router(build_router(service))
+    app = build_versioned_service_app(
+        title="StudyVault Search Service",
+        service_name=settings.service_name,
+        public_router=build_public_router(service),
+        internal_router=build_internal_router(service),
+    )
     app.state.repository = repository
     return app
 

@@ -100,7 +100,7 @@ class HttpDownstreamPublisher:
 
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord:
         payload = await self.client.get_json(
-            f"{self.catalog_url}/api/catalog/folders/{folder_id}",
+            f"{self.catalog_url}/api/v1/catalog/folders/{folder_id}",
             bearer_token=bearer_token,
         )
         return FolderRecord(**payload)

@@ -37,6 +37,20 @@ def test_activity_returns_recent_events_for_user() -> None:
     assert payload[0]["owner_id"] == "test-user"
 
 
+def test_activity_old_unversioned_public_path_returns_not_found() -> None:
+    module = load_service_module("activity")
+    repository = module.InMemoryActivityRepository()
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/activity/me",
+            headers={"authorization": "Bearer fake", "x-test-raw-path": "true"},
+        )
+
+    assert response.status_code == 404
+
+
 def test_activity_internal_route_accepts_generic_file_event() -> None:
     module = load_service_module("activity")
     repository = module.InMemoryActivityRepository()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
 from studyvault_backend_common.models import (
@@ -28,7 +29,7 @@ from app.schemas.catalog import (
 from app.services.catalog import CatalogService
 
 
-def build_router(service: CatalogService) -> APIRouter:
+def build_public_router(service: CatalogService) -> APIRouter:
     router = APIRouter()
     settings = get_settings()
     current_user_dependency = build_auth_dependency(
@@ -40,19 +41,13 @@ def build_router(service: CatalogService) -> APIRouter:
         )
     )
 
-    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
-        if x_internal_token != settings.internal_token:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
-
-    @router.get("/health")
-    async def healthcheck() -> dict[str, str]:
-        return {"status": "ok", "service": settings.service_name}
-
-    @router.get("/api/catalog/files", response_model=list[FileRecord])
+    @router.get("/catalog/files", response_model=list[FileRecord])
+    @version(1)
     def list_files(user: AuthenticatedUser = Depends(current_user_dependency)) -> list[FileRecord]:
         return service.list_user_files(user)
 
-    @router.get("/api/catalog/items", response_model=CatalogItemsResponse)
+    @router.get("/catalog/items", response_model=CatalogItemsResponse)
+    @version(1)
     def list_items(
         parent_id: str | None = Query(default=None),
         include_trashed: bool = Query(default=False),
@@ -64,34 +59,39 @@ def build_router(service: CatalogService) -> APIRouter:
             include_trashed=include_trashed,
         )
 
-    @router.get("/api/catalog/breadcrumbs/{folder_id}", response_model=CatalogBreadcrumbsResponse)
+    @router.get("/catalog/breadcrumbs/{folder_id}", response_model=CatalogBreadcrumbsResponse)
+    @version(1)
     def get_breadcrumbs(
         folder_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> CatalogBreadcrumbsResponse:
         return service.get_breadcrumbs(user, folder_id)
 
-    @router.get("/api/catalog/trash", response_model=CatalogTrashResponse)
+    @router.get("/catalog/trash", response_model=CatalogTrashResponse)
+    @version(1)
     def list_trash(
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> CatalogTrashResponse:
         return service.list_trash(user)
 
-    @router.get("/api/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @router.get("/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @version(1)
     def get_folder(
         folder_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.get_user_folder(user, folder_id)
 
-    @router.post("/api/catalog/folders", response_model=FolderRecord, status_code=status.HTTP_201_CREATED)
+    @router.post("/catalog/folders", response_model=FolderRecord, status_code=status.HTTP_201_CREATED)
+    @version(1)
     def create_folder(
         request: CreateFolderRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.create_folder(user, request)
 
-    @router.patch("/api/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @router.patch("/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @version(1)
     def rename_folder(
         folder_id: str,
         request: RenameItemRequest,
@@ -99,14 +99,16 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> FolderRecord:
         return service.rename_folder(user, folder_id, request)
 
-    @router.delete("/api/catalog/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete("/catalog/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @version(1)
     def trash_folder(
         folder_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> None:
         service.trash_folder(user, folder_id)
 
-    @router.post("/api/catalog/folders/{folder_id}/move", response_model=FolderRecord)
+    @router.post("/catalog/folders/{folder_id}/move", response_model=FolderRecord)
+    @version(1)
     def move_folder(
         folder_id: str,
         request: MoveItemRequest,
@@ -114,13 +116,25 @@ def build_router(service: CatalogService) -> APIRouter:
     ) -> FolderRecord:
         return service.move_folder(user, folder_id, request)
 
-    @router.post("/api/catalog/folders/{folder_id}/restore", response_model=CatalogRestoreResponse)
+    @router.post("/catalog/folders/{folder_id}/restore", response_model=CatalogRestoreResponse)
+    @version(1)
     def restore_folder(
         folder_id: str,
         request: RestoreItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> CatalogRestoreResponse:
         return service.restore_folder(user, folder_id, request)
+
+    return router
+
+
+def build_internal_router(service: CatalogService) -> APIRouter:
+    router = APIRouter()
+    settings = get_settings()
+
+    async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+        if x_internal_token != settings.internal_token:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid internal token")
 
     @router.get(
         "/internal/catalog/trash/expired",

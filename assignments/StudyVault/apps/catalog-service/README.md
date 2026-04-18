@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - persist canonical file metadata after uploads
-- return the authenticated user file list through `GET /api/catalog/files`
+- return the authenticated user file list through `GET /api/v1/catalog/files`
 - expose internal metadata lookup and creation routes for the upload/download flow
 
 ## Stored Metadata

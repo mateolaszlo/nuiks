@@ -59,16 +59,16 @@ Za projekt zadosca najmanj **4 zunanje API klice**, ki jih lahko tudi jasno poka
 
 | Endpoint | Metoda | Namen |
 |---|---|---|
-| `/api/files` | `POST` | upload datoteke v sistem |
-| `/api/catalog/files` | `GET` | vrne seznam uporabnikovih datotek |
-| `/api/search?q=...` | `GET` | poisce datoteke po metapodatkih |
-| `/api/activity/me` | `GET` | vrne zadnje aktivnosti trenutnega uporabnika |
+| `/api/v1/files` | `POST` | upload datoteke v sistem |
+| `/api/v1/catalog/files` | `GET` | vrne seznam uporabnikovih datotek |
+| `/api/v1/search?q=...` | `GET` | poisce datoteke po metapodatkih |
+| `/api/v1/activity/me` | `GET` | vrne zadnje aktivnosti trenutnega uporabnika |
 
 Priporocen dodatni peti klic:
 
 | Endpoint | Metoda | Namen |
 |---|---|---|
-| `/api/files/{fileId}/download` | `GET` | prenos datoteke iz `MinIO` |
+| `/api/v1/files/{fileId}/download` | `GET` | prenos datoteke iz `MinIO` |
 
 ---
 
@@ -148,7 +148,7 @@ Da projekt ostane izvedljiv, zadostujejo naslednje storitve:
 
 ### 6.2 Upload datoteke
 
-1. frontend poklice `POST /api/files`
+1. frontend poklice `POST /api/v1/files`
 2. `Nginx` zahtevo preusmeri na `File Service`
 3. `File Service` shrani binarno vsebino v `MinIO`
 4. `Catalog Service` shrani metapodatke v `PostgreSQL`
@@ -157,19 +157,19 @@ Da projekt ostane izvedljiv, zadostujejo naslednje storitve:
 
 ### 6.3 Seznam datotek
 
-1. frontend poklice `GET /api/catalog/files`
+1. frontend poklice `GET /api/v1/catalog/files`
 2. `Catalog Service` prebere metapodatke iz `PostgreSQL`
 3. rezultat se vrne uporabniku
 
 ### 6.4 Iskanje
 
-1. frontend poklice `GET /api/search?q=zapiske`
+1. frontend poklice `GET /api/v1/search?q=zapiske`
 2. `Search Service` isce v `MongoDB`
 3. rezultat se vrne v frontend
 
 ### 6.5 Aktivnosti
 
-1. frontend poklice `GET /api/activity/me`
+1. frontend poklice `GET /api/v1/activity/me`
 2. `Activity Service` prebere zapise iz `MongoDB`
 3. rezultat se prikaze na dashboardu
 

@@ -144,10 +144,10 @@ def assert_kibana_saved_object_exists(saved_object_type: str, saved_object_id: s
 
 def trigger_backend_requests() -> None:
     urls = [
-        "http://127.0.0.1:8080/api/catalog/files",
-        "http://127.0.0.1:8080/api/search?q=smoke",
-        "http://127.0.0.1:8080/api/activity/me",
-        "http://127.0.0.1:8080/api/files/smoke/download",
+        "http://127.0.0.1:8080/api/v1/catalog/files",
+        "http://127.0.0.1:8080/api/v1/search?q=smoke",
+        "http://127.0.0.1:8080/api/v1/activity/me",
+        "http://127.0.0.1:8080/api/v1/files/smoke/download",
     ]
     for url in urls:
         try:

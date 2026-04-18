@@ -44,8 +44,8 @@ The repository started as a scaffold with empty service directories. This plan t
 - Observation: Keycloak was initially using its embedded dev database, so auth state depended on container-local storage rather than the repo-defined infra stack.
   Evidence: The `keycloak` compose service only ran `start-dev --import-realm` and did not define any `KC_DB*` environment or Postgres dependency before this migration.
 
-- Observation: nginx served the frontend HTML for `/api/admin/*` even after the admin routes were added.
-  Evidence: `curl -i http://localhost:8080/api/admin/users` returned the Vite `index.html` until the proxy configuration was changed to pass `$request_uri` explicitly and give `/api/admin/` a dedicated `^~` location.
+- Observation: nginx served the frontend HTML for `/api/v1/admin/*` even after the admin routes were added.
+  Evidence: `curl -i http://localhost:8080/api/v1/admin/users` returned the Vite `index.html` until the proxy configuration was changed to pass `$request_uri` explicitly and give `/api/v1/admin/` a dedicated `^~` location.
 
 ## Decision Log
 
@@ -196,11 +196,11 @@ The shared package must expose these types:
 
 The backend services must expose these public routes:
 
-    POST /api/files
-    GET /api/files/{file_id}/download
-    GET /api/catalog/files
-    GET /api/search?q=...
-    GET /api/activity/me
+    POST /api/v1/files
+    GET /api/v1/files/{file_id}/download
+    GET /api/v1/catalog/files
+    GET /api/v1/search?q=...
+    GET /api/v1/activity/me
 
 The backend services may expose these internal routes for compose-only fan-out:
 
@@ -211,14 +211,14 @@ The backend services may expose these internal routes for compose-only fan-out:
 
 The gateway-facing admin surface now also includes:
 
-    GET /api/admin/users
-    POST /api/admin/users/{user_id}/enable
-    POST /api/admin/users/{user_id}/disable
-    POST /api/admin/users/{user_id}/grant-admin
-    POST /api/admin/users/{user_id}/revoke-admin
-    POST /api/admin/users/{user_id}/reset-password
-    GET /api/admin/audit
-    GET /api/admin/health
-    GET /api/admin/errors
+    GET /api/v1/admin/users
+    POST /api/v1/admin/users/{user_id}/enable
+    POST /api/v1/admin/users/{user_id}/disable
+    POST /api/v1/admin/users/{user_id}/grant-admin
+    POST /api/v1/admin/users/{user_id}/revoke-admin
+    POST /api/v1/admin/users/{user_id}/reset-password
+    GET /api/v1/admin/audit
+    GET /api/v1/admin/health
+    GET /api/v1/admin/errors
 
 Update note: revised on 2026-03-31 after the frontend, compose, smoke-test, and CI milestones landed so the plan matches the repository and recorded validation results.

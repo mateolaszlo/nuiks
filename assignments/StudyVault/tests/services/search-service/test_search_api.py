@@ -40,6 +40,19 @@ def test_search_matches_filename_and_tag_for_authenticated_user() -> None:
     assert payload[0]["kind"] == "file"
 
 
+def test_search_old_unversioned_public_path_returns_not_found() -> None:
+    module = load_service_module("search")
+    app = module.create_app(repository=module.InMemorySearchRepository())
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/search?q=math",
+            headers={"authorization": "Bearer fake", "x-test-raw-path": "true"},
+        )
+
+    assert response.status_code == 404
+
+
 def test_search_repository_stores_drive_items_internally() -> None:
     module = load_service_module("search")
     record = FileRecord.create(
