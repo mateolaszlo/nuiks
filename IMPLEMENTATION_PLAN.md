@@ -417,7 +417,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add a shared enqueue helper for both file input selection and external dropped files
 - [x] Add external file drag-and-drop upload on the current drive surface
 - [x] Preserve internal drag-and-drop move behavior while external upload is added on the main drive surface
-- [ ] Add external file drag-and-drop upload onto folder tiles and breadcrumbs
+- [x] Add external file drag-and-drop upload onto folder tiles and breadcrumbs
 - [x] Add per-file upload progress UI with `Queued`, `Uploading`, `Processing`, `Done`, and `Failed` states
 - [x] Keep failed uploads retryable from the queue
 - [x] Add a dedicated upload method in `api/client.ts` that uses `XMLHttpRequest`
@@ -565,8 +565,8 @@ Because of that, implement the next upload UX phase as a frontend refactor, not 
 Handle operating-system file drops in these places:
 
 - [x] the main drive content surface for upload into the current folder
-- [ ] folder tiles for upload directly into that folder
-- [ ] breadcrumb buttons for upload into an ancestor folder
+- [x] folder tiles for upload directly into that folder
+- [x] breadcrumb buttons for upload into an ancestor folder
 
 Use this rule in `App.tsx`:
 

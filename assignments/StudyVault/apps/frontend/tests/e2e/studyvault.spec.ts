@@ -169,6 +169,113 @@ test("external files can be dropped onto the current drive surface and enter the
   });
 });
 
+test("external files can be dropped onto a folder tile and upload into that folder", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `folder-drop-${uniqueId}`;
+  const filename = `tile-drop-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const folderTile = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+
+  await expect(folderTile).toBeVisible({ timeout: 60_000 });
+  await folderTile.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `folder tile drop ${uniqueId}` },
+  );
+  await folderTile.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `folder tile drop ${uniqueId}` },
+  );
+
+  await expect(queuePanel).toBeVisible();
+  await expect(queuePanel).toContainText(filename);
+  await expect(queuePanel).toContainText(`Destination: ${folderName}`);
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
+
+  await folderTile.dblclick();
+  await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
+  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
+test("external files can be dropped onto a breadcrumb and upload into that ancestor folder", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const parentFolderName = `ancestor-${uniqueId}`;
+  const childFolderName = `nested-${uniqueId}`;
+  const filename = `breadcrumb-drop-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(parentFolderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const parentFolderTile = driveSurface.locator(".drive-tile").filter({ hasText: parentFolderName }).first();
+  await expect(parentFolderTile).toBeVisible({ timeout: 60_000 });
+  await parentFolderTile.dblclick();
+  await expect(page.locator(".breadcrumb-current")).toContainText(parentFolderName);
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(childFolderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const childFolderTile = page.locator(".drive-tile").filter({ hasText: childFolderName }).first();
+  await expect(childFolderTile).toBeVisible({ timeout: 60_000 });
+  await childFolderTile.dblclick();
+  await expect(page.locator(".breadcrumb-current")).toContainText(childFolderName);
+
+  const parentBreadcrumb = page.getByRole("button", { name: parentFolderName }).first();
+  const parentBreadcrumbSegment = parentBreadcrumb.locator("..");
+
+  await parentBreadcrumbSegment.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `breadcrumb drop ${uniqueId}` },
+  );
+  await parentBreadcrumbSegment.evaluate(
+    (node, payload) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+    },
+    { dropFilename: filename, fileContents: `breadcrumb drop ${uniqueId}` },
+  );
+
+  await expect(queuePanel).toBeVisible();
+  await expect(queuePanel).toContainText(filename);
+  await expect(queuePanel).toContainText(`Destination: ${parentFolderName}`);
+  await expect(page.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
+
+  await parentBreadcrumb.click();
+  await expect(page.locator(".breadcrumb-current")).toContainText(parentFolderName);
+  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
 test("single click selects a folder and double click navigates into it", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `single-click-${uniqueId}`;

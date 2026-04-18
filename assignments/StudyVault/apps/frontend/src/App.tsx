@@ -883,6 +883,24 @@ export default function App() {
     enqueueUploadFiles(droppedFiles, currentFolderId, currentFolderLabel, parseTagInput(tagInput));
   }
 
+  function handleExternalUploadDrop(
+    event: ReactDragEvent<HTMLElement>,
+    targetFolderId: string | null,
+    destinationLabel: string,
+  ) {
+    if (!hasExternalFiles(event)) {
+      return false;
+    }
+    event.preventDefault();
+    const droppedFiles = getDroppedFiles(event);
+    setActiveDropTarget(null);
+    if (droppedFiles.length === 0) {
+      return true;
+    }
+    enqueueUploadFiles(droppedFiles, targetFolderId, destinationLabel, parseTagInput(tagInput));
+    return true;
+  }
+
   async function moveDraggedItemTo(targetFolderId: string | null) {
     if (!draggedItem || isSameParentTarget(draggedItem, targetFolderId)) {
       clearDragState();
@@ -1345,6 +1363,9 @@ export default function App() {
         onDrop={
           item.kind === "folder"
             ? (event) => {
+                if (handleExternalUploadDrop(event, item.item_id, item.name)) {
+                  return;
+                }
                 event.preventDefault();
                 void moveDraggedItemTo(item.item_id);
               }
@@ -1737,6 +1758,9 @@ export default function App() {
                             }
                             onDragLeave={() => handleDropTargetLeave(dropTargetKey)}
                             onDrop={(event) => {
+                              if (handleExternalUploadDrop(event, entry.folder_id ?? null, entry.name)) {
+                                return;
+                              }
                               event.preventDefault();
                               void moveDraggedItemTo(entry.folder_id ?? null);
                             }}
