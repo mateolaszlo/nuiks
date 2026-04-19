@@ -91,16 +91,23 @@ def build_error_response(exc: HTTPException) -> StudyVaultErrorResponse:
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    @app.middleware("http")
+    @app.exception_handler(StudyVaultHTTPException)
     async def handle_studyvault_http_exception(
         request: Request,
-        call_next,
+        exc: StudyVaultHTTPException,
     ) -> JSONResponse:
-        try:
-            return await call_next(request)
-        except StudyVaultHTTPException as exc:
+        payload = build_error_response(exc)
+        return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+
+    @app.exception_handler(HTTPException)
+    async def handle_http_exception(
+        request: Request,
+        exc: HTTPException,
+    ) -> JSONResponse:
+        if isinstance(exc, StudyVaultHTTPException):
             payload = build_error_response(exc)
             return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 def _default_category(status_code: int) -> ErrorCategory:

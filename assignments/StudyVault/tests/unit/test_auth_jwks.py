@@ -84,6 +84,7 @@ def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
 
     assert exc.value.status_code == 401
+    assert getattr(exc.value, "code", None) == "invalid_token"
 
 
 def test_auth_dependency_rejects_malformed_token_header(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,6 +125,7 @@ def test_auth_dependency_rejects_malformed_token_header(monkeypatch: pytest.Monk
 
     assert exc.value.status_code == 401
     assert exc.value.detail == "Invalid token"
+    assert getattr(exc.value, "code", None) == "invalid_token"
     assert jwks_called is False
     assert decode_called is False
 
@@ -157,6 +159,7 @@ def test_auth_dependency_rejects_token_missing_subject_claim(monkeypatch: pytest
 
     assert exc.value.status_code == 401
     assert exc.value.detail == "Invalid token"
+    assert getattr(exc.value, "code", None) == "invalid_token"
 
 
 def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -189,7 +192,50 @@ def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest
 
     assert exc.value.status_code == 401
     assert exc.value.detail == "Invalid token"
+    assert getattr(exc.value, "code", None) == "invalid_token"
     assert decode_called is False
+
+
+def test_auth_dependency_rejects_missing_bearer_token() -> None:
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=None))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Missing bearer token"
+    assert getattr(exc.value, "code", None) == "missing_bearer_token"
+
+
+def test_auth_dependency_rejects_unknown_signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "unknown-kid", "alg": "RS256"},
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience=None,
+            auth_disabled=False,
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "bad-token"})()))
+
+    assert exc.value.status_code == 401
+    assert exc.value.detail == "Unknown signing key"
+    assert getattr(exc.value, "code", None) == "unknown_signing_key"
 
 
 def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -> None:

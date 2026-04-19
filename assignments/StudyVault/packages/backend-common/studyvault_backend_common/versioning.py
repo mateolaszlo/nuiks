@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 from fastapi_versioning import VersionedFastAPI
 
+from .errors import register_error_handlers
 from .logging import install_request_logging
 
 
@@ -14,6 +15,7 @@ def build_versioned_service_app(
     internal_router: APIRouter | None = None,
 ) -> FastAPI:
     public_app = FastAPI(title=title)
+    register_error_handlers(public_app)
     public_app.include_router(public_router)
 
     app = VersionedFastAPI(
@@ -22,6 +24,7 @@ def build_versioned_service_app(
         prefix_format="/api/v{major}",
         enable_latest=False,
     )
+    register_error_handlers(app)
     install_request_logging(app)
 
     if internal_router is not None:

@@ -5,11 +5,12 @@ from functools import lru_cache
 from typing import Annotated, Any
 
 import httpx
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from pydantic import BaseModel
 
+from .errors import api_error
 from .logging import bind_authenticated_user
 from .models import AuthenticatedUser
 
@@ -48,7 +49,12 @@ def get_jwks_cache() -> JwksCache:
 def _build_user(claims: dict[str, Any], token: str | None = None) -> AuthenticatedUser:
     subject = claims.get("sub")
     if not isinstance(subject, str) or not subject:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise api_error(
+            status_code=401,
+            detail="Invalid token",
+            code="invalid_token",
+            category="auth",
+        )
     realm_access = claims.get("realm_access", {})
     roles = realm_access.get("roles", []) if isinstance(realm_access, dict) else []
     return AuthenticatedUser(
@@ -77,21 +83,41 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
             return user
 
         if credentials is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+            raise api_error(
+                status_code=401,
+                detail="Missing bearer token",
+                code="missing_bearer_token",
+                category="auth",
+            )
 
         token = credentials.credentials
         try:
             unverified_header = jwt.get_unverified_header(token)
         except Exception as exc:  # pragma: no cover - exact library exception is not important
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+            raise api_error(
+                status_code=401,
+                detail="Invalid token",
+                code="invalid_token",
+                category="auth",
+            ) from exc
         if unverified_header.get("alg") not in ALLOWED_JWT_ALGORITHMS:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            raise api_error(
+                status_code=401,
+                detail="Invalid token",
+                code="invalid_token",
+                category="auth",
+            )
 
         jwks = await get_jwks_cache().get(settings.jwks_url)
         keys = jwks.get("keys", [])
         key = next((candidate for candidate in keys if candidate.get("kid") == unverified_header.get("kid")), None)
         if key is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown signing key")
+            raise api_error(
+                status_code=401,
+                detail="Unknown signing key",
+                code="unknown_signing_key",
+                category="auth",
+            )
 
         try:
             claims = jwt.decode(
@@ -103,7 +129,12 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
                 audience=settings.audience,
             )
         except Exception as exc:  # pragma: no cover - exact library exception is not important
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+            raise api_error(
+                status_code=401,
+                detail="Invalid token",
+                code="invalid_token",
+                category="auth",
+            ) from exc
 
         user = _build_user(claims, token)
         bind_authenticated_user(user_id=user.subject, username=user.username, email=user.email)
