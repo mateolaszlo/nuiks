@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 
-import { ApiClient, isApiError } from "./api/client";
+import { ApiClient, isApiError, isAuthApiError, isPermissionApiError } from "./api/client";
 import type {
   ActivityRecord,
   AdminAuditEvent,
@@ -97,14 +97,55 @@ function buildDriveItemPath(breadcrumbs: BreadcrumbEntry[], item: DriveItem): st
   return [...breadcrumbs.map((entry) => entry.name), item.name].join(" / ");
 }
 
-function getActionErrorMessage(error: unknown, fallback: string): string {
+function getSearchErrorMessage(error: unknown): string {
   if (isApiError(error)) {
+    if (error.code === "search_query_too_long") {
+      return error.message;
+    }
+    if (error.category === "unavailable") {
+      return "Search is temporarily unavailable. Try again in a moment.";
+    }
     return error.message;
   }
   if (error instanceof Error) {
     return error.message;
   }
-  return fallback;
+  return "Search failed";
+}
+
+function getUploadErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.code === "upload_empty_file") {
+      return "This file is empty. Choose a file with content before uploading.";
+    }
+    if (error.code === "upload_size_exceeded") {
+      return "This file is too large for the current upload limit.";
+    }
+    if (error.code === "storage_unavailable") {
+      return "File storage is temporarily unavailable. Retry the upload in a moment.";
+    }
+    if (error.code === "downstream_sync_failed") {
+      return "The file was stored, but metadata sync failed. Retry to restore a consistent view.";
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Upload failed";
+}
+
+function getAuthRecoveryMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.code === "missing_bearer_token" || error.code === "invalid_token" || error.code === "unknown_signing_key") {
+      return "Your session expired or became invalid. Sign in again.";
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Your session expired. Sign in again.";
 }
 
 function AuthScreen(props: {
@@ -302,6 +343,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
+  const [uploadFormError, setUploadFormError] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [renameItem, setRenameItem] = useState<DriveItem | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -319,9 +361,12 @@ export default function App() {
   const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
   const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
   const [localActionError, setLocalActionError] = useState<LocalActionError>(null);
+  const [searchFormError, setSearchFormError] = useState<string | null>(null);
   const [searchModeActive, setSearchModeActive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const suppressFolderOpenUntilRef = useRef(0);
+  const pendingAdminSectionRef = useRef<AdminSection | null>(null);
+  const pendingAdminSectionTimeoutRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const currentFolderIdRef = useRef<string | null>(null);
   const currentViewRef = useRef<DashboardView>("drive");
@@ -450,6 +495,14 @@ export default function App() {
       audit: adminAuditSectionRef.current,
       errors: adminErrorsSectionRef.current,
     };
+    if (pendingAdminSectionTimeoutRef.current !== null) {
+      window.clearTimeout(pendingAdminSectionTimeoutRef.current);
+    }
+    pendingAdminSectionRef.current = section;
+    pendingAdminSectionTimeoutRef.current = window.setTimeout(() => {
+      pendingAdminSectionRef.current = null;
+      pendingAdminSectionTimeoutRef.current = null;
+    }, 1200);
     setActiveAdminSection(section);
     targets[section]?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -474,6 +527,7 @@ export default function App() {
   function clearSearchMode() {
     setSearchResults([]);
     setSearchModeActive(false);
+    setSearchFormError(null);
   }
 
   function parseTagInput(value: string): string[] {
@@ -505,8 +559,50 @@ export default function App() {
         progress: 0,
       })),
     ]);
+    setUploadFormError(null);
     setError(null);
     return true;
+  }
+
+  function enterAuthRecovery(error: unknown) {
+    startTransition(() => {
+      setAuthenticated(false);
+      setAdminUser(false);
+      setCurrentView("drive");
+      setCurrentFolderId(null);
+      setBreadcrumbs([ROOT_BREADCRUMB]);
+      setCurrentItems([]);
+      setTrashItems([]);
+      setSearchResults([]);
+      setSearchModeActive(false);
+      setSearchFormError(null);
+      setSelectedDriveItem(null);
+      setDrivePanelMode("hidden");
+      setContextMenu(null);
+      setActiveDropTarget(null);
+      setMoveItem(null);
+      setRenameItem(null);
+      setLocalActionError(null);
+      setUploadFormError(null);
+      setError(getAuthRecoveryMessage(error));
+    });
+  }
+
+  function handleApiFailure(error: unknown, fallback: string): string | null {
+    if (isAuthApiError(error)) {
+      enterAuthRecovery(error);
+      return null;
+    }
+    if (isPermissionApiError(error)) {
+      return error.message;
+    }
+    if (isApiError(error)) {
+      return error.message;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return fallback;
   }
 
   function hasExternalFiles(event: ReactDragEvent<HTMLElement>): boolean {
@@ -549,7 +645,10 @@ export default function App() {
               await loadFolder(null);
             }
           } catch (dashboardError) {
-            setError(dashboardError instanceof Error ? dashboardError.message : String(dashboardError));
+            const message = handleApiFailure(dashboardError, "Workspace bootstrap failed");
+            if (message) {
+              setError(message);
+            }
           }
         }
       } catch (bootstrapError) {
@@ -586,6 +685,17 @@ export default function App() {
         }
         const nextSection = visibleSections.find((section) => section.element === visibleEntry.target);
         if (nextSection) {
+          const pendingSection = pendingAdminSectionRef.current;
+          if (pendingSection && nextSection.key !== pendingSection) {
+            return;
+          }
+          if (pendingSection === nextSection.key) {
+            pendingAdminSectionRef.current = null;
+            if (pendingAdminSectionTimeoutRef.current !== null) {
+              window.clearTimeout(pendingAdminSectionTimeoutRef.current);
+              pendingAdminSectionTimeoutRef.current = null;
+            }
+          }
           setActiveAdminSection((current) => (current === nextSection.key ? current : nextSection.key));
         }
       },
@@ -600,7 +710,14 @@ export default function App() {
       observer.observe(section.element!);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (pendingAdminSectionTimeoutRef.current !== null) {
+        window.clearTimeout(pendingAdminSectionTimeoutRef.current);
+        pendingAdminSectionTimeoutRef.current = null;
+      }
+      pendingAdminSectionRef.current = null;
+    };
   }, [adminUser]);
 
   useEffect(() => {
@@ -690,6 +807,7 @@ export default function App() {
 
     try {
       setIsBusy(true);
+      setSearchFormError(null);
       const payload = await api.search(searchQuery.trim(), { kind: "all" });
       startTransition(() => {
         setSearchResults(payload);
@@ -697,7 +815,11 @@ export default function App() {
       });
       setError(null);
     } catch (searchError) {
-      setError(searchError instanceof Error ? searchError.message : "Search failed");
+      if (isAuthApiError(searchError)) {
+        enterAuthRecovery(searchError);
+      } else {
+        setSearchFormError(getSearchErrorMessage(searchError));
+      }
     } finally {
       setIsBusy(false);
     }
@@ -706,10 +828,11 @@ export default function App() {
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pendingUploadFiles.length === 0) {
-      setError("Choose at least one file before uploading.");
+      setUploadFormError("Choose at least one file before uploading.");
       return;
     }
 
+    setUploadFormError(null);
     enqueueUploadFiles(pendingUploadFiles, currentFolderId, currentFolderLabel, parseTagInput(tagInput));
     setPendingUploadFiles([]);
     if (uploadInputRef.current) {
@@ -732,7 +855,10 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (trashError) {
-      setError(trashError instanceof Error ? trashError.message : "Move to trash failed");
+      const message = handleApiFailure(trashError, "Move to trash failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -756,10 +882,13 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (createFolderError) {
-      setLocalActionError({
-        scope: "create-folder",
-        message: getActionErrorMessage(createFolderError, "Folder creation failed"),
-      });
+      const message = handleApiFailure(createFolderError, "Folder creation failed");
+      if (message) {
+        setLocalActionError({
+          scope: "create-folder",
+          message,
+        });
+      }
     } finally {
       setIsBusy(false);
     }
@@ -791,11 +920,14 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (renameError) {
-      setLocalActionError({
-        scope: "rename",
-        itemId: renameItem.item_id,
-        message: getActionErrorMessage(renameError, "Rename failed"),
-      });
+      const message = handleApiFailure(renameError, "Rename failed");
+      if (message) {
+        setLocalActionError({
+          scope: "rename",
+          itemId: renameItem.item_id,
+          message,
+        });
+      }
     } finally {
       setIsBusy(false);
     }
@@ -822,11 +954,14 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (moveError) {
-      setLocalActionError({
-        scope: "move",
-        itemId: moveItem.item_id,
-        message: getActionErrorMessage(moveError, "Move failed"),
-      });
+      const message = handleApiFailure(moveError, "Move failed");
+      if (message) {
+        setLocalActionError({
+          scope: "move",
+          itemId: moveItem.item_id,
+          message,
+        });
+      }
     } finally {
       setIsBusy(false);
     }
@@ -843,7 +978,10 @@ export default function App() {
       await loadTrash();
       setError(null);
     } catch (restoreError) {
-      setError(restoreError instanceof Error ? restoreError.message : "Restore failed");
+      const message = handleApiFailure(restoreError, "Restore failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -863,7 +1001,10 @@ export default function App() {
       window.URL.revokeObjectURL(url);
       setError(null);
     } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : "Download failed");
+      const message = handleApiFailure(downloadError, "Download failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1025,7 +1166,10 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : "Move failed");
+      const message = handleApiFailure(moveError, "Move failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       clearDragState();
       setIsBusy(false);
@@ -1048,7 +1192,10 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (trashError) {
-      setError(trashError instanceof Error ? trashError.message : "Move to trash failed");
+      const message = handleApiFailure(trashError, "Move to trash failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       clearDragState();
       setIsBusy(false);
@@ -1121,7 +1268,10 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (navigationError) {
-      setError(navigationError instanceof Error ? navigationError.message : "Drive load failed");
+      const message = handleApiFailure(navigationError, "Drive load failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1138,7 +1288,10 @@ export default function App() {
       await loadTrash();
       setError(null);
     } catch (navigationError) {
-      setError(navigationError instanceof Error ? navigationError.message : "Trash load failed");
+      const message = handleApiFailure(navigationError, "Trash load failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1154,7 +1307,10 @@ export default function App() {
       await loadFolder(item.item_id);
       setError(null);
     } catch (navigationError) {
-      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
+      const message = handleApiFailure(navigationError, "Folder load failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1171,7 +1327,10 @@ export default function App() {
       await loadFolder(nextFolderId);
       setError(null);
     } catch (navigationError) {
-      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
+      const message = handleApiFailure(navigationError, "Folder load failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1188,7 +1347,10 @@ export default function App() {
       await loadFolder(targetFolderId);
       setError(null);
     } catch (navigationError) {
-      setError(navigationError instanceof Error ? navigationError.message : "Folder load failed");
+      const message = handleApiFailure(navigationError, "Folder load failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1202,7 +1364,10 @@ export default function App() {
       await refreshAdminPanel();
       setError(null);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Admin action failed");
+      const message = handleApiFailure(actionError, "Admin action failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1216,7 +1381,10 @@ export default function App() {
       await refreshAdminPanel();
       setError(null);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Password reset failed");
+      const message = handleApiFailure(actionError, "Password reset failed");
+      if (message) {
+        setError(message);
+      }
     } finally {
       setIsBusy(false);
     }
@@ -1275,12 +1443,14 @@ export default function App() {
       }
       setError(null);
     } catch (uploadError) {
+      if (isAuthApiError(uploadError)) {
+        enterAuthRecovery(uploadError);
+      }
       updateUploadQueueItem(item.queue_id, (current) => ({
         ...current,
         status: "failed",
-        error_message: uploadError instanceof Error ? uploadError.message : "Upload failed",
+        error_message: getUploadErrorMessage(uploadError),
       }));
-      setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
     } finally {
       inFlightUploadIdsRef.current.delete(item.queue_id);
     }
@@ -1774,7 +1944,10 @@ export default function App() {
                       type="file"
                       ref={uploadInputRef}
                       multiple
-                      onChange={(event) => setPendingUploadFiles(Array.from(event.target.files ?? []))}
+                      onChange={(event) => {
+                        setPendingUploadFiles(Array.from(event.target.files ?? []));
+                        setUploadFormError(null);
+                      }}
                     />
                   </label>
                   {pendingUploadFiles.length > 0 ? (
@@ -1795,6 +1968,7 @@ export default function App() {
                   <button className="primary-button" type="submit" disabled={pendingUploadFiles.length === 0}>
                     Add to Upload Queue
                   </button>
+                  {uploadFormError ? <p className="error-text">{uploadFormError}</p> : null}
                 </form>
               </section>
             </>
@@ -1805,7 +1979,12 @@ export default function App() {
           <AppTopBar
             profileLabel={profileLabel}
             searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
+            onSearchQueryChange={(value) => {
+              setSearchQuery(value);
+              if (searchFormError) {
+                setSearchFormError(null);
+              }
+            }}
             onSearch={handleSearch}
             onLogout={() => void logout()}
             isBusy={isBusy}
@@ -1816,6 +1995,7 @@ export default function App() {
           />
 
           {error ? <div className="error-banner">{error}</div> : null}
+          {searchFormError ? <p className="error-text">{searchFormError}</p> : null}
 
           <div className="workspace-body">
             <div className="content-column">

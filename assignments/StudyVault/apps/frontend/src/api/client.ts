@@ -55,6 +55,14 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+export function isAuthApiError(error: unknown): error is ApiError {
+  return isApiError(error) && error.category === "auth";
+}
+
+export function isPermissionApiError(error: unknown): error is ApiError {
+  return isApiError(error) && error.category === "permission";
+}
+
 export class ApiClient {
   constructor(private readonly getToken: () => Promise<string | undefined>) {}
 

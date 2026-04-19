@@ -567,6 +567,7 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
   await expect(queueRow).toContainText("forced upload failure");
   await expect(queueRow.getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(queueRow.getByRole("button", { name: "Dismiss" })).toBeVisible();
+  await expect(page.locator(".error-banner")).toHaveCount(0);
 
   await queueRow.getByRole("button", { name: "Retry" }).click();
 
@@ -574,4 +575,63 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
     timeout: 60_000,
   });
   await expect(queueRow).toHaveCount(0, { timeout: 60_000 });
+});
+
+test("search failures stay local to the search form and preserve the query", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const query = `search-failure-${uniqueId}`;
+
+  await page.route("**/api/v1/search**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Search backend unavailable",
+        code: "service_unavailable",
+        category: "unavailable",
+        recoverable: false,
+      }),
+    });
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByPlaceholder("Search files and folders").fill(query);
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.getByText("Search is temporarily unavailable. Try again in a moment.")).toBeVisible();
+  await expect(page.getByPlaceholder("Search files and folders")).toHaveValue(query);
+  await expect(page.locator(".error-banner")).toHaveCount(0);
+});
+
+test("auth api failures return the user to a relogin-oriented screen", async ({ page }) => {
+  let failNextSearch = false;
+  await page.route("**/api/v1/search**", async (route) => {
+    if (failNextSearch) {
+      failNextSearch = false;
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Invalid token",
+          code: "invalid_token",
+          category: "auth",
+          recoverable: true,
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  failNextSearch = true;
+  await page.getByPlaceholder("Search files and folders").fill("trigger-auth-recovery");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
+  await expect(page.getByText("Your session expired or became invalid. Sign in again.")).toBeVisible();
 });
