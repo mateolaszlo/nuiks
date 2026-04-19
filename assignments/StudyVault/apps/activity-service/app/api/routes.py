@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.errors import StudyVaultHTTPException, build_error_response
 from studyvault_backend_common.models import (
     ActivityRecord,
     AdminAuditEvent,
@@ -18,6 +20,11 @@ from studyvault_backend_common.models import (
 from app.core.config import get_settings
 from app.services.admin import ADMIN_QUERY_LIMIT_MAX, AdminService
 from app.services.activity import ActivityService
+
+
+def _studyvault_error_response(exc: StudyVaultHTTPException) -> JSONResponse:
+    payload = build_error_response(exc)
+    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
 
 def build_public_router(service: ActivityService, admin_service: AdminService) -> APIRouter:
@@ -43,71 +50,98 @@ def build_public_router(service: ActivityService, admin_service: AdminService) -
     @version(1)
     async def list_admin_users(
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> list[AdminUserSummary]:
-        return await admin_service.list_users(user)
+    ) -> list[AdminUserSummary] | JSONResponse:
+        try:
+            return await admin_service.list_users(user)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/admin/users/{user_id}/disable", response_model=AdminUserSummary)
     @version(1)
     async def disable_user(
         user_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminUserSummary:
-        return await admin_service.set_user_enabled(user, user_id, False)
+    ) -> AdminUserSummary | JSONResponse:
+        try:
+            return await admin_service.set_user_enabled(user, user_id, False)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/admin/users/{user_id}/enable", response_model=AdminUserSummary)
     @version(1)
     async def enable_user(
         user_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminUserSummary:
-        return await admin_service.set_user_enabled(user, user_id, True)
+    ) -> AdminUserSummary | JSONResponse:
+        try:
+            return await admin_service.set_user_enabled(user, user_id, True)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/admin/users/{user_id}/grant-admin", response_model=AdminUserSummary)
     @version(1)
     async def grant_admin(
         user_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminUserSummary:
-        return await admin_service.set_admin_role(user, user_id, True)
+    ) -> AdminUserSummary | JSONResponse:
+        try:
+            return await admin_service.set_admin_role(user, user_id, True)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/admin/users/{user_id}/revoke-admin", response_model=AdminUserSummary)
     @version(1)
     async def revoke_admin(
         user_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminUserSummary:
-        return await admin_service.set_admin_role(user, user_id, False)
+    ) -> AdminUserSummary | JSONResponse:
+        try:
+            return await admin_service.set_admin_role(user, user_id, False)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/admin/users/{user_id}/reset-password", response_model=AdminPasswordResetResult)
     @version(1)
     async def reset_password(
         user_id: str,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminPasswordResetResult:
-        return await admin_service.reset_password(user, user_id)
+    ) -> AdminPasswordResetResult | JSONResponse:
+        try:
+            return await admin_service.reset_password(user, user_id)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.get("/admin/audit", response_model=list[AdminAuditEvent])
     @version(1)
     async def list_audit(
         limit: int = Query(default=100, ge=1, le=ADMIN_QUERY_LIMIT_MAX),
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> list[AdminAuditEvent]:
-        return await admin_service.list_audit_events(user, limit=limit)
+    ) -> list[AdminAuditEvent] | JSONResponse:
+        try:
+            return await admin_service.list_audit_events(user, limit=limit)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.get("/admin/health", response_model=AdminHealthSummary)
     @version(1)
     async def admin_health(
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> AdminHealthSummary:
-        return await admin_service.health_summary(user)
+    ) -> AdminHealthSummary | JSONResponse:
+        try:
+            return await admin_service.health_summary(user)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.get("/admin/errors", response_model=list[AdminErrorRecord])
     @version(1)
     async def admin_errors(
         limit: int = Query(default=50, ge=1, le=ADMIN_QUERY_LIMIT_MAX),
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> list[AdminErrorRecord]:
-        return await admin_service.recent_errors(user, limit=limit)
+    ) -> list[AdminErrorRecord] | JSONResponse:
+        try:
+            return await admin_service.recent_errors(user, limit=limit)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     return router
 

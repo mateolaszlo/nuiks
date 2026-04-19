@@ -207,42 +207,64 @@ class FileService:
     @staticmethod
     def _validate_upload_metadata(*, filename: str, tags: list[str]) -> list[str]:
         if not filename.strip():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filename must not be empty")
+            raise api_error(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Filename must not be empty",
+                code="invalid_upload_filename",
+                category="validation",
+            )
         if len(filename) > MAX_FILENAME_LENGTH:
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Filename must be at most {MAX_FILENAME_LENGTH} characters",
+                code="invalid_upload_filename",
+                category="validation",
             )
         if has_control_chars(filename):
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Filename must not contain control characters",
+                code="invalid_upload_filename",
+                category="validation",
             )
         if "/" in filename or "\\" in filename:
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Filename must not contain path separators",
+                code="invalid_upload_filename",
+                category="validation",
             )
         if len(tags) > MAX_TAG_COUNT:
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Tags must contain at most {MAX_TAG_COUNT} items",
+                code="invalid_upload_tags",
+                category="validation",
             )
 
         normalized_tags: list[str] = []
         for tag in tags:
             normalized_tag = tag.strip()
             if not normalized_tag:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tags must not be empty")
+                raise api_error(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Tags must not be empty",
+                    code="invalid_upload_tags",
+                    category="validation",
+                )
             if len(normalized_tag) > MAX_TAG_LENGTH:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Tags must be at most {MAX_TAG_LENGTH} characters",
+                    code="invalid_upload_tags",
+                    category="validation",
                 )
             if has_control_chars(normalized_tag):
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Tags must not contain control characters",
+                    code="invalid_upload_tags",
+                    category="validation",
                 )
             normalized_tags.append(normalized_tag)
         return normalized_tags
@@ -292,9 +314,12 @@ class FileService:
                     status="rejected",
                     error="Cannot upload file into trashed folder",
                 )
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Cannot upload file into trashed folder",
+                    code="cannot_upload_into_trashed_folder",
+                    category="validation",
+                    context={"target_parent_id": parent_folder_id},
                 )
         try:
             with TemporaryFile() as buffered_upload:
@@ -319,9 +344,12 @@ class FileService:
                             error="Uploaded file exceeds the maximum allowed size",
                             max_upload_bytes=self.max_upload_bytes,
                         )
-                        raise HTTPException(
+                        raise api_error(
                             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                             detail="Uploaded file exceeds the maximum allowed size",
+                            code="upload_size_exceeded",
+                            category="validation",
+                            context={"max_upload_bytes": self.max_upload_bytes},
                         )
                     buffered_upload.write(chunk)
 
@@ -339,7 +367,12 @@ class FileService:
                         status="rejected",
                         error="Uploaded file is empty",
                     )
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+                    raise api_error(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Uploaded file is empty",
+                        code="upload_empty_file",
+                        category="validation",
+                    )
 
                 buffered_upload.seek(0)
                 file_record = FileRecord.create(
@@ -365,7 +398,31 @@ class FileService:
                     parent_folder_id=file_record.parent_folder_id,
                     status="started",
                 )
-                await run_in_threadpool(self.object_store.store, file_record, buffered_upload, total_size)
+                try:
+                    await run_in_threadpool(self.object_store.store, file_record, buffered_upload, total_size)
+                except ObjectStoreUnavailableError as exc:
+                    logger.error(
+                        "file upload failed: object store unavailable",
+                        event_name="file_upload_failed",
+                        event_category="file",
+                        owner_id=user.subject,
+                        owner_username=user.username,
+                        owner_email=user.email,
+                        filename=file_record.filename,
+                        mime_type=file_record.mime_type,
+                        size=file_record.size,
+                        tags_count=len(file_record.tags),
+                        parent_folder_id=file_record.parent_folder_id,
+                        status="failed",
+                        error="File storage unavailable",
+                    )
+                    raise api_error(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="File storage unavailable",
+                        code="storage_unavailable",
+                        category="unavailable",
+                        recoverable=False,
+                    ) from exc
         finally:
             await upload.close()
 
@@ -423,9 +480,12 @@ class FileService:
                 status="failed",
                 error=str(exc),
             )
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Upload stored, but downstream synchronization failed",
+                code="downstream_sync_failed",
+                category="unavailable",
+                recoverable=False,
             ) from exc
 
         logger.info(

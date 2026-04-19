@@ -432,7 +432,7 @@ def test_file_rename_rejects_same_parent_name_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "File rename conflict"
+    assert response.json()["detail"] == "File operation conflict"
 
 
 def test_file_move_updates_parent_and_emits_downstream_events() -> None:
@@ -986,7 +986,7 @@ def test_file_restore_rejects_trashed_explicit_target_folder() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "Cannot restore file into trashed folder"
+    assert response.json()["detail"] == "File restore conflict"
 
 
 def test_file_restore_rejects_destination_name_conflict() -> None:
@@ -1091,6 +1091,9 @@ def test_file_upload_rejects_trashed_parent_folder() -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Cannot upload file into trashed folder"
+    assert response.json()["code"] == "cannot_upload_into_trashed_folder"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["target_parent_id"] == folder.folder_id
     assert downstream.catalog_records == []
     assert downstream.search_records == []
     assert downstream.activity_file_ids == []
@@ -1136,6 +1139,8 @@ def test_file_upload_rejects_empty_content() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Uploaded file is empty"
+    assert response.json()["code"] == "upload_empty_file"
+    assert response.json()["category"] == "validation"
     assert downstream.catalog_records == []
     assert downstream.search_records == []
     assert downstream.activity_file_ids == []
@@ -1157,10 +1162,48 @@ def test_file_upload_rejects_oversize_content() -> None:
 
     assert response.status_code == 413
     assert response.json()["detail"] == "Uploaded file exceeds the maximum allowed size"
+    assert response.json()["code"] == "upload_size_exceeded"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["max_upload_bytes"] == 100
     assert downstream.catalog_records == []
     assert downstream.search_records == []
     assert downstream.activity_file_ids == []
     assert object_store._objects == {}
+
+
+def test_file_upload_returns_structured_storage_unavailable_error() -> None:
+    module = load_service_module("file")
+    downstream = FakeDownstream()
+
+    class UnavailableObjectStore:
+        def store(self, file_record: FileRecord, stream, size: int) -> None:
+            raise module.ObjectStoreUnavailableError("store failed")
+
+        def get(self, object_key: str) -> bytes:
+            raise AssertionError("get should not be called")
+
+        def delete(self, object_key: str) -> None:
+            raise AssertionError("delete should not be called")
+
+        def ping(self) -> None:
+            return None
+
+    app = module.create_app(object_store=UnavailableObjectStore(), downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "File storage unavailable"
+    assert response.json()["code"] == "storage_unavailable"
+    assert response.json()["category"] == "unavailable"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
 
 
 def test_file_upload_rejects_filename_with_path_separator() -> None:

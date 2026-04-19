@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.errors import api_error
 from studyvault_backend_common.models import AuthenticatedUser, DriveItem, FileRecord
 
 from app.core.config import get_settings
@@ -27,12 +28,20 @@ def build_public_router(service: SearchService) -> APIRouter:
     @router.get("/search", response_model=list[DriveItem])
     @version(1)
     def search_files(
-        q: str = Query(default="", max_length=MAX_SEARCH_QUERY_LENGTH),
+        q: str = Query(default=""),
         include_trashed: bool = Query(default=False),
         kind: Literal["file", "folder", "all"] = Query(default="all"),
         parent_id: str | None = Query(default=None),
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> list[DriveItem]:
+        if len(q) > MAX_SEARCH_QUERY_LENGTH:
+            raise api_error(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Search query must be at most {MAX_SEARCH_QUERY_LENGTH} characters",
+                code="search_query_too_long",
+                category="validation",
+                context={"max_query_length": MAX_SEARCH_QUERY_LENGTH},
+            )
         return service.search(
             user,
             q,

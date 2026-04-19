@@ -120,6 +120,7 @@ def test_catalog_internal_file_patch_requires_internal_token() -> None:
 
 def test_catalog_internal_file_patch_rejects_active_sibling_conflict() -> None:
     module = load_service_module("catalog")
+    target = FolderRecord.create(owner_id="test-user", name="Target")
     first = FileRecord.create(
         owner_id="test-user",
         filename="draft.txt",
@@ -134,9 +135,9 @@ def test_catalog_internal_file_patch_rejects_active_sibling_conflict() -> None:
         size=10,
         tags=[],
     )
-    first.parent_folder_id = "folder-1"
-    second.parent_folder_id = "folder-1"
-    repository = module.InMemoryCatalogRepository(seed=[first, second])
+    first.parent_folder_id = target.folder_id
+    second.parent_folder_id = target.folder_id
+    repository = module.InMemoryCatalogRepository(seed=[first, second], folder_seed=[target])
     app = module.create_app(repository=repository)
     updated = first.model_copy(update={"filename": "final.txt", "updated_at": datetime(2026, 4, 10, tzinfo=timezone.utc)})
 
@@ -148,8 +149,8 @@ def test_catalog_internal_file_patch_rejects_active_sibling_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == 'A file named "draft.txt" already exists in Target.'
-    assert response.json()["code"] == "file_move_conflict"
+    assert response.json()["detail"] == 'A file named "final.txt" already exists in Target.'
+    assert response.json()["code"] == "file_name_conflict"
     assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
@@ -462,7 +463,9 @@ def test_catalog_internal_file_move_rejects_target_name_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "A file with that name already exists in this location"
+    assert response.json()["detail"] == 'A file named "draft.txt" already exists in Target.'
+    assert response.json()["code"] == "file_move_conflict"
+    assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
 def test_catalog_internal_file_trash_requires_internal_token() -> None:
@@ -779,7 +782,9 @@ def test_catalog_internal_file_restore_rejects_target_name_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "A file with that name already exists in this location"
+    assert response.json()["detail"] == 'A file named "draft.txt" already exists in Target.'
+    assert response.json()["code"] == "file_restore_conflict"
+    assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
 def test_catalog_internal_file_hard_delete_requires_internal_token() -> None:
@@ -1549,7 +1554,10 @@ def test_catalog_create_folder_rejects_trashed_parent() -> None:
         )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Cannot create folder inside trashed folder"}
+    assert response.json()["detail"] == "Cannot create folder inside trashed folder"
+    assert response.json()["code"] == "cannot_create_in_trashed_folder"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["parent_folder_id"] == parent.folder_id
 
 
 def test_catalog_create_folder_rejects_duplicate_active_sibling_name() -> None:
@@ -1728,7 +1736,10 @@ def test_catalog_rename_folder_rejects_trashed_folder() -> None:
         )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Cannot rename trashed folder"}
+    assert response.json()["detail"] == "Cannot rename trashed folder"
+    assert response.json()["code"] == "cannot_rename_trashed_folder"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["folder_id"] == folder.folder_id
 
 
 def test_catalog_rename_folder_rejects_duplicate_active_sibling_name() -> None:
@@ -1757,7 +1768,10 @@ def test_catalog_rename_folder_rejects_duplicate_active_sibling_name() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+    assert response.json()["detail"] == 'A folder named "week 2" already exists in Projects.'
+    assert response.json()["code"] == "folder_name_conflict"
+    assert response.json()["context"]["target_parent_id"] == parent.folder_id
+    assert response.json()["context"]["target_location"] == "Projects"
 
 
 def test_catalog_rename_folder_allows_name_used_under_different_parent() -> None:
@@ -2179,7 +2193,10 @@ def test_catalog_move_folder_rejects_trashed_source() -> None:
         )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Cannot move trashed folder"}
+    assert response.json()["detail"] == "Cannot move trashed folder"
+    assert response.json()["code"] == "cannot_move_trashed_folder"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["folder_id"] == folder.folder_id
 
 
 def test_catalog_move_folder_rejects_trashed_target() -> None:
@@ -2198,7 +2215,10 @@ def test_catalog_move_folder_rejects_trashed_target() -> None:
         )
 
     assert response.status_code == 422
-    assert response.json() == {"detail": "Cannot move folder into trashed folder"}
+    assert response.json()["detail"] == "Cannot move folder into trashed folder"
+    assert response.json()["code"] == "cannot_move_into_trashed_folder"
+    assert response.json()["category"] == "validation"
+    assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
 def test_catalog_move_folder_rejects_move_into_itself() -> None:
@@ -2215,7 +2235,11 @@ def test_catalog_move_folder_rejects_move_into_itself() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Cannot move folder into itself or its descendant"}
+    assert response.json()["detail"] == "Cannot move folder into itself or its descendant"
+    assert response.json()["code"] == "invalid_folder_move_target"
+    assert response.json()["category"] == "conflict"
+    assert response.json()["context"]["folder_id"] == folder.folder_id
+    assert response.json()["context"]["target_parent_id"] == folder.folder_id
 
 
 def test_catalog_move_folder_rejects_move_into_descendant() -> None:
@@ -2238,7 +2262,11 @@ def test_catalog_move_folder_rejects_move_into_descendant() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Cannot move folder into itself or its descendant"}
+    assert response.json()["detail"] == "Cannot move folder into itself or its descendant"
+    assert response.json()["code"] == "invalid_folder_move_target"
+    assert response.json()["category"] == "conflict"
+    assert response.json()["context"]["folder_id"] == folder.folder_id
+    assert response.json()["context"]["target_parent_id"] == child.folder_id
 
 
 def test_catalog_move_folder_rejects_conflicting_name_in_target_parent() -> None:
@@ -2268,7 +2296,10 @@ def test_catalog_move_folder_rejects_conflicting_name_in_target_parent() -> None
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+    assert response.json()["detail"] == 'A folder named "Projects" already exists in Target.'
+    assert response.json()["code"] == "folder_move_conflict"
+    assert response.json()["context"]["target_parent_id"] == target_parent.folder_id
+    assert response.json()["context"]["target_location"] == "Target"
 
 
 def test_catalog_move_folder_allows_non_conflicting_target_parent() -> None:
@@ -2522,7 +2553,11 @@ def test_catalog_restore_folder_rejects_trashed_target_parent() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Cannot restore folder into trashed folder"}
+    assert response.json()["detail"] == "Cannot restore folder into trashed folder"
+    assert response.json()["code"] == "cannot_restore_into_trashed_folder"
+    assert response.json()["category"] == "conflict"
+    assert response.json()["context"]["folder_id"] == folder.folder_id
+    assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
 def test_catalog_restore_folder_rejects_restore_into_descendant() -> None:
@@ -2548,7 +2583,11 @@ def test_catalog_restore_folder_rejects_restore_into_descendant() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Cannot restore folder into itself or its descendant"}
+    assert response.json()["detail"] == "Cannot restore folder into itself or its descendant"
+    assert response.json()["code"] == "invalid_folder_restore_target"
+    assert response.json()["category"] == "conflict"
+    assert response.json()["context"]["folder_id"] == root.folder_id
+    assert response.json()["context"]["target_parent_id"] == child.folder_id
 
 
 def test_catalog_restore_folder_rejects_conflicting_active_sibling_name() -> None:
@@ -2580,7 +2619,10 @@ def test_catalog_restore_folder_rejects_conflicting_active_sibling_name() -> Non
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+    assert response.json()["detail"] == 'A folder named "week 1" already exists in Projects.'
+    assert response.json()["code"] == "folder_restore_conflict"
+    assert response.json()["context"]["target_parent_id"] == parent.folder_id
+    assert response.json()["context"]["target_location"] == "Projects"
 
 
 def test_catalog_create_folder_publishes_folder_search_item() -> None:

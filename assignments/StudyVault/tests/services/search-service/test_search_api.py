@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord
@@ -105,8 +106,19 @@ def test_search_rejects_overlong_query() -> None:
         response = client.get("/api/search", params={"q": long_query}, headers={"authorization": "Bearer fake"})
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["type"] == "string_too_long"
-    assert response.json()["detail"][0]["loc"] == ["query", "q"]
+    assert response.json()["detail"] == "Search query must be at most 100 characters"
+
+
+def test_search_requires_bearer_token_with_structured_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
+    module = load_service_module("search")
+    app = module.create_app(repository=module.InMemorySearchRepository())
+
+    with TestClient(app) as client:
+        response = client.get("/api/search?q=math")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing bearer token"
 
 
 def test_search_returns_empty_list_for_blank_query() -> None:

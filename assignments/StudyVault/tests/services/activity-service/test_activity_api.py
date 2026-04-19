@@ -157,6 +157,9 @@ def test_admin_routes_require_admin_role() -> None:
         response = client.get("/api/admin/users", headers={"authorization": "Bearer fake"})
 
     assert response.status_code == 403
+    assert response.json()["detail"] == "Admin access required"
+    assert response.json()["code"] == "admin_access_required"
+    assert response.json()["category"] == "permission"
 
 
 def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPatch) -> None:

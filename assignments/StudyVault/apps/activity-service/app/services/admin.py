@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from itertools import chain
 
-from fastapi import HTTPException, status
+from fastapi import status
 
+from studyvault_backend_common.errors import api_error
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import (
     AdminAuditEvent,
@@ -37,7 +38,12 @@ class AdminService:
     @staticmethod
     def require_admin(user: AuthenticatedUser) -> None:
         if not user.is_admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+            raise api_error(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required",
+                code="admin_access_required",
+                category="permission",
+            )
 
     async def list_users(self, actor: AuthenticatedUser) -> list[AdminUserSummary]:
         self.require_admin(actor)
