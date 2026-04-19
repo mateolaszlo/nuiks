@@ -684,7 +684,9 @@ Resulting contract:
 - [x] Improve conflict detail messages to include item name and target location where available
 - [x] Parse structured API errors in the frontend client instead of throwing raw text only
 - [x] Render create-folder, rename, and move failures inline near the failing Drive action instead of only using the global banner
-- [ ] Extend structured error codes and recovery UX to upload/search/auth/admin flows
+- [x] Extend structured error codes and recovery UX to upload flows
+- [x] Extend structured error codes and recovery UX to search flows
+- [x] Extend structured error codes and recovery UX to auth/session flows
 - [ ] Add admin error display improvements for stable error codes and safe structured context
 
 ### 6.9.1 First implementation slice
@@ -704,6 +706,23 @@ Deferred to later error-handling slices:
 - upload/search/auth/admin-specific recovery UX
 - structured field validation rendering
 - richer admin error-code summaries and correlation-friendly diagnostics in the admin panel
+
+### 6.9.2 Upload, search, and auth recovery
+
+This slice extends the structured error contract and local recovery behavior beyond Drive create/rename/move.
+
+Implemented in this slice:
+
+- upload validation and downstream sync failures now use structured public error codes instead of plain FastAPI `detail` strings
+- search query validation now returns structured validation errors instead of the default raw FastAPI 422 payload
+- public auth failures now return structured auth or permission codes such as missing bearer token, invalid token, unknown signing key, and admin access required
+- upload and search failures now render near the failing UI surface instead of escalating to the page-wide banner by default
+- auth/session failures during authenticated API calls now transition the app back to a relogin-oriented state rather than leaving the user in a broken workspace
+
+Deferred to the next slice:
+
+- admin error record enrichment with stable error codes and safe structured context
+- richer admin UI summaries of operational errors
 
 ---
 
