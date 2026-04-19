@@ -276,6 +276,78 @@ test("external files can be dropped onto a breadcrumb and upload into that ances
   });
 });
 
+test("duplicate folder creation stays local to the create-folder panel", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `Projects-${uniqueId}`;
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  const createPanel = page.locator(".create-folder-panel").first();
+  await createPanel.getByLabel("Folder name").fill(folderName);
+  await createPanel.getByRole("button", { name: "Create Folder" }).click();
+
+  await expect(createPanel.getByText(`A folder named "${folderName}" already exists in My Drive.`)).toBeVisible();
+  await expect(page.locator(".error-banner")).toHaveCount(0);
+});
+
+test("same-name file move conflict stays local to the move form", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `Target-${uniqueId}`;
+  const filename = `notes-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const folderTile = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
+  await expect(folderTile).toBeVisible({ timeout: 60_000 });
+  await folderTile.dblclick();
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`target copy ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+
+  await page.getByRole("button", { name: "Up", exact: true }).click();
+  await expect(driveSurface.getByRole("heading", { name: "My Drive" })).toBeVisible();
+  await expect(page.locator(".breadcrumbs")).toHaveCount(0);
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`root copy ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const rootFileTile = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
+  await expect(rootFileTile).toBeVisible({ timeout: 60_000 });
+
+  await driveSurface.getByRole("button", { name: `More actions for ${filename}` }).first().click();
+  await page.locator(".context-menu").getByRole("button", { name: "Move to…" }).click();
+
+  const moveForm = rootFileTile.locator("form").first();
+  await moveForm.getByRole("combobox").selectOption(folderName);
+  await moveForm.getByRole("button", { name: "Move" }).click();
+
+  await expect(moveForm.getByText(`A file named "${filename}" already exists in ${folderName}.`)).toBeVisible();
+  await expect(page.locator(".error-banner")).toHaveCount(0);
+});
+
 test("single click selects a folder and double click navigates into it", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `single-click-${uniqueId}`;
@@ -295,7 +367,7 @@ test("single click selects a folder and double click navigates into it", async (
 
   const detailsPanel = page.locator("aside").filter({ has: page.getByRole("heading", { name: folderName }) }).first();
   await expect(detailsPanel).toBeVisible();
-  await expect(page.locator(".breadcrumb-current")).not.toContainText(folderName);
+  await expect(page.locator(".breadcrumbs")).toHaveCount(0);
 
   await folderRow.dblclick();
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import json
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
@@ -8,6 +9,25 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 
 class ServiceClientError(RuntimeError):
     """Raised when a downstream StudyVault service call fails."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        detail: str | None = None,
+        code: str | None = None,
+        category: str | None = None,
+        recoverable: bool | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.detail = detail
+        self.code = code
+        self.category = category
+        self.recoverable = recoverable
+        self.context = context or {}
 
 
 class JsonServiceClient:
@@ -18,9 +38,45 @@ class JsonServiceClient:
     def _build_service_error(method: str, url: str, response: httpx.Response) -> ServiceClientError:
         detail = response.text.strip()
         message = f"{method} {url} failed with status {response.status_code}"
+        code = None
+        category = None
+        recoverable = None
+        context: dict[str, Any] | None = None
+        parsed_detail: str | None = None
+        if detail:
+            try:
+                payload = json.loads(detail)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict):
+                payload_detail = payload.get("detail")
+                if isinstance(payload_detail, str):
+                    parsed_detail = payload_detail
+                payload_code = payload.get("code")
+                if isinstance(payload_code, str):
+                    code = payload_code
+                payload_category = payload.get("category")
+                if isinstance(payload_category, str):
+                    category = payload_category
+                payload_recoverable = payload.get("recoverable")
+                if isinstance(payload_recoverable, bool):
+                    recoverable = payload_recoverable
+                payload_context = payload.get("context")
+                if isinstance(payload_context, dict):
+                    context = payload_context
+        if parsed_detail:
+            detail = parsed_detail
         if detail:
             message = f"{message} {detail}"
-        return ServiceClientError(message)
+        return ServiceClientError(
+            message,
+            status_code=response.status_code,
+            detail=detail or None,
+            code=code,
+            category=category,
+            recoverable=recoverable,
+            context=context,
+        )
 
     @retry(
         stop=stop_after_attempt(3),

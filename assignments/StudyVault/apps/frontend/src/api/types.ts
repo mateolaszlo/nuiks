@@ -146,3 +146,17 @@ export type AdminErrorRecord = {
   status: string | null;
   created_at: string;
 };
+
+export type ApiFieldError = {
+  field: string;
+  message: string;
+};
+
+export type ApiErrorResponse = {
+  detail: string;
+  code: string;
+  category: "conflict" | "validation" | "not_found" | "auth" | "permission" | "unavailable" | "internal";
+  recoverable: boolean;
+  context?: Record<string, string | number | boolean | null> | null;
+  field_errors?: ApiFieldError[];
+};

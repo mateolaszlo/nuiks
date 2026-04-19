@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.errors import StudyVaultHTTPException, build_error_response
 from studyvault_backend_common.models import (
     AuthenticatedUser,
     FileRecord,
@@ -17,6 +18,11 @@ from studyvault_backend_common.responses import build_attachment_content_disposi
 
 from app.core.config import get_settings
 from app.services.files import FileService
+
+
+def _studyvault_error_response(exc: StudyVaultHTTPException) -> JSONResponse:
+    payload = build_error_response(exc)
+    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
 
 def build_public_router(service: FileService) -> APIRouter:
@@ -38,13 +44,16 @@ def build_public_router(service: FileService) -> APIRouter:
         tags: list[str] | None = Form(default=None),
         parent_folder_id: str | None = Form(default=None),
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FileRecord:
-        return await service.upload_file(
-            user=user,
-            upload=file,
-            tags=tags or [],
-            parent_folder_id=parent_folder_id,
-        )
+    ) -> FileRecord | JSONResponse:
+        try:
+            return await service.upload_file(
+                user=user,
+                upload=file,
+                tags=tags or [],
+                parent_folder_id=parent_folder_id,
+            )
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.get("/files/{file_id}/download")
     @version(1)
@@ -67,8 +76,11 @@ def build_public_router(service: FileService) -> APIRouter:
         file_id: str,
         request: RenameItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FileRecord:
-        return await service.rename_file(user=user, file_id=file_id, request=request)
+    ) -> FileRecord | JSONResponse:
+        try:
+            return await service.rename_file(user=user, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/files/{file_id}/move", response_model=FileRecord)
     @version(1)
@@ -76,8 +88,11 @@ def build_public_router(service: FileService) -> APIRouter:
         file_id: str,
         request: MoveItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FileRecord:
-        return await service.move_file(user=user, file_id=file_id, request=request)
+    ) -> FileRecord | JSONResponse:
+        try:
+            return await service.move_file(user=user, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.delete("/files/{file_id}", status_code=204)
     @version(1)
@@ -93,8 +108,11 @@ def build_public_router(service: FileService) -> APIRouter:
         file_id: str,
         request: RestoreItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FileRestoreResponse:
-        return await service.restore_file(user=user, file_id=file_id, request=request)
+    ) -> FileRestoreResponse | JSONResponse:
+        try:
+            return await service.restore_file(user=user, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     return router
 

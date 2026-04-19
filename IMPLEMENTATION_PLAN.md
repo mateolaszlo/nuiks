@@ -437,6 +437,7 @@ The current Drive browser shows a vertical list with inline metadata and opens f
 - reduce clutter by moving metadata out of the main surface
 - support selection-first interaction with a contextual info panel
 - keep existing backend APIs and file/folder operations intact
+- hide the breadcrumb row at Drive root; use the `My Drive` heading as the root location indicator
 
 #### Main view behavior
 
@@ -673,6 +674,36 @@ Resulting contract:
 - old unversioned public `/api/...` routes return `404`
 - internal service-to-service routes remain under `/internal/...`
 - health checks remain under `/health`
+
+## 6.9 Error handling and recovery UX
+
+- [x] Add a shared structured error response model in `packages/backend-common`
+- [x] Route new shared `StudyVaultHTTPException` responses through the structured error shape
+- [x] Preserve structured downstream error details across service-to-service HTTP calls
+- [x] Normalize catalog/file conflict responses for create, rename, move, and restore flows to stable error codes
+- [x] Improve conflict detail messages to include item name and target location where available
+- [x] Parse structured API errors in the frontend client instead of throwing raw text only
+- [x] Render create-folder, rename, and move failures inline near the failing Drive action instead of only using the global banner
+- [ ] Extend structured error codes and recovery UX to upload/search/auth/admin flows
+- [ ] Add admin error display improvements for stable error codes and safe structured context
+
+### 6.9.1 First implementation slice
+
+This first slice focuses on the most common Drive interaction failures where users currently get generic or ambiguous responses.
+
+Implemented in this slice:
+
+- shared JSON error responses now include `detail`, `code`, `category`, `recoverable`, and optional `context`
+- `catalog-service` and `file-service` now emit stable conflict codes for folder/file create, rename, move, and restore conflicts
+- duplicate-name conflict messages now identify the conflicting item type and destination location
+- the frontend API client now parses structured API failures into a typed error object
+- Drive create-folder, rename, and move forms now keep the UI open and render the failure locally instead of surfacing everything through the page-wide error banner
+
+Deferred to later error-handling slices:
+
+- upload/search/auth/admin-specific recovery UX
+- structured field validation rendering
+- richer admin error-code summaries and correlation-friendly diagnostics in the admin panel
 
 ---
 

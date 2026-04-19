@@ -148,7 +148,9 @@ def test_catalog_internal_file_patch_rejects_active_sibling_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "A file with that name already exists in this location"
+    assert response.json()["detail"] == 'A file named "draft.txt" already exists in Target.'
+    assert response.json()["code"] == "file_move_conflict"
+    assert response.json()["context"]["target_parent_id"] == target.folder_id
 
 
 def test_catalog_internal_file_patch_rejects_trashed_file() -> None:
@@ -1565,7 +1567,9 @@ def test_catalog_create_folder_rejects_duplicate_active_sibling_name() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "A folder with that name already exists in this location"}
+    assert response.json()["detail"] == 'A folder named "week 1" already exists in Projects.'
+    assert response.json()["code"] == "folder_name_conflict"
+    assert response.json()["context"]["target_location"] == "Projects"
 
 
 def test_catalog_create_folder_allows_same_name_under_different_parent() -> None:

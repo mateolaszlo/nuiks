@@ -7,6 +7,7 @@ import anyio
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+from studyvault_backend_common.errors import api_error
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import (
     AuthenticatedUser,
@@ -44,6 +45,56 @@ class CatalogService:
         self.repository = repository
         self.downstream = downstream
 
+    @classmethod
+    def _location_label(cls, folder: FolderRecord | None) -> str:
+        return folder.name if folder is not None else cls.ROOT_BREADCRUMB_NAME
+
+    @classmethod
+    def _folder_conflict_error(
+        cls,
+        *,
+        folder_name: str,
+        parent_folder: FolderRecord | None,
+        parent_folder_id: str | None,
+        code: str,
+    ) -> HTTPException:
+        location_label = cls._location_label(parent_folder)
+        return api_error(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f'A folder named "{folder_name}" already exists in {location_label}.',
+            code=code,
+            category="conflict",
+            context={
+                "item_kind": "folder",
+                "target_name": folder_name,
+                "target_parent_id": parent_folder_id,
+                "target_location": location_label,
+            },
+        )
+
+    @classmethod
+    def _file_conflict_error(
+        cls,
+        *,
+        file_name: str,
+        parent_folder: FolderRecord | None,
+        parent_folder_id: str | None,
+        code: str,
+    ) -> HTTPException:
+        location_label = cls._location_label(parent_folder)
+        return api_error(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f'A file named "{file_name}" already exists in {location_label}.',
+            code=code,
+            category="conflict",
+            context={
+                "item_kind": "file",
+                "target_name": file_name,
+                "target_parent_id": parent_folder_id,
+                "target_location": location_label,
+            },
+        )
+
     def create_folder(self, user: AuthenticatedUser, request: CreateFolderRequest) -> FolderRecord:
         parent: FolderRecord | None = None
         if request.parent_folder_id is not None:
@@ -71,9 +122,12 @@ class CatalogService:
                     parent_folder_id=request.parent_folder_id,
                     status="trashed",
                 )
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Cannot create folder inside trashed folder",
+                    code="cannot_create_in_trashed_folder",
+                    category="validation",
+                    context={"parent_folder_id": request.parent_folder_id},
                 )
 
         normalized_name = request.name.casefold()
@@ -90,9 +144,11 @@ class CatalogService:
                 folder_name=request.name,
                 status="conflict",
             )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=request.name,
+                parent_folder=parent,
+                parent_folder_id=request.parent_folder_id,
+                code="folder_name_conflict",
             )
 
         folder_record = FolderRecord.create(
@@ -115,9 +171,11 @@ class CatalogService:
                 folder_name=request.name,
                 status="conflict",
             )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=request.name,
+                parent_folder=parent,
+                parent_folder_id=request.parent_folder_id,
+                code="folder_name_conflict",
             ) from exc
 
         logger.info(
@@ -161,9 +219,12 @@ class CatalogService:
                 folder_id=folder_id,
                 status="trashed",
             )
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cannot rename trashed folder",
+                code="cannot_rename_trashed_folder",
+                category="validation",
+                context={"folder_id": folder_id},
             )
 
         normalized_name = request.name.casefold()
@@ -200,9 +261,13 @@ class CatalogService:
                 folder_name=request.name,
                 status="conflict",
             )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=request.name,
+                parent_folder=self.repository.get_folder(user.subject, folder.parent_folder_id)
+                if folder.parent_folder_id is not None
+                else None,
+                parent_folder_id=folder.parent_folder_id,
+                code="folder_name_conflict",
             )
 
         renamed_folder = folder.model_copy(
@@ -227,9 +292,13 @@ class CatalogService:
                 folder_name=request.name,
                 status="conflict",
             )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=request.name,
+                parent_folder=self.repository.get_folder(user.subject, folder.parent_folder_id)
+                if folder.parent_folder_id is not None
+                else None,
+                parent_folder_id=folder.parent_folder_id,
+                code="folder_name_conflict",
             ) from exc
 
         logger.info(
@@ -361,17 +430,23 @@ class CatalogService:
                 folder_id=folder_id,
                 status="trashed",
             )
-            raise HTTPException(
+            raise api_error(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Cannot move trashed folder",
+                code="cannot_move_trashed_folder",
+                category="validation",
+                context={"folder_id": folder_id},
             )
 
         target_parent: FolderRecord | None = None
         if request.parent_folder_id is not None:
             if request.parent_folder_id == folder_id:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot move folder into itself or its descendant",
+                    code="invalid_folder_move_target",
+                    category="conflict",
+                    context={"folder_id": folder_id, "target_parent_id": request.parent_folder_id},
                 )
             target_parent = self.repository.get_folder(user.subject, request.parent_folder_id)
             if target_parent is None:
@@ -388,15 +463,21 @@ class CatalogService:
                 )
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
             if target_parent.trashed_at is not None:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Cannot move folder into trashed folder",
+                    code="cannot_move_into_trashed_folder",
+                    category="validation",
+                    context={"folder_id": folder_id, "target_parent_id": request.parent_folder_id},
                 )
             target_ancestors = self.repository.get_folder_ancestors(user.subject, target_parent.folder_id)
             if any(ancestor.folder_id == folder_id for ancestor in target_ancestors):
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot move folder into itself or its descendant",
+                    code="invalid_folder_move_target",
+                    category="conflict",
+                    context={"folder_id": folder_id, "target_parent_id": request.parent_folder_id},
                 )
 
         if folder.parent_folder_id == request.parent_folder_id:
@@ -420,9 +501,11 @@ class CatalogService:
             == (folder.normalized_name or folder.name.casefold())
             for sibling in siblings
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=folder.name,
+                parent_folder=target_parent,
+                parent_folder_id=request.parent_folder_id,
+                code="folder_move_conflict",
             )
 
         updated_at = utcnow()
@@ -507,17 +590,23 @@ class CatalogService:
         explicit_target_parent: FolderRecord | None = None
         if request.parent_folder_id is not None:
             if request.parent_folder_id in subtree_ids:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot restore folder into itself or its descendant",
+                    code="invalid_folder_restore_target",
+                    category="conflict",
+                    context={"folder_id": folder_id, "target_parent_id": request.parent_folder_id},
                 )
             explicit_target_parent = self.repository.get_folder(user.subject, request.parent_folder_id)
             if explicit_target_parent is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
             if explicit_target_parent.trashed_at is not None:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot restore folder into trashed folder",
+                    code="cannot_restore_into_trashed_folder",
+                    category="conflict",
+                    context={"folder_id": folder_id, "target_parent_id": request.parent_folder_id},
                 )
 
         fallback_to_root = False
@@ -539,9 +628,11 @@ class CatalogService:
             and (sibling.normalized_name or sibling.name.casefold()) == root_normalized_name
             for sibling in siblings
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A folder with that name already exists in this location",
+            raise self._folder_conflict_error(
+                folder_name=folder.name,
+                parent_folder=target_parent,
+                parent_folder_id=target_parent_id,
+                code="folder_restore_conflict",
             )
 
         updated_at = utcnow()
@@ -633,7 +724,13 @@ class CatalogService:
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
         if existing.trashed_at is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+            raise api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot rename trashed file",
+                code="cannot_rename_trashed_file",
+                category="conflict",
+                context={"file_id": file_record.file_id},
+            )
 
         siblings = self.repository.list_child_files(file_record.owner_id, existing.parent_folder_id)
         normalized_name = file_record.filename.casefold()
@@ -643,9 +740,16 @@ class CatalogService:
             and sibling.filename.casefold() == normalized_name
             for sibling in siblings
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A file with that name already exists in this location",
+            parent_folder = (
+                self.repository.get_folder(file_record.owner_id, existing.parent_folder_id)
+                if existing.parent_folder_id is not None
+                else None
+            )
+            raise self._file_conflict_error(
+                file_name=file_record.filename,
+                parent_folder=parent_folder,
+                parent_folder_id=existing.parent_folder_id,
+                code="file_name_conflict",
             )
 
         updated = existing.model_copy(
@@ -671,7 +775,13 @@ class CatalogService:
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
         if existing.trashed_at is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+            raise api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot move trashed file",
+                code="cannot_move_trashed_file",
+                category="conflict",
+                context={"file_id": file_id},
+            )
 
         if existing.parent_folder_id == request.parent_folder_id:
             return existing
@@ -681,9 +791,12 @@ class CatalogService:
             if target_folder is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
             if target_folder.trashed_at is not None:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Cannot move file into trashed folder",
+                    code="cannot_move_into_trashed_folder",
+                    category="validation",
+                    context={"file_id": file_id, "target_parent_id": request.parent_folder_id},
                 )
 
         siblings = self.repository.list_child_files(owner_id, request.parent_folder_id)
@@ -694,9 +807,11 @@ class CatalogService:
             and sibling.filename.casefold() == normalized_name
             for sibling in siblings
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A file with that name already exists in this location",
+            raise self._file_conflict_error(
+                file_name=existing.filename,
+                parent_folder=target_folder if request.parent_folder_id is not None else None,
+                parent_folder_id=request.parent_folder_id,
+                code="file_move_conflict",
             )
 
         updated = existing.model_copy(
@@ -764,9 +879,12 @@ class CatalogService:
             if explicit_target_parent is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
             if explicit_target_parent.trashed_at is not None:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Cannot restore file into trashed folder",
+                    code="cannot_restore_into_trashed_folder",
+                    category="conflict",
+                    context={"file_id": file_id, "target_parent_id": request.parent_folder_id},
                 )
 
         fallback_to_root = False
@@ -789,9 +907,11 @@ class CatalogService:
             and sibling.filename.casefold() == normalized_name
             for sibling in siblings
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A file with that name already exists in this location",
+            raise self._file_conflict_error(
+                file_name=existing.filename,
+                parent_folder=target_parent,
+                parent_folder_id=target_parent_id,
+                code="file_restore_conflict",
             )
 
         restored = existing.model_copy(

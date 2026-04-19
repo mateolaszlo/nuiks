@@ -3,6 +3,7 @@ import type {
   AdminAuditEvent,
   AdminErrorRecord,
   CatalogBreadcrumbsResponse,
+  ApiErrorResponse,
   AdminHealthSummary,
   AdminPasswordResetResult,
   CatalogRestoreResponse,
@@ -20,6 +21,40 @@ type UploadProgressOptions = {
   onProcessing?: () => void;
 };
 
+export class ApiError extends Error {
+  status: number;
+  code: string;
+  category: ApiErrorResponse["category"];
+  recoverable: boolean;
+  context: Record<string, string | number | boolean | null>;
+  fieldErrors: ApiErrorResponse["field_errors"];
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code: string;
+      category: ApiErrorResponse["category"];
+      recoverable?: boolean;
+      context?: Record<string, string | number | boolean | null> | null;
+      fieldErrors?: ApiErrorResponse["field_errors"];
+    },
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options.status;
+    this.code = options.code;
+    this.category = options.category;
+    this.recoverable = options.recoverable ?? options.status < 500;
+    this.context = options.context ?? {};
+    this.fieldErrors = options.fieldErrors ?? [];
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
 export class ApiClient {
   constructor(private readonly getToken: () => Promise<string | undefined>) {}
 
@@ -32,8 +67,7 @@ export class ApiClient {
 
     const response = await fetch(input, { ...init, headers });
     if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(detail || `Request failed with status ${response.status}`);
+      throw await readApiErrorFromResponse(response);
     }
     if (response.status === 204) {
       return undefined as T;
@@ -217,7 +251,7 @@ export class ApiClient {
       xhr.onabort = () => reject(new Error("Upload was aborted"));
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {
-          reject(new Error(readErrorDetail(xhr.responseText, xhr.status)));
+          reject(readApiErrorFromText(xhr.responseText, xhr.status));
           return;
         }
 
@@ -242,8 +276,7 @@ export class ApiClient {
 
     const response = await fetch(`/api/v1/files/${fileId}/download`, { headers });
     if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(detail || `Request failed with status ${response.status}`);
+      throw await readApiErrorFromResponse(response);
     }
     return await response.blob();
   }
@@ -287,15 +320,90 @@ export class ApiClient {
   }
 }
 
-function readErrorDetail(responseText: string, status: number): string {
+async function readApiErrorFromResponse(response: Response): Promise<ApiError> {
+  const responseText = await response.text();
+  return readApiErrorFromText(responseText, response.status);
+}
+
+function readApiErrorFromText(responseText: string, status: number): ApiError {
   if (!responseText) {
-    return `Request failed with status ${status}`;
+    return new ApiError(`Request failed with status ${status}`, {
+      status,
+      code: defaultErrorCode(status),
+      category: defaultErrorCategory(status),
+    });
   }
 
   try {
-    const payload = JSON.parse(responseText) as { detail?: string };
-    return payload.detail || responseText || `Request failed with status ${status}`;
+    const payload = JSON.parse(responseText) as Partial<ApiErrorResponse>;
+    if (typeof payload.detail === "string" && typeof payload.code === "string" && typeof payload.category === "string") {
+      return new ApiError(payload.detail, {
+        status,
+        code: payload.code,
+        category: payload.category,
+        recoverable: payload.recoverable,
+        context: payload.context,
+        fieldErrors: payload.field_errors,
+      });
+    }
+    if (typeof payload.detail === "string") {
+      return new ApiError(payload.detail, {
+        status,
+        code: defaultErrorCode(status),
+        category: defaultErrorCategory(status),
+      });
+    }
   } catch {
-    return responseText || `Request failed with status ${status}`;
+    // Fall through to raw-text fallback.
   }
+
+  return new ApiError(responseText || `Request failed with status ${status}`, {
+    status,
+    code: defaultErrorCode(status),
+    category: defaultErrorCategory(status),
+  });
+}
+
+function defaultErrorCategory(status: number): ApiErrorResponse["category"] {
+  if (status === 404) {
+    return "not_found";
+  }
+  if (status === 401) {
+    return "auth";
+  }
+  if (status === 403) {
+    return "permission";
+  }
+  if (status === 409) {
+    return "conflict";
+  }
+  if (status === 400 || status === 422) {
+    return "validation";
+  }
+  if (status >= 500) {
+    return "unavailable";
+  }
+  return "internal";
+}
+
+function defaultErrorCode(status: number): string {
+  if (status === 404) {
+    return "not_found";
+  }
+  if (status === 401) {
+    return "unauthorized";
+  }
+  if (status === 403) {
+    return "forbidden";
+  }
+  if (status === 409) {
+    return "conflict";
+  }
+  if (status === 400 || status === 422) {
+    return "invalid_request";
+  }
+  if (status >= 500) {
+    return "service_unavailable";
+  }
+  return "internal_error";
 }

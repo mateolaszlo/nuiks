@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 
-import { ApiClient } from "./api/client";
+import { ApiClient, isApiError } from "./api/client";
 import type {
   ActivityRecord,
   AdminAuditEvent,
@@ -39,6 +39,11 @@ type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
 type DrivePanelMode = "hidden" | "details" | "activity";
 type UploadStatus = "queued" | "uploading" | "processing" | "done" | "failed";
+type LocalActionError =
+  | { scope: "create-folder"; message: string }
+  | { scope: "rename"; itemId: string; message: string }
+  | { scope: "move"; itemId: string; message: string }
+  | null;
 type UploadQueueItem = {
   queue_id: string;
   file: File;
@@ -90,6 +95,16 @@ function getHealthDetailPreview(detail: string, maxLength = 96): string {
 
 function buildDriveItemPath(breadcrumbs: BreadcrumbEntry[], item: DriveItem): string {
   return [...breadcrumbs.map((entry) => entry.name), item.name].join(" / ");
+}
+
+function getActionErrorMessage(error: unknown, fallback: string): string {
+  if (isApiError(error)) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function AuthScreen(props: {
@@ -303,6 +318,7 @@ export default function App() {
   const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
   const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
   const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
+  const [localActionError, setLocalActionError] = useState<LocalActionError>(null);
   const [searchModeActive, setSearchModeActive] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const suppressFolderOpenUntilRef = useRef(0);
@@ -391,6 +407,7 @@ export default function App() {
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
+      setLocalActionError(null);
       setSearchModeActive(false);
       setSearchResults([]);
     });
@@ -406,6 +423,7 @@ export default function App() {
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
+      setLocalActionError(null);
       setSearchModeActive(false);
       setSearchResults([]);
     });
@@ -724,19 +742,24 @@ export default function App() {
     event.preventDefault();
     const trimmedName = newFolderName.trim();
     if (!trimmedName) {
-      setError("Enter a folder name.");
+      setLocalActionError({ scope: "create-folder", message: "Enter a folder name." });
       return;
     }
 
     try {
       setIsBusy(true);
+      setLocalActionError(null);
+      setError(null);
       await api.createFolder(trimmedName, currentFolderId);
       setNewFolderName("");
       setShowCreateFolderForm(false);
       await loadFolder(currentFolderId);
       setError(null);
     } catch (createFolderError) {
-      setError(createFolderError instanceof Error ? createFolderError.message : "Folder creation failed");
+      setLocalActionError({
+        scope: "create-folder",
+        message: getActionErrorMessage(createFolderError, "Folder creation failed"),
+      });
     } finally {
       setIsBusy(false);
     }
@@ -750,12 +773,14 @@ export default function App() {
 
     const trimmedName = renameName.trim();
     if (!trimmedName) {
-      setError("Enter a name.");
+      setLocalActionError({ scope: "rename", itemId: renameItem.item_id, message: "Enter a name." });
       return;
     }
 
     try {
       setIsBusy(true);
+      setLocalActionError(null);
+      setError(null);
       if (renameItem.kind === "folder") {
         await api.renameFolder(renameItem.item_id, trimmedName);
       } else {
@@ -766,7 +791,11 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (renameError) {
-      setError(renameError instanceof Error ? renameError.message : "Rename failed");
+      setLocalActionError({
+        scope: "rename",
+        itemId: renameItem.item_id,
+        message: getActionErrorMessage(renameError, "Rename failed"),
+      });
     } finally {
       setIsBusy(false);
     }
@@ -780,6 +809,8 @@ export default function App() {
 
     try {
       setIsBusy(true);
+      setLocalActionError(null);
+      setError(null);
       const targetFolderId = moveTargetFolderId || null;
       if (moveItem.kind === "folder") {
         await api.moveFolder(moveItem.item_id, targetFolderId);
@@ -791,7 +822,11 @@ export default function App() {
       await loadFolder(currentFolderId);
       setError(null);
     } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : "Move failed");
+      setLocalActionError({
+        scope: "move",
+        itemId: moveItem.item_id,
+        message: getActionErrorMessage(moveError, "Move failed"),
+      });
     } finally {
       setIsBusy(false);
     }
@@ -1053,12 +1088,14 @@ export default function App() {
     setMoveTargetFolderId("");
     setRenameItem(item);
     setRenameName(item.name);
+    setLocalActionError(null);
     setError(null);
   }
 
   function handleCancelRename() {
     setRenameItem(null);
     setRenameName("");
+    setLocalActionError(null);
     setError(null);
   }
 
@@ -1067,12 +1104,14 @@ export default function App() {
     setRenameName("");
     setMoveItem(item);
     setMoveTargetFolderId(item.parent_folder_id ?? "");
+    setLocalActionError(null);
     setError(null);
   }
 
   function handleCancelMove() {
     setMoveItem(null);
     setMoveTargetFolderId("");
+    setLocalActionError(null);
     setError(null);
   }
 
@@ -1466,6 +1505,11 @@ export default function App() {
                 />
               </label>
               <div className="action-row">
+                {localActionError?.scope === "rename" && localActionError.itemId === item.item_id ? (
+                  <p className="error-text">{localActionError.message}</p>
+                ) : null}
+              </div>
+              <div className="action-row">
                 <button className="primary-button" type="submit" disabled={isBusy}>
                   {isBusy ? "Saving…" : "Save"}
                 </button>
@@ -1491,6 +1535,11 @@ export default function App() {
                   ))}
                 </select>
               </label>
+              <div className="action-row">
+                {localActionError?.scope === "move" && localActionError.itemId === item.item_id ? (
+                  <p className="error-text">{localActionError.message}</p>
+                ) : null}
+              </div>
               <div className="action-row">
                 <button className="primary-button" type="submit" disabled={isBusy}>
                   {isBusy ? "Moving…" : "Move"}
@@ -1786,6 +1835,7 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setShowCreateFolderForm((value) => !value);
+                            setLocalActionError(null);
                             setError(null);
                           }}
                           disabled={isBusy}
@@ -1810,9 +1860,10 @@ export default function App() {
                 {currentView === "drive" ? (
                   <>
                     {renderUploadQueue()}
-                    <div className="breadcrumbs" aria-label="Breadcrumbs">
-                      {breadcrumbs.map((entry, index) => {
-                        const isLast = index === breadcrumbs.length - 1;
+                    {breadcrumbs.length > 1 && (
+                      <div className="breadcrumbs" aria-label="Breadcrumbs">
+                        {breadcrumbs.map((entry, index) => {
+                          const isLast = index === breadcrumbs.length - 1;
                         const dropTargetKey: DropTargetKey =
                           entry.folder_id === null ? "breadcrumb:root" : `breadcrumb:${entry.folder_id}`;
                         return (
@@ -1856,7 +1907,8 @@ export default function App() {
                           </div>
                         );
                       })}
-                    </div>
+                      </div>
+                    )}
                     {showCreateFolderForm ? (
                       <form className="inline-editor create-folder-panel" onSubmit={handleCreateFolder}>
                         <label className="stack">
@@ -1871,6 +1923,11 @@ export default function App() {
                         </label>
                         <p className="muted">Location: {currentFolderLabel}</p>
                         <div className="action-row">
+                          {localActionError?.scope === "create-folder" ? (
+                            <p className="error-text">{localActionError.message}</p>
+                          ) : null}
+                        </div>
+                        <div className="action-row">
                           <button className="primary-button" type="submit" disabled={isBusy}>
                             {isBusy ? "Creating…" : "Create Folder"}
                           </button>
@@ -1880,6 +1937,7 @@ export default function App() {
                             onClick={() => {
                               setShowCreateFolderForm(false);
                               setNewFolderName("");
+                              setLocalActionError(null);
                               setError(null);
                             }}
                             disabled={isBusy}

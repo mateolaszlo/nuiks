@@ -108,7 +108,18 @@ class FakeDownstream:
                 and sibling.filename.casefold() == existing.filename.casefold()
             ):
                 raise ServiceClientError(
-                    f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 409 move"
+                    f"POST http://catalog.test/internal/catalog/files/{file_record.file_id}/move failed with status 409 A file named \"{existing.filename}\" already exists in Target.",
+                    status_code=409,
+                    detail=f'A file named "{existing.filename}" already exists in Target.',
+                    code="file_move_conflict",
+                    category="conflict",
+                    recoverable=True,
+                    context={
+                        "item_kind": "file",
+                        "target_name": existing.filename,
+                        "target_parent_id": request.parent_folder_id,
+                        "target_location": "Target",
+                    },
                 )
         moved = existing.model_copy(update={"parent_folder_id": request.parent_folder_id})
         for index, stored in enumerate(self.catalog_records):
@@ -695,7 +706,9 @@ def test_file_move_rejects_target_name_conflict() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "File move conflict"
+    assert response.json()["detail"] == 'A file named "notes.txt" already exists in Target.'
+    assert response.json()["code"] == "file_move_conflict"
+    assert response.json()["context"]["target_location"] == "Target"
 
 
 def test_file_trash_marks_file_trashed_and_emits_downstream_events() -> None:

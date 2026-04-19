@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.errors import StudyVaultHTTPException, build_error_response
 from studyvault_backend_common.models import (
     AuthenticatedUser,
     CreateFolderRequest,
@@ -27,6 +29,11 @@ from app.schemas.catalog import (
     FileRestoreResponse,
 )
 from app.services.catalog import CatalogService
+
+
+def _studyvault_error_response(exc: StudyVaultHTTPException) -> JSONResponse:
+    payload = build_error_response(exc)
+    return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
 
 
 def build_public_router(service: CatalogService) -> APIRouter:
@@ -87,8 +94,11 @@ def build_public_router(service: CatalogService) -> APIRouter:
     def create_folder(
         request: CreateFolderRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FolderRecord:
-        return service.create_folder(user, request)
+    ) -> FolderRecord | JSONResponse:
+        try:
+            return service.create_folder(user, request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.patch("/catalog/folders/{folder_id}", response_model=FolderRecord)
     @version(1)
@@ -96,8 +106,11 @@ def build_public_router(service: CatalogService) -> APIRouter:
         folder_id: str,
         request: RenameItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FolderRecord:
-        return service.rename_folder(user, folder_id, request)
+    ) -> FolderRecord | JSONResponse:
+        try:
+            return service.rename_folder(user, folder_id, request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.delete("/catalog/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
     @version(1)
@@ -113,8 +126,11 @@ def build_public_router(service: CatalogService) -> APIRouter:
         folder_id: str,
         request: MoveItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> FolderRecord:
-        return service.move_folder(user, folder_id, request)
+    ) -> FolderRecord | JSONResponse:
+        try:
+            return service.move_folder(user, folder_id, request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post("/catalog/folders/{folder_id}/restore", response_model=CatalogRestoreResponse)
     @version(1)
@@ -122,8 +138,11 @@ def build_public_router(service: CatalogService) -> APIRouter:
         folder_id: str,
         request: RestoreItemRequest,
         user: AuthenticatedUser = Depends(current_user_dependency),
-    ) -> CatalogRestoreResponse:
-        return service.restore_folder(user, folder_id, request)
+    ) -> CatalogRestoreResponse | JSONResponse:
+        try:
+            return service.restore_folder(user, folder_id, request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     return router
 
@@ -179,10 +198,13 @@ def build_internal_router(service: CatalogService) -> APIRouter:
     def update_file(
         file_id: str,
         file_record: FileRecord,
-    ) -> FileRecord:
+    ) -> FileRecord | JSONResponse:
         if file_id != file_record.file_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File id mismatch")
-        return service.update_file(file_record)
+        try:
+            return service.update_file(file_record)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.post(
         "/internal/catalog/files/{file_id}/move",
@@ -193,8 +215,11 @@ def build_internal_router(service: CatalogService) -> APIRouter:
         file_id: str,
         request: MoveItemRequest,
         owner_id: str = Query(...),
-    ) -> FileRecord:
-        return service.move_file(owner_id=owner_id, file_id=file_id, request=request)
+    ) -> FileRecord | JSONResponse:
+        try:
+            return service.move_file(owner_id=owner_id, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.delete(
         "/internal/catalog/files/{file_id}",
@@ -216,8 +241,11 @@ def build_internal_router(service: CatalogService) -> APIRouter:
         file_id: str,
         request: RestoreItemRequest,
         owner_id: str = Query(...),
-    ) -> FileRestoreResponse:
-        return service.restore_file(owner_id=owner_id, file_id=file_id, request=request)
+    ) -> FileRestoreResponse | JSONResponse:
+        try:
+            return service.restore_file(owner_id=owner_id, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
 
     @router.delete(
         "/internal/catalog/files/{file_id}/hard-delete",

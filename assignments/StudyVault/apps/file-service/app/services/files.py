@@ -5,6 +5,7 @@ from tempfile import TemporaryFile
 from fastapi import HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
+from studyvault_backend_common.errors import api_error
 from studyvault_backend_common.http import ServiceClientError
 from studyvault_backend_common.logging import get_logger
 from studyvault_backend_common.models import (
@@ -46,95 +47,161 @@ class FileService:
 
     @staticmethod
     def _map_catalog_folder_lookup_error(exc: ServiceClientError) -> HTTPException:
+        status_code = exc.status_code
         message = str(exc)
-        if "status 404" in message:
-            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
-        if "status 422" in message:
-            return HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Cannot upload file into trashed folder",
+        if status_code is None and "status 404" in message:
+            status_code = status.HTTP_404_NOT_FOUND
+        if status_code is None and "status 422" in message:
+            status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+        if status_code == status.HTTP_404_NOT_FOUND:
+            return api_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=exc.detail or "Folder not found",
+                code=exc.code or "folder_not_found",
+                category="not_found",
+                context=exc.context,
             )
-        return HTTPException(
+        if exc.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT:
+            return api_error(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=exc.detail or "Cannot upload file into trashed folder",
+                code=exc.code or "cannot_upload_into_trashed_folder",
+                category="validation",
+                context=exc.context,
+            )
+        return api_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Folder lookup failed",
+            code="folder_lookup_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
         )
 
     @staticmethod
     def _map_catalog_file_error(exc: ServiceClientError) -> HTTPException:
+        status_code = exc.status_code
         message = str(exc)
-        lowered = message.lower()
-        if "status 404" in message:
-            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-        if "status 422" in message:
-            if "trashed folder" in lowered:
-                return HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                    detail="Cannot move file into trashed folder",
-                )
-            return HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="File move request was invalid",
+        if status_code is None and "status 404" in message:
+            status_code = status.HTTP_404_NOT_FOUND
+        if status_code is None and "status 422" in message:
+            status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+        if status_code is None and "status 409" in message:
+            status_code = status.HTTP_409_CONFLICT
+        if status_code == status.HTTP_404_NOT_FOUND:
+            return api_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=exc.detail or "File not found",
+                code=exc.code or "file_not_found",
+                category="not_found",
+                context=exc.context,
             )
-        if "status 409" in message:
-            if "trashed" in lowered:
-                if "rename" in lowered:
-                    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
-                if "move" in lowered:
-                    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
-                if "restore" in lowered:
-                    return HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Cannot restore file into trashed folder",
-                    )
-                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot trash already trashed file")
-            if "move" in lowered or "location" in lowered:
-                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File move conflict")
-            if "restore" in lowered:
-                return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File restore conflict")
-            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File rename conflict")
-        return HTTPException(
+        if status_code == status.HTTP_422_UNPROCESSABLE_CONTENT:
+            return api_error(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=exc.detail or "File move request was invalid",
+                code=exc.code or "invalid_move_request",
+                category="validation",
+                context=exc.context,
+            )
+        if status_code == status.HTTP_409_CONFLICT:
+            return api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=exc.detail or "File operation conflict",
+                code=exc.code or "conflict",
+                category="conflict",
+                context=exc.context,
+            )
+        return api_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="File metadata update failed",
+            code="file_metadata_update_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
         )
 
     @staticmethod
     def _map_catalog_file_hard_delete_error(exc: ServiceClientError) -> HTTPException:
+        status_code = exc.status_code
         message = str(exc)
-        if "status 404" in message:
-            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-        if "status 409" in message:
-            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
-        return HTTPException(
+        if status_code is None and "status 404" in message:
+            status_code = status.HTTP_404_NOT_FOUND
+        if status_code is None and "status 409" in message:
+            status_code = status.HTTP_409_CONFLICT
+        if status_code == status.HTTP_404_NOT_FOUND:
+            return api_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=exc.detail or "File not found",
+                code=exc.code or "file_not_found",
+                category="not_found",
+                context=exc.context,
+            )
+        if status_code == status.HTTP_409_CONFLICT:
+            return api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=exc.detail or "File is not trashed",
+                code=exc.code or "file_not_trashed",
+                category="conflict",
+                context=exc.context,
+            )
+        return api_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="File hard delete failed",
+            code="file_hard_delete_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
         )
 
     @staticmethod
     def _map_search_delete_error(exc: ServiceClientError) -> HTTPException:
+        status_code = exc.status_code
         message = str(exc)
-        if "status 404" in message:
+        if status_code is None and "status 404" in message:
+            status_code = status.HTTP_404_NOT_FOUND
+        if status_code == status.HTTP_404_NOT_FOUND:
             return HTTPException(status_code=status.HTTP_204_NO_CONTENT)
-        return HTTPException(
+        return api_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Search delete failed",
+            code="search_delete_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
         )
 
     @staticmethod
     def _map_catalog_file_restore_error(exc: ServiceClientError) -> HTTPException:
+        status_code = exc.status_code
         message = str(exc)
-        if "status 404" in message:
-            return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
-        if "status 409" in message:
-            lowered = message.lower()
-            if "trashed folder" in lowered:
-                return HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Cannot restore file into trashed folder",
-                )
-            return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File restore conflict")
-        return HTTPException(
+        if status_code is None and "status 404" in message:
+            status_code = status.HTTP_404_NOT_FOUND
+        if status_code is None and "status 409" in message:
+            status_code = status.HTTP_409_CONFLICT
+        if status_code == status.HTTP_404_NOT_FOUND:
+            return api_error(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=exc.detail or "Folder not found",
+                code=exc.code or "folder_not_found",
+                category="not_found",
+                context=exc.context,
+            )
+        if status_code == status.HTTP_409_CONFLICT:
+            return api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=exc.detail or "File restore conflict",
+                code=exc.code or "file_restore_conflict",
+                category="conflict",
+                context=exc.context,
+            )
+        return api_error(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="File metadata update failed",
+            code="file_metadata_update_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
         )
 
     @staticmethod
@@ -392,7 +459,13 @@ class FileService:
             raise self._map_catalog_file_error(exc) from exc
 
         if file_record.trashed_at is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot rename trashed file")
+            raise api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot rename trashed file",
+                code="cannot_rename_trashed_file",
+                category="conflict",
+                context={"file_id": file_id},
+            )
 
         if request.name.casefold() == file_record.filename.casefold():
             return file_record
@@ -438,7 +511,13 @@ class FileService:
             raise self._map_catalog_file_error(exc) from exc
 
         if file_record.trashed_at is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot move trashed file")
+            raise api_error(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot move trashed file",
+                code="cannot_move_trashed_file",
+                category="conflict",
+                context={"file_id": file_id},
+            )
 
         target_folder: FolderRecord | None = None
         if request.parent_folder_id is not None:
@@ -450,9 +529,12 @@ class FileService:
             except ServiceClientError as exc:
                 raise self._map_catalog_folder_lookup_error(exc) from exc
             if target_folder.trashed_at is not None:
-                raise HTTPException(
+                raise api_error(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Cannot move file into trashed folder",
+                    code="cannot_move_into_trashed_folder",
+                    category="validation",
+                    context={"file_id": file_id, "target_parent_id": request.parent_folder_id},
                 )
 
         if file_record.parent_folder_id == request.parent_folder_id:
