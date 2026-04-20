@@ -571,6 +571,7 @@ Handle operating-system file drops in these places:
 - [x] the main drive content surface for upload into the current folder
 - [x] folder tiles for upload directly into that folder
 - [x] breadcrumb buttons for upload into an ancestor folder
+- [x] consume handled folder-target external drops so they do not bubble and enqueue duplicate uploads into the current folder
 
 Use this rule in `App.tsx`:
 

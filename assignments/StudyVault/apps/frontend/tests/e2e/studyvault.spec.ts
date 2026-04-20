@@ -172,7 +172,7 @@ test("external files can be dropped onto the current drive surface and enter the
 test("external files can be dropped onto a folder tile and upload into that folder", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `folder-drop-${uniqueId}`;
-  const filename = `tile-drop-${uniqueId}.txt`;
+  const filenames = [`tile-drop-a-${uniqueId}.txt`, `tile-drop-b-${uniqueId}.txt`];
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
   await loginAs(page, "demo", "demo123");
@@ -189,30 +189,50 @@ test("external files can be dropped onto a folder tile and upload into that fold
   await folderTile.evaluate(
     (node, payload) => {
       const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      for (const file of payload.files) {
+        dataTransfer.items.add(new File([file.contents], file.name, { type: "text/plain" }));
+      }
       node.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
     },
-    { dropFilename: filename, fileContents: `folder tile drop ${uniqueId}` },
+    {
+      files: filenames.map((name, index) => ({
+        name,
+        contents: `folder tile drop ${uniqueId}-${index}`,
+      })),
+    },
   );
   await folderTile.evaluate(
     (node, payload) => {
       const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(new File([payload.fileContents], payload.dropFilename, { type: "text/plain" }));
+      for (const file of payload.files) {
+        dataTransfer.items.add(new File([file.contents], file.name, { type: "text/plain" }));
+      }
       node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
     },
-    { dropFilename: filename, fileContents: `folder tile drop ${uniqueId}` },
+    {
+      files: filenames.map((name, index) => ({
+        name,
+        contents: `folder tile drop ${uniqueId}-${index}`,
+      })),
+    },
   );
 
   await expect(queuePanel).toBeVisible();
-  await expect(queuePanel).toContainText(filename);
+  for (const filename of filenames) {
+    await expect(queuePanel).toContainText(filename);
+  }
   await expect(queuePanel).toContainText(`Destination: ${folderName}`);
-  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
+  for (const filename of filenames) {
+    await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
+  }
 
   await folderTile.dblclick();
   await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
-  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  for (const filename of filenames) {
+    await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+      timeout: 60_000,
+    });
+  }
 });
 
 test("external files can be dropped onto a breadcrumb and upload into that ancestor folder", async ({ page }) => {

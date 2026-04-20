@@ -1141,6 +1141,7 @@ export default function App() {
       return false;
     }
     event.preventDefault();
+    event.stopPropagation();
     const droppedFiles = getDroppedFiles(event);
     setActiveDropTarget(null);
     if (droppedFiles.length === 0) {
