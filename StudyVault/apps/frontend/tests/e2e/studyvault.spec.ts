@@ -564,8 +564,13 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
       failNextUpload = false;
       await route.fulfill({
         status: 500,
-        contentType: "text/plain",
-        body: "forced upload failure",
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "forced upload failure",
+          code: "service_unavailable",
+          category: "unavailable",
+          recoverable: false,
+        }),
       });
       return;
     }
@@ -595,6 +600,194 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
     timeout: 60_000,
   });
   await expect(queueRow).toHaveCount(0, { timeout: 60_000 });
+});
+
+test("oversized uploads show a friendly message when nginx returns an HTML 413 page", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `oversized-${uniqueId}.pdf`;
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+
+  await page.route("**/api/v1/files", async (route, request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/v1/files") {
+      await route.fulfill({
+        status: 413,
+        contentType: "text/html",
+        body: `<html>
+  <head><title>413 Request Entity Too Large</title></head>
+  <body>
+    <center><h1>413 Request Entity Too Large</h1></center>
+    <hr><center>nginx/1.27.5</center>
+  </body>
+</html>`,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "application/pdf",
+    buffer: Buffer.from(`oversized upload ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const queueRow = queuePanel.locator(".upload-queue-row").filter({ hasText: filename }).first();
+  await expect(queueRow).toBeVisible({ timeout: 60_000 });
+  await expect(queueRow).toContainText("This file is too large for the current upload limit.");
+  await expect(queueRow).not.toContainText("413 Request Entity Too Large");
+  await expect(queueRow).not.toContainText("<html>");
+});
+
+test("drive bootstrap survives activity service failure", async ({ page }) => {
+  await page.route("**/api/v1/activity/me", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Activity backend unavailable",
+        code: "service_unavailable",
+        category: "unavailable",
+        recoverable: false,
+      }),
+    });
+  });
+
+  await loginAs(page, "demo", "demo123");
+
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".error-banner").filter({ hasText: "Drive load failed" })).toHaveCount(0);
+});
+
+test("trash view survives activity service failure", async ({ page }) => {
+  let failActivity = false;
+
+  await page.route("**/api/v1/activity/me", async (route) => {
+    if (failActivity) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Activity backend unavailable",
+          code: "service_unavailable",
+          category: "unavailable",
+          recoverable: false,
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+
+  failActivity = true;
+  await page.getByRole("button", { name: "Trash" }).click();
+
+  await expect(page.getByRole("heading", { name: "Trash" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".error-banner").filter({ hasText: "Trash load failed" })).toHaveCount(0);
+});
+
+test("successful uploads stay successful when activity refresh fails", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `post-upload-activity-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+  let failActivity = false;
+
+  await page.route("**/api/v1/activity/me", async (route) => {
+    if (failActivity) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Activity backend unavailable",
+          code: "service_unavailable",
+          category: "unavailable",
+          recoverable: false,
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  failActivity = true;
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`post upload activity failure ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(queuePanel.locator(".upload-queue-row").filter({ hasText: filename })).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  await expect(page.locator(".upload-queue-row").filter({ hasText: `Upload failed:` })).toHaveCount(0);
+});
+
+test("admin dashboard stays usable when one admin section fails", async ({ page }) => {
+  await page.route("**/api/v1/admin/errors**", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Admin errors backend unavailable",
+        code: "service_unavailable",
+        category: "unavailable",
+        recoverable: false,
+      }),
+    });
+  });
+
+  await loginAs(page, "admin", "admin123");
+
+  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Some admin data could not be refreshed. Displayed data may be incomplete.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Errors / Low-Level Info" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toHaveCount(0);
+});
+
+test("upload network failures show a connection-oriented message", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `upload-network-${uniqueId}.txt`;
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+
+  await page.route("**/api/v1/files", async (route, request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/v1/files") {
+      await route.abort("failed");
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`upload network error ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const queueRow = queuePanel.locator(".upload-queue-row").filter({ hasText: filename }).first();
+  await expect(queueRow).toBeVisible({ timeout: 60_000 });
+  await expect(queueRow).toContainText("Upload could not reach the server. Check your connection and try again.");
 });
 
 test("search failures stay local to the search form and preserve the query", async ({ page }) => {

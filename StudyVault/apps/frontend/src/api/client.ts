@@ -255,7 +255,15 @@ export class ApiClient {
         }
       };
 
-      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.onerror = () =>
+        reject(
+          new ApiError("Upload could not reach the server. Check your connection and try again.", {
+            status: 0,
+            code: "upload_network_error",
+            category: "unavailable",
+            recoverable: true,
+          }),
+        );
       xhr.onabort = () => reject(new Error("Upload was aborted"));
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {
@@ -334,11 +342,15 @@ async function readApiErrorFromResponse(response: Response): Promise<ApiError> {
 }
 
 function readApiErrorFromText(responseText: string, status: number): ApiError {
+  const fallbackMessage = defaultErrorMessage(status);
+  const fallbackCode = defaultErrorCode(status);
+  const fallbackCategory = defaultErrorCategory(status);
+
   if (!responseText) {
-    return new ApiError(`Request failed with status ${status}`, {
+    return new ApiError(fallbackMessage, {
       status,
-      code: defaultErrorCode(status),
-      category: defaultErrorCategory(status),
+      code: fallbackCode,
+      category: fallbackCategory,
     });
   }
 
@@ -365,14 +377,25 @@ function readApiErrorFromText(responseText: string, status: number): ApiError {
     // Fall through to raw-text fallback.
   }
 
-  return new ApiError(responseText || `Request failed with status ${status}`, {
+  if (looksLikeHtmlDocument(responseText)) {
+    return new ApiError(fallbackMessage, {
+      status,
+      code: fallbackCode,
+      category: fallbackCategory,
+    });
+  }
+
+  return new ApiError(fallbackMessage, {
     status,
-    code: defaultErrorCode(status),
-    category: defaultErrorCategory(status),
+    code: fallbackCode,
+    category: fallbackCategory,
   });
 }
 
 function defaultErrorCategory(status: number): ApiErrorResponse["category"] {
+  if (status === 413) {
+    return "validation";
+  }
   if (status === 404) {
     return "not_found";
   }
@@ -395,6 +418,9 @@ function defaultErrorCategory(status: number): ApiErrorResponse["category"] {
 }
 
 function defaultErrorCode(status: number): string {
+  if (status === 413) {
+    return "upload_size_exceeded";
+  }
   if (status === 404) {
     return "not_found";
   }
@@ -414,4 +440,16 @@ function defaultErrorCode(status: number): string {
     return "service_unavailable";
   }
   return "internal_error";
+}
+
+function defaultErrorMessage(status: number): string {
+  if (status === 413) {
+    return "Uploaded file exceeds the maximum allowed size";
+  }
+  return `Request failed with status ${status}`;
+}
+
+function looksLikeHtmlDocument(value: string): boolean {
+  const normalized = value.trimStart().toLowerCase();
+  return normalized.startsWith("<!doctype html") || normalized.startsWith("<html");
 }

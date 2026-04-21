@@ -127,6 +127,9 @@ function getUploadErrorMessage(error: unknown): string {
     if (error.code === "downstream_sync_failed") {
       return "The file was stored, but metadata sync failed. Retry to restore a consistent view.";
     }
+    if (error.code === "upload_network_error") {
+      return "Upload could not reach the server. Check your connection and try again.";
+    }
     return error.message;
   }
   if (error instanceof Error) {
@@ -340,6 +343,7 @@ export default function App() {
   const [adminAudit, setAdminAudit] = useState<AdminAuditEvent[]>([]);
   const [adminErrors, setAdminErrors] = useState<AdminErrorRecord[]>([]);
   const [adminHealth, setAdminHealth] = useState<AdminHealthSummary | null>(null);
+  const [adminPartialRefreshWarning, setAdminPartialRefreshWarning] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
@@ -440,14 +444,16 @@ export default function App() {
     const [catalogPayload, breadcrumbPayload, activityPayload] = await Promise.all([
       catalogPromise,
       breadcrumbsPromise,
-      api.listActivity(),
+      loadActivitiesBestEffort(),
     ]);
     startTransition(() => {
       setCurrentFolderId(folderId);
       setCurrentView("drive");
       setBreadcrumbs(breadcrumbPayload.breadcrumbs);
       setCurrentItems(catalogPayload.items);
-      setActivities(activityPayload);
+      if (activityPayload !== null) {
+        setActivities(activityPayload);
+      }
       setContextMenu(null);
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
@@ -459,11 +465,13 @@ export default function App() {
   }
 
   async function loadTrash() {
-    const [trashPayload, activityPayload] = await Promise.all([api.listTrash(), api.listActivity()]);
+    const [trashPayload, activityPayload] = await Promise.all([api.listTrash(), loadActivitiesBestEffort()]);
     startTransition(() => {
       setCurrentView("trash");
       setTrashItems(trashPayload.items);
-      setActivities(activityPayload);
+      if (activityPayload !== null) {
+        setActivities(activityPayload);
+      }
       setContextMenu(null);
       setActiveDropTarget(null);
       setSelectedDriveItem(null);
@@ -475,17 +483,47 @@ export default function App() {
   }
 
   async function refreshAdminPanel() {
-    const [usersPayload, auditPayload, healthPayload, errorsPayload] = await Promise.all([
+    const results = await Promise.allSettled([
       api.listAdminUsers(),
       api.listAdminAudit(),
       api.getAdminHealth(),
       api.listAdminErrors(),
     ]);
+
+    const firstAuthFailure = results.find(
+      (result) => result.status === "rejected" && isAuthApiError(result.reason),
+    );
+    if (firstAuthFailure && firstAuthFailure.status === "rejected") {
+      throw firstAuthFailure.reason;
+    }
+
+    const successfulResults = results.filter((result) => result.status === "fulfilled");
+    if (successfulResults.length === 0) {
+      const firstFailure = results.find((result) => result.status === "rejected");
+      throw (firstFailure && firstFailure.status === "rejected"
+        ? firstFailure.reason
+        : new Error("Admin refresh failed"));
+    }
+
+    const [usersPayload, auditPayload, healthPayload, errorsPayload] = results;
+    const hasFailure = results.some((result) => result.status === "rejected");
+
     startTransition(() => {
-      setAdminUsers(usersPayload);
-      setAdminAudit(auditPayload);
-      setAdminHealth(healthPayload);
-      setAdminErrors(errorsPayload);
+      if (usersPayload.status === "fulfilled") {
+        setAdminUsers(usersPayload.value);
+      }
+      if (auditPayload.status === "fulfilled") {
+        setAdminAudit(auditPayload.value);
+      }
+      if (healthPayload.status === "fulfilled") {
+        setAdminHealth(healthPayload.value);
+      }
+      if (errorsPayload.status === "fulfilled") {
+        setAdminErrors(errorsPayload.value);
+      }
+      setAdminPartialRefreshWarning(
+        hasFailure ? "Some admin data could not be refreshed. Displayed data may be incomplete." : null,
+      );
     });
   }
 
@@ -568,6 +606,7 @@ export default function App() {
     startTransition(() => {
       setAuthenticated(false);
       setAdminUser(false);
+      setAdminPartialRefreshWarning(null);
       setCurrentView("drive");
       setCurrentFolderId(null);
       setBreadcrumbs([ROOT_BREADCRUMB]);
@@ -603,6 +642,26 @@ export default function App() {
       return error.message;
     }
     return fallback;
+  }
+
+  async function loadActivitiesBestEffort(): Promise<ActivityRecord[] | null> {
+    try {
+      return await api.listActivity();
+    } catch (activityError) {
+      if (isAuthApiError(activityError)) {
+        throw activityError;
+      }
+      return null;
+    }
+  }
+
+  async function refreshActivitiesBestEffort(): Promise<void> {
+    const latestActivity = await loadActivitiesBestEffort();
+    if (latestActivity !== null) {
+      startTransition(() => {
+        setActivities(latestActivity);
+      });
+    }
   }
 
   function hasExternalFiles(event: ReactDragEvent<HTMLElement>): boolean {
@@ -1431,18 +1490,31 @@ export default function App() {
         error_message: undefined,
       }));
 
+      let refreshError: unknown = null;
       if (
         currentViewRef.current === "drive" &&
         (item.parent_folder_id ?? null) === (currentFolderIdRef.current ?? null)
       ) {
-        await loadFolder(currentFolderIdRef.current);
+        try {
+          await loadFolder(currentFolderIdRef.current);
+        } catch (postUploadRefreshError) {
+          refreshError = postUploadRefreshError;
+        }
       } else {
-        const latestActivity = await api.listActivity();
-        startTransition(() => {
-          setActivities(latestActivity);
-        });
+        try {
+          await refreshActivitiesBestEffort();
+        } catch (postUploadRefreshError) {
+          refreshError = postUploadRefreshError;
+        }
       }
-      setError(null);
+      if (refreshError) {
+        const message = handleApiFailure(refreshError, "Upload completed, but the workspace could not be refreshed.");
+        if (message) {
+          setError(message);
+        }
+      } else {
+        setError(null);
+      }
     } catch (uploadError) {
       if (isAuthApiError(uploadError)) {
         enterAuthRecovery(uploadError);
@@ -2241,6 +2313,7 @@ export default function App() {
           />
 
           {error ? <div className="error-banner">{error}</div> : null}
+          {adminPartialRefreshWarning ? <div className="error-banner">{adminPartialRefreshWarning}</div> : null}
 
           <div className="workspace-body workspace-body-admin">
             <div className="content-column">
