@@ -6,9 +6,9 @@ StudyVault is a full-stack file management demo built from a React frontend, an 
 
 Use these documents as the entrypoint:
 
-- [StudyVault overview](assignments/StudyVault/README.md)
-- [Full deployment guide](assignments/StudyVault/docs/deployment.md)
-- [StudyVault documentation index](assignments/StudyVault/docs/README.md)
+- [StudyVault overview](StudyVault/README.md)
+- [Full deployment guide](StudyVault/docs/deployment.md)
+- [StudyVault documentation index](StudyVault/docs/README.md)
 
 ## Fast Paths
 
@@ -16,18 +16,18 @@ For a local deployment:
 
 ```bash
 git clone https://github.com/mateolaszlo/nuiks.git
-cd nuiks/assignments/StudyVault
+cd nuiks/StudyVault
 cp .env.example .env
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
-For a public VM behind Cloudflare, follow the complete checklist in [deployment.md](assignments/StudyVault/docs/deployment.md). The short version is:
+For a public VM behind Cloudflare, follow the complete checklist in [deployment.md](StudyVault/docs/deployment.md). The short version is:
 
 ```bash
 git clone https://github.com/mateolaszlo/nuiks.git
-cd nuiks/assignments/StudyVault
+cd nuiks/StudyVault
 cp .env.example .env
 ```
 

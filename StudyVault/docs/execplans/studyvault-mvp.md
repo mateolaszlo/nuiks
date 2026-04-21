@@ -13,7 +13,7 @@ The repository started as a scaffold with empty service directories. This plan t
 ## Progress
 
 - [x] 2026-03-31 09:35Z Read the StudyVault project specification, repository instructions, and execution-plan requirements.
-- [x] 2026-03-31 09:52Z Confirmed `assignments/StudyVault` is a scaffold-only project on branch `testing`.
+- [x] 2026-03-31 09:52Z Confirmed `StudyVault` is a scaffold-only project on branch `testing`.
 - [x] 2026-03-31 10:25Z Chose the initial implementation defaults: real Keycloak for auth and synchronous HTTP fan-out from `file-service` to the other services.
 - [x] 2026-03-31 22:23Z Created shared backend helpers for auth, logging, HTTP clients, and shared schemas.
 - [x] 2026-03-31 22:23Z Implemented the four FastAPI services with health checks, business endpoints, and test doubles.
@@ -30,7 +30,7 @@ The repository started as a scaffold with empty service directories. This plan t
   Evidence: Commands such as `git branch --list testing` succeeded while multiple `sed` and `git status` calls initially failed with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`.
 
 - Observation: Every service directory already matches the expected FastAPI layout, but the code itself was empty.
-  Evidence: `find assignments/StudyVault/apps assignments/StudyVault/packages assignments/StudyVault/infra assignments/StudyVault/tests -type f | grep -v '/.venv/' | sort` returned only README files, `__init__.py`, and `.gitkeep`.
+  Evidence: `find StudyVault/apps StudyVault/packages StudyVault/infra StudyVault/tests -type f | grep -v '/.venv/' | sort` returned only README files, `__init__.py`, and `.gitkeep`.
 
 - Observation: Import-time FastAPI app construction made tests try to contact MongoDB and MinIO before fakes could be injected.
   Evidence: The implementation required a `STUDYVAULT_SKIP_APP_BOOTSTRAP` environment flag so pytest could import service modules without eager external initialization.
@@ -85,7 +85,7 @@ Observability now includes structured request and business-event logs with user-
 
 ## Context and Orientation
 
-The project root for this feature is `assignments/StudyVault`. Backend applications live in `apps/file-service`, `apps/catalog-service`, `apps/search-service`, and `apps/activity-service`. Each service keeps FastAPI code under `app/api`, `app/core`, `app/models`, `app/schemas`, `app/services`, and `app/repositories`.
+The project root for this feature is `StudyVault`. Backend applications live in `apps/file-service`, `apps/catalog-service`, `apps/search-service`, and `apps/activity-service`. Each service keeps FastAPI code under `app/api`, `app/core`, `app/models`, `app/schemas`, `app/services`, and `app/repositories`.
 
 Shared Python code belongs in `packages/backend-common`. Frontend code belongs in `apps/frontend/src`. Infrastructure assets belong in `infra/docker/compose`, `infra/nginx`, `infra/keycloak`, and `infra/observability`. Top-level tests belong in `tests/unit`, `tests/services`, `tests/integration`, and `tests/smoke`.
 
@@ -110,7 +110,7 @@ Finally, create the docker-compose stack, local realm import, logstash and kiban
 
 ## Concrete Steps
 
-Work from `assignments/StudyVault`.
+Work from `StudyVault`.
 
 1. Create the local Python environment and install dependencies:
       python3 -m venv .venv
@@ -135,7 +135,7 @@ Admin acceptance includes a working admin login, a separate admin landing experi
 
 The implementation is complete when these behaviors are true:
 
-- Running `PYTHONPATH=. .venv/bin/pytest -q` from `assignments/StudyVault` passes.
+- Running `PYTHONPATH=. .venv/bin/pytest -q` from `StudyVault` passes.
 - Building the frontend succeeds without TypeScript errors.
 - `docker compose ... config` validates successfully.
 - Starting the compose stack exposes the frontend on `http://localhost:8080/`.

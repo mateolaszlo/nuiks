@@ -20,7 +20,7 @@ By default, the gateway is reachable on port `8080` and everything else stays ho
 - PostgreSQL: `127.0.0.1:5432`
 - MongoDB: `127.0.0.1:27017`
 
-The environment variables that control this behavior are in `assignments/StudyVault/.env.example`.
+The environment variables that control this behavior are in `StudyVault/.env.example`.
 
 ## Shared Prerequisites
 
@@ -39,7 +39,7 @@ Clone the repository and move into the StudyVault project:
 
 ```bash
 git clone https://github.com/mateolaszlo/nuiks.git
-cd nuiks/assignments/StudyVault
+cd nuiks/StudyVault
 ```
 
 Create the local Python environment used for smoke tests and validation:
@@ -155,7 +155,7 @@ Run the shared prerequisites on the VM, then clone the repo:
 
 ```bash
 git clone https://github.com/mateolaszlo/nuiks.git
-cd nuiks/assignments/StudyVault
+cd nuiks/StudyVault
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
@@ -261,7 +261,7 @@ Pull the latest code and rebuild:
 ```bash
 cd ~/nuiks
 git pull
-cd assignments/StudyVault
+cd StudyVault
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 

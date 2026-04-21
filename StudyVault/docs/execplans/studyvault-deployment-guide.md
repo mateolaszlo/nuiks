@@ -19,14 +19,14 @@ After this change, a newcomer can deploy the full StudyVault stack without guess
 ## Surprises & Discoveries
 
 - Observation: the public deployment guide could not be truthful while the stack still hardcoded `http://localhost:8080` in Compose and the Keycloak realm import.
-  Evidence: `assignments/StudyVault/infra/docker/compose/docker-compose.yml` and the original realm import under `assignments/StudyVault/infra/keycloak/` both encoded localhost URLs before this change.
+  Evidence: `StudyVault/infra/docker/compose/docker-compose.yml` and the original realm import under `StudyVault/infra/keycloak/` both encoded localhost URLs before this change.
 
 - Observation: the Keycloak container image is already driven by shell commands in health checks, so a small shell render step was simpler and less risky than introducing another runtime dependency.
   Evidence: the existing health check already used `bash -c` against the Keycloak HTTP endpoint.
 
 ## Decision Log
 
-- Decision: keep the root `README.md` concise and move the full operational checklist into `assignments/StudyVault/docs/deployment.md`.
+- Decision: keep the root `README.md` concise and move the full operational checklist into `StudyVault/docs/deployment.md`.
   Rationale: the repository root should stay usable as an entrypoint, while the StudyVault deployment steps are long enough to deserve a focused runbook.
   Date/Author: 2026-04-02 / Codex
 
@@ -48,23 +48,23 @@ The repository now documents full-stack deployment in a way that matches the sta
 
 ## Context and Orientation
 
-StudyVault lives under `assignments/StudyVault`. The full runtime is defined in `assignments/StudyVault/infra/docker/compose/docker-compose.yml`. The public HTTP entrypoint is nginx, configured in `assignments/StudyVault/infra/nginx/nginx.conf`, and it proxies the React frontend, the FastAPI services, and proxied Keycloak realm paths. Keycloak bootstraps its realm from `assignments/StudyVault/infra/keycloak/`. A "realm import" is the JSON definition that creates the `studyvault` authentication realm, the frontend client, and the seeded users. The frontend uses Keycloak through `assignments/StudyVault/apps/frontend/src/auth/keycloak.ts`, where the external auth URL is supplied through the build environment.
+StudyVault lives under `StudyVault`. The full runtime is defined in `StudyVault/infra/docker/compose/docker-compose.yml`. The public HTTP entrypoint is nginx, configured in `StudyVault/infra/nginx/nginx.conf`, and it proxies the React frontend, the FastAPI services, and proxied Keycloak realm paths. Keycloak bootstraps its realm from `StudyVault/infra/keycloak/`. A "realm import" is the JSON definition that creates the `studyvault` authentication realm, the frontend client, and the seeded users. The frontend uses Keycloak through `StudyVault/apps/frontend/src/auth/keycloak.ts`, where the external auth URL is supplied through the build environment.
 
-The documentation entrypoints are `README.md` at the repository root, `assignments/StudyVault/README.md`, and markdown files under `assignments/StudyVault/docs/`. The new deployment guide must be detailed enough for a first-time operator to follow without reading source code.
+The documentation entrypoints are `README.md` at the repository root, `StudyVault/README.md`, and markdown files under `StudyVault/docs/`. The new deployment guide must be detailed enough for a first-time operator to follow without reading source code.
 
 ## Plan of Work
 
-First, rework the deployment configuration in `assignments/StudyVault/infra/docker/compose/docker-compose.yml` so the stack can derive its public-facing URL from one environment variable. The frontend `VITE_KEYCLOAK_URL`, backend `KEYCLOAK_ISSUER_URL`, and Keycloak `KC_HOSTNAME` must all follow that value. The same edit should move sensitive host port mappings to loopback by default so only the gateway is public unless the operator intentionally widens access.
+First, rework the deployment configuration in `StudyVault/infra/docker/compose/docker-compose.yml` so the stack can derive its public-facing URL from one environment variable. The frontend `VITE_KEYCLOAK_URL`, backend `KEYCLOAK_ISSUER_URL`, and Keycloak `KC_HOSTNAME` must all follow that value. The same edit should move sensitive host port mappings to loopback by default so only the gateway is public unless the operator intentionally widens access.
 
-Second, replace the static Keycloak realm file with a template plus a render step. The template should keep the existing realm roles and seeded users, but the redirect URI and web origin fields must be placeholders. A small shell script in `assignments/StudyVault/infra/scripts/` should render the final import file inside the container before Keycloak starts.
+Second, replace the static Keycloak realm file with a template plus a render step. The template should keep the existing realm roles and seeded users, but the redirect URI and web origin fields must be placeholders. A small shell script in `StudyVault/infra/scripts/` should render the final import file inside the container before Keycloak starts.
 
-Third, update the docs. The repository root README should become a StudyVault entrypoint that links to the detailed deployment guide. The new `assignments/StudyVault/docs/deployment.md` must describe prerequisites, git commands, Python env setup, Docker Compose commands, local IP discovery, LAN deployment, Cloudflare DNS settings, public VM startup, validation URLs, troubleshooting exposure mode, and restart or rollback commands. Supporting docs should link to that runbook so there is one clear source of truth.
+Third, update the docs. The repository root README should become a StudyVault entrypoint that links to the detailed deployment guide. The new `StudyVault/docs/deployment.md` must describe prerequisites, git commands, Python env setup, Docker Compose commands, local IP discovery, LAN deployment, Cloudflare DNS settings, public VM startup, validation URLs, troubleshooting exposure mode, and restart or rollback commands. Supporting docs should link to that runbook so there is one clear source of truth.
 
 Finally, re-run the compose and smoke validations and record their outputs in this plan.
 
 ## Concrete Steps
 
-Work from `assignments/StudyVault` unless a command says otherwise.
+Work from `StudyVault` unless a command says otherwise.
 
 1. Validate the Compose file after the environment changes:
 
@@ -99,15 +99,15 @@ The render step is safe to repeat because the `keycloak-realm-render` helper ser
 Important file set produced by this work:
 
     README.md
-    assignments/StudyVault/docs/deployment.md
-    assignments/StudyVault/infra/docker/compose/docker-compose.yml
-    assignments/StudyVault/infra/keycloak/studyvault-realm.template.json
-    assignments/StudyVault/infra/scripts/render_studyvault_realm.sh
+    StudyVault/docs/deployment.md
+    StudyVault/infra/docker/compose/docker-compose.yml
+    StudyVault/infra/keycloak/studyvault-realm.template.json
+    StudyVault/infra/scripts/render_studyvault_realm.sh
 
 This plan was added during implementation because the repository instructions require an ExecPlan for significant configuration and documentation refactors.
 
 ## Interfaces and Dependencies
 
-The deployment model depends on Docker Compose variable substitution, the nginx reverse proxy in `assignments/StudyVault/infra/nginx/nginx.conf`, and the Keycloak container import path `/opt/keycloak/data/import/`. The rendered realm template must still define the `studyvault-frontend` client and the `studyvault_admin` realm role. The compose stack must continue to expose the public app on host port `8080`, while keeping databases and admin tools on loopback by default.
+The deployment model depends on Docker Compose variable substitution, the nginx reverse proxy in `StudyVault/infra/nginx/nginx.conf`, and the Keycloak container import path `/opt/keycloak/data/import/`. The rendered realm template must still define the `studyvault-frontend` client and the `studyvault_admin` realm role. The compose stack must continue to expose the public app on host port `8080`, while keeping databases and admin tools on loopback by default.
 
 Change note: this ExecPlan was created to document the deployment-guide and public-host refactor after discovering that the existing stack could not support a truthful public deployment guide while it still hardcoded `localhost`.

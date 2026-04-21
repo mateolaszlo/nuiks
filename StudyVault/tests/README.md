@@ -1,6 +1,6 @@
 # StudyVault Test Guide
 
-Run most commands from `assignments/StudyVault/` unless a command explicitly says otherwise.
+Run most commands from `StudyVault/` unless a command explicitly says otherwise.
 
 ## Prerequisites
 

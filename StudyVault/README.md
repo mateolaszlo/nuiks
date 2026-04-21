@@ -32,7 +32,7 @@ Self-registration is enabled through Keycloak. New users can create accounts fro
 
 ## Run Locally
 
-From `assignments/StudyVault`:
+From `StudyVault`:
 
 ```bash
 python3 -m venv .venv
@@ -53,7 +53,7 @@ docker compose -f infra/docker/compose/docker-compose.yml config
 From the repo root, use the StudyVault-local virtualenv explicitly:
 
 ```bash
-cd assignments/StudyVault && PYTHONPATH=. .venv/bin/pytest -q
+cd StudyVault && PYTHONPATH=. .venv/bin/pytest -q
 ```
 
 Frontend browser E2E is available, but Playwright requires Node 18+:
