@@ -1,10 +1,17 @@
 # Documentation
 
-This directory contains supporting documentation that complements the code.
+This directory contains the operational and background documentation that complements the runnable StudyVault codebase.
 
-- `deployment.md` full local, LAN, and Cloudflare-backed deployment runbook
-- `execplans/studyvault-deployment-guide.md` living plan and implementation record for deployment hardening
-- the baseline delivery ExecPlan and outcome record
-- `cloudflare.md` minimal deployment guidance for putting a public StudyVault host behind Cloudflare
+## Recommended Entry Points
 
-The product requirements file for StudyVault lives at the StudyVault root.
+- [../README.md](../README.md): product overview, local startup, and validation entrypoint
+- [deployment.md](deployment.md): full local, LAN, and Cloudflare-backed deployment runbook
+- [../tests/README.md](../tests/README.md): test taxonomy, smoke workflow, and Playwright commands
+- [../../IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md): current source of truth for ongoing feature rollout work
+
+## Background and Historical Plans
+
+- `execplans/studyvault-deployment-guide.md`: deployment-hardening plan and implementation record
+- `execplans/studyvault-mvp.md`: historical MVP/background plan, useful for context but not the current rollout source of truth
+
+The product requirements reference lives at the StudyVault root. The current implementation plan lives at the repository root.

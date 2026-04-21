@@ -19,5 +19,6 @@ This directory contains the local runtime and deployment-support assets for Stud
 - logs are shipped with Docker GELF into Logstash and indexed in Elasticsearch
 - the Keycloak client redirect URIs are rendered from `keycloak/studyvault-realm.template.json` using `STUDYVAULT_PUBLIC_BASE_URL`
 - raw Keycloak, Kibana, Elasticsearch, MinIO, PostgreSQL, and MongoDB bind to loopback by default so only the gateway is public
+- the public gateway fronts the versioned `/api/v1/...` service routes used by the frontend and browser tests
 
 If you change the Keycloak database bootstrap or similar infra assumptions, reset compose volumes before expecting a fresh local import.

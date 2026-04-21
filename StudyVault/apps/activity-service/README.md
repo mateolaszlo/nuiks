@@ -23,4 +23,11 @@ This service currently hosts the StudyVault admin APIs:
 - `GET /api/v1/admin/health`
 - `GET /api/v1/admin/errors`
 
-Admin user management is executed through Keycloak Admin APIs. Audit and error summaries are built from the structured logs indexed in Elasticsearch.
+## Behavior Notes
+
+- public admin routes require an authenticated user with the `studyvault_admin` role
+- permission failures use structured public responses such as `admin_access_required`
+- user management actions are executed through Keycloak Admin APIs
+- audit output combines Keycloak auth events with StudyVault application audit events
+- health output summarizes recent uploads, downloads, searches, errors, and downstream service health
+- error output is derived from structured logs indexed in Elasticsearch and is intended as the current operator-facing failure surface

@@ -11,3 +11,9 @@
 ## Search Behavior
 
 The current implementation performs case-insensitive matching across filename, MIME type, and tags for the current authenticated user.
+
+- public search is served from `GET /api/v1/search`
+- search accepts `kind`, `include_trashed`, and `parent_id` filters
+- trashed items are excluded by default and only appear when `include_trashed=true`
+- query validation emits structured errors such as `search_query_too_long`
+- internal indexing and deletion remain unversioned under `/internal/search/...`

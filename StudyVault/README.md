@@ -1,6 +1,6 @@
 # StudyVault
 
-StudyVault is a runnable microservice application for managing study files. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
+StudyVault is a runnable microservice application for personal file management. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
 
 For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
 
@@ -8,9 +8,14 @@ Before any non-local deployment, set `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN
 
 ## What It Does
 
-- normal users can register, sign in, upload files, list their files, search metadata, review activity, and download files
+- normal users can register, sign in, create folders, browse nested folders, upload and download files, rename and move items, send items to trash, restore items, search metadata, and review recent activity
+- the Drive UI uses a grid-based workspace with single-select tiles, breadcrumb navigation, double-click folder open, a right-side details or activity panel, and a collapsible sidebar
+- uploads support multi-file queueing, per-file progress, a processing state after bytes finish uploading, retry and dismiss for failures, automatic dismissal after success, and external drag-and-drop onto the current Drive surface, folders, and breadcrumbs
+- search and Drive actions prefer local or inline recovery for create-folder, rename, move, upload, search, and auth/session failures instead of routing every problem through a single global banner
 - admins sign in to a separate admin console
 - admins can list users, enable or disable accounts, grant or revoke the `studyvault_admin` role, reset passwords, inspect audit events, review service health, and see recent errors
+
+Public API routes exposed through the gateway are versioned under `/api/v1/...`.
 
 ## Local Stack
 
@@ -50,6 +55,8 @@ python3 tests/smoke/runtime_smoke.py
 docker compose -f infra/docker/compose/docker-compose.yml config
 ```
 
+Use [tests/README.md](tests/README.md) for the current test taxonomy, targeted `pytest` commands, smoke-test flow, and Playwright coverage details.
+
 From the repo root, use the StudyVault-local virtualenv explicitly:
 
 ```bash
@@ -71,5 +78,5 @@ PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:920
 - `packages/` shared backend and future shared frontend code
 - `infra/` compose, nginx, Keycloak, Postgres bootstrap, and observability config
 - `tests/` unit, service, integration, fixtures, and smoke coverage
-- `docs/` supporting notes such as Cloudflare deployment guidance and the living ExecPlan
+- `docs/` deployment and operational notes plus the docs index
 - product requirements reference at the StudyVault root

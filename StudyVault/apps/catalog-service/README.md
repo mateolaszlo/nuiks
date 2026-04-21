@@ -5,8 +5,9 @@
 ## Responsibilities
 
 - persist canonical file metadata after uploads
-- return the authenticated user file list through `GET /api/v1/catalog/files`
-- expose internal metadata lookup and creation routes for the upload/download flow
+- own folder structure, breadcrumbs, item listing, trash state, and restore metadata
+- return authenticated Drive surfaces through `/api/v1/catalog/items`, `/api/v1/catalog/trash`, and `/api/v1/catalog/breadcrumbs/{folder_id}`
+- expose internal metadata lookup and mutation routes for upload, restore, search reindex, and purge workflows
 
 ## Stored Metadata
 
@@ -20,3 +21,12 @@ The service tracks fields such as:
 - `object_key`
 - `tags`
 - `created_at`
+
+## Drive Semantics
+
+- folders can be created at root or inside other folders
+- files and folders can be moved between folders and back to root
+- the service is the authoritative source for trash and restore behavior, including original parent tracking
+- folder trash operations cascade to descendants and the purge workflow later removes expired trashed items
+- restore operations can fall back when the original parent is gone and can return conflicts when the destination already contains the same name
+- sibling name conflicts are validated here, making catalog-service the canonical authority for Drive structure and item-name uniqueness

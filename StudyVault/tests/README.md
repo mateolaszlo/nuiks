@@ -195,6 +195,16 @@ Recommended workflow for E2E:
 4. run broader Playwright coverage only if needed
 5. shut the stack down afterward if you started it for the test run
 
+## High-Value Playwright Coverage
+
+Current browser coverage focuses on the workflows most likely to regress in the current Drive UI:
+
+- Drive grid navigation, including single-select and double-click folder open
+- external drag-and-drop onto the Drive surface, folder tiles, and breadcrumbs
+- shared upload queue behavior, including progress, processing state, retry, dismiss, and auto-dismiss on success
+- admin UI navigation across users, audit, health, and errors surfaces
+- local error handling for move conflicts, upload failures, search validation, and auth recovery
+
 ## Common Targeted Commands
 
 Run only auth and logging unit tests:

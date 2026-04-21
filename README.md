@@ -2,7 +2,7 @@
 
 ## StudyVault
 
-StudyVault is a full-stack file management demo built from a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO, Elasticsearch, Logstash, Kibana, and Metricbeat.
+StudyVault is a full-stack file management demo built from a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO, Elasticsearch, Logstash, Kibana, and Metricbeat. The current product includes Drive-style file and folder management and versioned public APIs under `/api/v1/...`.
 
 Use these documents as the entrypoint:
 

@@ -104,6 +104,8 @@ PYTHONPATH=. .venv/bin/pytest -q tests/smoke/test_compose_assets.py
 python3 tests/smoke/runtime_smoke.py
 ```
 
+Use [../tests/README.md](../tests/README.md) for the broader test matrix, targeted `pytest` commands, and Playwright E2E workflow.
+
 Open these URLs on the same machine:
 
 - app and Keycloak-proxied login: `http://localhost:8080`
@@ -227,7 +229,7 @@ From a browser:
 - `https://studyvault.example.com`
 - log in as `demo` or `admin`
 - upload a file
-- confirm the file appears in the file list, search results, and activity feed
+- confirm the file appears in the Drive grid, search results, and activity feed
 
 If you need local-only observability on the VM, tunnel or SSH in first:
 
@@ -278,6 +280,8 @@ Inspect one service:
 docker compose -f infra/docker/compose/docker-compose.yml logs gateway --tail=100
 docker compose -f infra/docker/compose/docker-compose.yml logs keycloak --tail=100
 ```
+
+For additional validation beyond deployment checks, use the commands in [../tests/README.md](../tests/README.md).
 
 Stop the stack without deleting volumes:
 
