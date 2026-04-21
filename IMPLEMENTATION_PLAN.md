@@ -725,6 +725,14 @@ Deferred to the next slice:
 - admin error record enrichment with stable error codes and safe structured context
 - richer admin UI summaries of operational errors
 
+## 6.10 Documentation refresh
+
+- [x] Refresh top-level StudyVault product docs after Drive UX and API-versioning changes
+- [x] Refresh frontend and service READMEs for current behavior and endpoints
+- [x] Refresh shared/backend docs for structured errors and auth/error contracts
+- [x] Refresh deployment and docs index pages for the top-level `StudyVault/` layout and current validation workflow
+- [x] Verify markdown examples and commands against the current repo layout, `/api/v1` paths, and current test commands
+
 ---
 
 Revision note: expanded the implementation plan to cover desktop file drag-and-drop, a client-side upload queue, and Google Drive–style upload progress because the current repository already has the backend primitives and now mainly needs a frontend execution plan for the next UX phase.
