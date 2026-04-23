@@ -5,6 +5,7 @@ This directory contains the operational and background documentation that comple
 ## Recommended Entry Points
 
 - [../README.md](../README.md): product overview, local startup, and validation entrypoint
+- [api.md](api.md): public API reference for the gateway-facing `/api/v1/...` routes
 - [deployment.md](deployment.md): full local, LAN, and Cloudflare-backed deployment runbook
 - [../tests/README.md](../tests/README.md): test taxonomy, smoke workflow, and Playwright commands
 - [../../IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md): current source of truth for ongoing feature rollout work

@@ -6,11 +6,22 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.errors import api_error
+from studyvault_backend_common.errors import StudyVaultErrorResponse, api_error
 from studyvault_backend_common.models import AuthenticatedUser, DriveItem, FileRecord
 
 from app.core.config import get_settings
 from app.services.search import MAX_SEARCH_QUERY_LENGTH, SearchService
+
+
+PUBLIC_SEARCH_RESPONSES = {
+    401: {
+        "model": StudyVaultErrorResponse,
+        "description": "Missing or invalid bearer token.",
+    },
+    422: {
+        "description": "Invalid query parameters or search query too long.",
+    },
+}
 
 
 def build_public_router(service: SearchService) -> APIRouter:
@@ -25,7 +36,17 @@ def build_public_router(service: SearchService) -> APIRouter:
         )
     )
 
-    @router.get("/search", response_model=list[DriveItem])
+    @router.get(
+        "/search",
+        response_model=list[DriveItem],
+        tags=["Search"],
+        summary="Search drive items",
+        description=(
+            "Search the authenticated user's files and folders by filename, MIME type, and tags. "
+            "Results can be filtered by item kind, folder, and trash state."
+        ),
+        responses=PUBLIC_SEARCH_RESPONSES,
+    )
     @version(1)
     def search_files(
         q: str = Query(default=""),

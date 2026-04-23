@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.errors import StudyVaultHTTPException, build_error_response
+from studyvault_backend_common.errors import StudyVaultErrorResponse, StudyVaultHTTPException, build_error_response
 from studyvault_backend_common.models import (
     AuthenticatedUser,
     CreateFolderRequest,
@@ -31,6 +31,30 @@ from app.schemas.catalog import (
 from app.services.catalog import CatalogService
 
 
+PUBLIC_CATALOG_RESPONSES = {
+    401: {
+        "model": StudyVaultErrorResponse,
+        "description": "Missing or invalid bearer token.",
+    },
+}
+
+CATALOG_MUTATION_RESPONSES = {
+    **PUBLIC_CATALOG_RESPONSES,
+    404: {
+        "model": StudyVaultErrorResponse,
+        "description": "The requested file or folder was not found for the authenticated user.",
+    },
+    409: {
+        "model": StudyVaultErrorResponse,
+        "description": "The requested catalog change conflicts with existing drive state.",
+    },
+    422: {
+        "model": StudyVaultErrorResponse,
+        "description": "The request payload is invalid or violates folder constraints.",
+    },
+}
+
+
 def _studyvault_error_response(exc: StudyVaultHTTPException) -> JSONResponse:
     payload = build_error_response(exc)
     return JSONResponse(status_code=exc.status_code, content=payload.model_dump())
@@ -48,12 +72,29 @@ def build_public_router(service: CatalogService) -> APIRouter:
         )
     )
 
-    @router.get("/catalog/files", response_model=list[FileRecord])
+    @router.get(
+        "/catalog/files",
+        response_model=list[FileRecord],
+        tags=["Catalog"],
+        summary="List user files",
+        description="Return all file records owned by the authenticated user.",
+        responses=PUBLIC_CATALOG_RESPONSES,
+    )
     @version(1)
     def list_files(user: AuthenticatedUser = Depends(current_user_dependency)) -> list[FileRecord]:
         return service.list_user_files(user)
 
-    @router.get("/catalog/items", response_model=CatalogItemsResponse)
+    @router.get(
+        "/catalog/items",
+        response_model=CatalogItemsResponse,
+        tags=["Catalog"],
+        summary="List drive items",
+        description=(
+            "List files and folders for a specific parent folder or the drive root. Trashed items are "
+            "excluded unless `include_trashed` is set."
+        ),
+        responses=PUBLIC_CATALOG_RESPONSES,
+    )
     @version(1)
     def list_items(
         parent_id: str | None = Query(default=None),
@@ -66,7 +107,20 @@ def build_public_router(service: CatalogService) -> APIRouter:
             include_trashed=include_trashed,
         )
 
-    @router.get("/catalog/breadcrumbs/{folder_id}", response_model=CatalogBreadcrumbsResponse)
+    @router.get(
+        "/catalog/breadcrumbs/{folder_id}",
+        response_model=CatalogBreadcrumbsResponse,
+        tags=["Catalog"],
+        summary="Get folder breadcrumbs",
+        description="Return the breadcrumb trail from drive root to the requested folder.",
+        responses={
+            **PUBLIC_CATALOG_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder was not found for the authenticated user.",
+            },
+        },
+    )
     @version(1)
     def get_breadcrumbs(
         folder_id: str,
@@ -74,14 +128,34 @@ def build_public_router(service: CatalogService) -> APIRouter:
     ) -> CatalogBreadcrumbsResponse:
         return service.get_breadcrumbs(user, folder_id)
 
-    @router.get("/catalog/trash", response_model=CatalogTrashResponse)
+    @router.get(
+        "/catalog/trash",
+        response_model=CatalogTrashResponse,
+        tags=["Catalog"],
+        summary="List trash contents",
+        description="Return trashed files and folders for the authenticated user.",
+        responses=PUBLIC_CATALOG_RESPONSES,
+    )
     @version(1)
     def list_trash(
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> CatalogTrashResponse:
         return service.list_trash(user)
 
-    @router.get("/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @router.get(
+        "/catalog/folders/{folder_id}",
+        response_model=FolderRecord,
+        tags=["Catalog"],
+        summary="Get folder details",
+        description="Return metadata for a folder owned by the authenticated user.",
+        responses={
+            **PUBLIC_CATALOG_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder was not found for the authenticated user.",
+            },
+        },
+    )
     @version(1)
     def get_folder(
         folder_id: str,
@@ -89,7 +163,15 @@ def build_public_router(service: CatalogService) -> APIRouter:
     ) -> FolderRecord:
         return service.get_user_folder(user, folder_id)
 
-    @router.post("/catalog/folders", response_model=FolderRecord, status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "/catalog/folders",
+        response_model=FolderRecord,
+        status_code=status.HTTP_201_CREATED,
+        tags=["Catalog"],
+        summary="Create a folder",
+        description="Create a new folder at drive root or inside an existing parent folder.",
+        responses=CATALOG_MUTATION_RESPONSES,
+    )
     @version(1)
     def create_folder(
         request: CreateFolderRequest,
@@ -100,7 +182,14 @@ def build_public_router(service: CatalogService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.patch("/catalog/folders/{folder_id}", response_model=FolderRecord)
+    @router.patch(
+        "/catalog/folders/{folder_id}",
+        response_model=FolderRecord,
+        tags=["Catalog"],
+        summary="Rename a folder",
+        description="Rename an existing folder owned by the authenticated user.",
+        responses=CATALOG_MUTATION_RESPONSES,
+    )
     @version(1)
     def rename_folder(
         folder_id: str,
@@ -112,7 +201,20 @@ def build_public_router(service: CatalogService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.delete("/catalog/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+    @router.delete(
+        "/catalog/folders/{folder_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Catalog"],
+        summary="Move a folder to trash",
+        description="Soft-delete a folder and any descendants by moving them to trash.",
+        responses={
+            **PUBLIC_CATALOG_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder was not found for the authenticated user.",
+            },
+        },
+    )
     @version(1)
     def trash_folder(
         folder_id: str,
@@ -120,7 +222,14 @@ def build_public_router(service: CatalogService) -> APIRouter:
     ) -> None:
         service.trash_folder(user, folder_id)
 
-    @router.post("/catalog/folders/{folder_id}/move", response_model=FolderRecord)
+    @router.post(
+        "/catalog/folders/{folder_id}/move",
+        response_model=FolderRecord,
+        tags=["Catalog"],
+        summary="Move a folder",
+        description="Move a folder to a different parent folder or back to drive root.",
+        responses=CATALOG_MUTATION_RESPONSES,
+    )
     @version(1)
     def move_folder(
         folder_id: str,
@@ -132,7 +241,17 @@ def build_public_router(service: CatalogService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.post("/catalog/folders/{folder_id}/restore", response_model=CatalogRestoreResponse)
+    @router.post(
+        "/catalog/folders/{folder_id}/restore",
+        response_model=CatalogRestoreResponse,
+        tags=["Catalog"],
+        summary="Restore a folder",
+        description=(
+            "Restore a trashed folder to its original parent folder when possible, or to a requested "
+            "destination when provided."
+        ),
+        responses=CATALOG_MUTATION_RESPONSES,
+    )
     @version(1)
     def restore_folder(
         folder_id: str,

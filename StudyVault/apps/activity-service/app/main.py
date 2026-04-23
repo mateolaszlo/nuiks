@@ -65,6 +65,16 @@ def create_app(repository=None, keycloak_client=None, audit_client=None, health_
         service_name=settings.service_name,
         public_router=build_public_router(service, admin_service),
         internal_router=build_internal_router(service),
+        openapi_tags=[
+            {
+                "name": "Activity",
+                "description": "Gateway-facing activity feed endpoints for authenticated users.",
+            },
+            {
+                "name": "Admin",
+                "description": "Gateway-facing administrative endpoints served by the activity service.",
+            },
+        ],
     )
     app.state.repository = repository
     app.state.keycloak_client = keycloak_client

@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
-from studyvault_backend_common.errors import StudyVaultHTTPException, build_error_response
+from studyvault_backend_common.errors import StudyVaultErrorResponse, StudyVaultHTTPException, build_error_response
 from studyvault_backend_common.models import (
     AuthenticatedUser,
     FileRecord,
@@ -18,6 +18,42 @@ from studyvault_backend_common.responses import build_attachment_content_disposi
 
 from app.core.config import get_settings
 from app.services.files import FileService
+
+
+PUBLIC_FILE_RESPONSES = {
+    401: {
+        "model": StudyVaultErrorResponse,
+        "description": "Missing or invalid bearer token.",
+    },
+}
+
+FILE_MUTATION_RESPONSES = {
+    **PUBLIC_FILE_RESPONSES,
+    404: {
+        "model": StudyVaultErrorResponse,
+        "description": "The requested file was not found for the authenticated user.",
+    },
+    409: {
+        "model": StudyVaultErrorResponse,
+        "description": "The requested file action conflicts with current drive state.",
+    },
+    422: {
+        "model": StudyVaultErrorResponse,
+        "description": "The request payload is invalid or violates file constraints.",
+    },
+}
+
+UPLOAD_RESPONSES = {
+    **PUBLIC_FILE_RESPONSES,
+    422: {
+        "model": StudyVaultErrorResponse,
+        "description": "The upload metadata or multipart payload is invalid.",
+    },
+    503: {
+        "model": StudyVaultErrorResponse,
+        "description": "Object storage or downstream metadata sync is unavailable.",
+    },
+}
 
 
 def _studyvault_error_response(exc: StudyVaultHTTPException) -> JSONResponse:
@@ -37,7 +73,17 @@ def build_public_router(service: FileService) -> APIRouter:
         )
     )
 
-    @router.post("/files", response_model=FileRecord)
+    @router.post(
+        "/files",
+        response_model=FileRecord,
+        tags=["Files"],
+        summary="Upload a file",
+        description=(
+            "Upload a new file into the authenticated user's drive. The request accepts multipart form "
+            "data with the file bytes plus optional tags and an optional parent folder id."
+        ),
+        responses=UPLOAD_RESPONSES,
+    )
     @version(1)
     async def upload_file(
         file: UploadFile = File(...),
@@ -55,7 +101,19 @@ def build_public_router(service: FileService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.get("/files/{file_id}/download")
+    @router.get(
+        "/files/{file_id}/download",
+        tags=["Files"],
+        summary="Download a file",
+        description="Download the stored file bytes for a file owned by the authenticated user.",
+        responses={
+            **PUBLIC_FILE_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested file was not found for the authenticated user.",
+            },
+        },
+    )
     @version(1)
     async def download_file(
         file_id: str,
@@ -70,7 +128,14 @@ def build_public_router(service: FileService) -> APIRouter:
             },
         )
 
-    @router.patch("/files/{file_id}", response_model=FileRecord)
+    @router.patch(
+        "/files/{file_id}",
+        response_model=FileRecord,
+        tags=["Files"],
+        summary="Rename a file",
+        description="Rename a file owned by the authenticated user without changing its content.",
+        responses=FILE_MUTATION_RESPONSES,
+    )
     @version(1)
     async def rename_file(
         file_id: str,
@@ -82,7 +147,14 @@ def build_public_router(service: FileService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.post("/files/{file_id}/move", response_model=FileRecord)
+    @router.post(
+        "/files/{file_id}/move",
+        response_model=FileRecord,
+        tags=["Files"],
+        summary="Move a file",
+        description="Move a file to another folder or back to the drive root.",
+        responses=FILE_MUTATION_RESPONSES,
+    )
     @version(1)
     async def move_file(
         file_id: str,
@@ -94,7 +166,20 @@ def build_public_router(service: FileService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
-    @router.delete("/files/{file_id}", status_code=204)
+    @router.delete(
+        "/files/{file_id}",
+        status_code=204,
+        tags=["Files"],
+        summary="Move a file to trash",
+        description="Soft-delete a file by moving it to the authenticated user's trash.",
+        responses={
+            **PUBLIC_FILE_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested file was not found for the authenticated user.",
+            },
+        },
+    )
     @version(1)
     async def trash_file(
         file_id: str,
@@ -102,7 +187,17 @@ def build_public_router(service: FileService) -> APIRouter:
     ) -> None:
         await service.trash_file(user=user, file_id=file_id)
 
-    @router.post("/files/{file_id}/restore", response_model=FileRestoreResponse)
+    @router.post(
+        "/files/{file_id}/restore",
+        response_model=FileRestoreResponse,
+        tags=["Files"],
+        summary="Restore a file",
+        description=(
+            "Restore a trashed file to its original parent folder when possible, or to a requested "
+            "destination when provided."
+        ),
+        responses=FILE_MUTATION_RESPONSES,
+    )
     @version(1)
     async def restore_file(
         file_id: str,

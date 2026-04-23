@@ -55,6 +55,12 @@ def create_app(object_store=None, downstream=None, max_upload_bytes: int | None 
         service_name=settings.service_name,
         public_router=build_public_router(service),
         internal_router=build_internal_router(service),
+        openapi_tags=[
+            {
+                "name": "Files",
+                "description": "Gateway-facing file upload, download, and lifecycle endpoints.",
+            }
+        ],
     )
     app.state.object_store = object_store
     app.state.downstream = downstream

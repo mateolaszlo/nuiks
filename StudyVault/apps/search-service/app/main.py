@@ -31,6 +31,12 @@ def create_app(repository=None) -> FastAPI:
         service_name=settings.service_name,
         public_router=build_public_router(service),
         internal_router=build_internal_router(service),
+        openapi_tags=[
+            {
+                "name": "Search",
+                "description": "Gateway-facing metadata search endpoints for authenticated users.",
+            }
+        ],
     )
     app.state.repository = repository
     return app

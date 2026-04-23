@@ -40,6 +40,12 @@ def create_app(repository=None, downstream=None) -> FastAPI:
         service_name=settings.service_name,
         public_router=build_public_router(service),
         internal_router=build_internal_router(service),
+        openapi_tags=[
+            {
+                "name": "Catalog",
+                "description": "Gateway-facing drive metadata, folders, breadcrumbs, and trash endpoints.",
+            }
+        ],
     )
     app.state.repository = repository
     app.state.downstream = downstream

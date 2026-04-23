@@ -13,8 +13,15 @@ def build_versioned_service_app(
     service_name: str,
     public_router: APIRouter,
     internal_router: APIRouter | None = None,
+    openapi_tags: list[dict[str, str]] | None = None,
 ) -> FastAPI:
-    public_app = FastAPI(title=title)
+    public_app = FastAPI(
+        title=title,
+        openapi_tags=openapi_tags,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     register_error_handlers(public_app)
     public_app.include_router(public_router)
 
@@ -23,6 +30,9 @@ def build_versioned_service_app(
         version_format="{major}",
         prefix_format="/api/v{major}",
         enable_latest=False,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
     register_error_handlers(app)
     install_request_logging(app)
