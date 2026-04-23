@@ -87,7 +87,7 @@ KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
 Start the full stack:
 
 ```bash
-docker compose -f infra/docker/compose/docker-compose.yml up -d --build
+sudo docker compose --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Check that Docker Compose accepted the configuration:
@@ -205,7 +205,7 @@ Use these Cloudflare settings:
 - Always Use HTTPS: enabled
 - Automatic HTTPS Rewrites: enabled
 
-StudyVault does not terminate TLS on the VM itself. Cloudflare provides the browser-facing HTTPS layer and forwards traffic to the origin on port `8080`. The nginx config preserves the forwarded scheme so Keycloak and the frontend stay aligned with the public `https://` URL.
+StudyVault does not terminate TLS on the VM itself. Cloudflare provides the browser-facing HTTPS layer and forwards traffic to the origin on port `8080`. The nginx config must preserve the browser-facing HTTPS scheme from Cloudflare headers rather than trusting the origin hop alone, otherwise Keycloak can reject login with `ssl_required`.
 
 ### 4. Start the Stack
 
@@ -230,6 +230,8 @@ From a browser:
 - log in as `demo` or `admin`
 - upload a file
 - confirm the file appears in the Drive grid, search results, and activity feed
+
+Do not use `http://<public-ip>:8080` or `https://<public-ip>:8080` as the real auth-path test for a public deployment. The intended path is the Cloudflare-backed `https://` hostname without an explicit port.
 
 If you need local-only observability on the VM, tunnel or SSH in first:
 

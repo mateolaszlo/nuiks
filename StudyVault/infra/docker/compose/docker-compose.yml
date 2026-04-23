@@ -210,6 +210,8 @@ services:
       STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}}
       ACTIVITY_MONGODB_URL: mongodb://mongodb:27017
     depends_on:
       mongodb:

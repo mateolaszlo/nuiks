@@ -65,6 +65,8 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "CATALOG_INTERNAL_URL: http://catalog-service:8000" in result.stdout
     assert "SEARCH_INTERNAL_URL: http://search-service:8000" in result.stdout
     assert "ACTIVITY_INTERNAL_URL: http://activity-service:8000" in result.stdout
+    assert "KEYCLOAK_ADMIN_USERNAME: admin" in result.stdout
+    assert "KEYCLOAK_ADMIN_PASSWORD: admin" in result.stdout
     assert "internal-demo-token" not in result.stdout
 
 
@@ -172,6 +174,21 @@ def test_internal_fanout_is_not_exposed_through_gateway() -> None:
     assert "activity_url" in downstream_contents
     assert "STUDYVAULT_INTERNAL_BASE_URL" not in config_contents
     assert "CATALOG_INTERNAL_URL" in config_contents or "catalog_internal_url" in config_contents
+
+
+def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+
+    assert "map $http_cf_visitor $studyvault_cloudflare_proto" in nginx_contents
+    assert '~*"https" https;' in nginx_contents
+    assert 'map $http_x_forwarded_proto $studyvault_proxy_proto' in nginx_contents
+    assert 'map "$studyvault_cloudflare_proto:$studyvault_proxy_proto" $studyvault_forwarded_proto' in nginx_contents
+    assert "~^https: https;" in nginx_contents
+    assert "~^:https$ https;" in nginx_contents
+    assert "map $studyvault_forwarded_proto $studyvault_forwarded_port" in nginx_contents
+    assert "https 443;" in nginx_contents
+    assert "proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;" in nginx_contents
 
 
 def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:

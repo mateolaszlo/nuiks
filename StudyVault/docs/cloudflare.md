@@ -9,5 +9,7 @@ Use this short Cloudflare-only summary together with the full deployment guide:
 3. Keep the app gateway reachable on origin port `8080`.
 4. Use Cloudflare SSL/TLS mode `Flexible` unless you add separate origin-side TLS termination.
 5. Keep admin and data ports bound to `127.0.0.1` unless you are temporarily troubleshooting.
+6. Browse the app through the Cloudflare-backed `https://` hostname, not the raw VPS IP or `:8080`, because Keycloak PKCE and secure-context auth bootstrap depend on the browser-facing HTTPS origin.
+7. The nginx gateway derives `X-Forwarded-Proto` from Cloudflare headers so Keycloak still sees HTTPS even though the origin hop remains plain HTTP on port `8080`.
 
 Local Docker Compose validation does not require a Cloudflare account or any real DNS records.

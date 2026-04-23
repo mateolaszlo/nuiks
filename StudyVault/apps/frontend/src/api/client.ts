@@ -246,6 +246,18 @@ export class ApiClient {
         options?.onProcessing?.();
       };
 
+      const buildUploadXhrError = (): ApiError => {
+        if (xhr.status !== 0 || xhr.responseText) {
+          return readApiErrorFromText(xhr.responseText ?? "", xhr.status);
+        }
+        return new ApiError("Upload could not reach the server. Check your connection and try again.", {
+          status: 0,
+          code: "upload_network_error",
+          category: "unavailable",
+          recoverable: true,
+        });
+      };
+
       xhr.onreadystatechange = () => {
         if (
           xhr.readyState >= XMLHttpRequest.HEADERS_RECEIVED &&
@@ -255,15 +267,7 @@ export class ApiClient {
         }
       };
 
-      xhr.onerror = () =>
-        reject(
-          new ApiError("Upload could not reach the server. Check your connection and try again.", {
-            status: 0,
-            code: "upload_network_error",
-            category: "unavailable",
-            recoverable: true,
-          }),
-        );
+      xhr.onerror = () => reject(buildUploadXhrError());
       xhr.onabort = () => reject(new Error("Upload was aborted"));
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {

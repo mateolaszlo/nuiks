@@ -59,6 +59,8 @@ type UploadQueueItem = {
 const ROOT_BREADCRUMB: BreadcrumbEntry = { folder_id: null, name: "My Drive" };
 const MAX_ACTIVE_UPLOADS = 2;
 const DONE_UPLOAD_DISMISS_DELAY_MS = 1500;
+const MAX_CLIENT_UPLOAD_BYTES = 99 * 1024 * 1024;
+const UPLOAD_WARNING_DISMISS_DELAY_MS = 5000;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -84,6 +86,14 @@ function formatBytes(value: number | null | undefined): string {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function buildUploadSizeLimitMessage(files: File[]): string {
+  const limitLabel = formatBytes(MAX_CLIENT_UPLOAD_BYTES);
+  if (files.length === 1) {
+    return `${files[0].name} exceeds the current upload limit of ${limitLabel}.`;
+  }
+  return `${files.length} files exceed the current upload limit of ${limitLabel}.`;
 }
 
 function getHealthDetailPreview(detail: string, maxLength = 96): string {
@@ -376,6 +386,7 @@ export default function App() {
   const currentViewRef = useRef<DashboardView>("drive");
   const inFlightUploadIdsRef = useRef<Set<string>>(new Set());
   const uploadDismissTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const uploadWarningTimeoutRef = useRef<number | null>(null);
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
   const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
@@ -585,9 +596,17 @@ export default function App() {
       return false;
     }
 
+    const acceptedFiles = files.filter((file) => file.size <= MAX_CLIENT_UPLOAD_BYTES);
+    const oversizedFiles = files.filter((file) => file.size > MAX_CLIENT_UPLOAD_BYTES);
+
+    if (acceptedFiles.length === 0) {
+      setUploadFormError(buildUploadSizeLimitMessage(oversizedFiles));
+      return false;
+    }
+
     setUploadQueue((current) => [
       ...current,
-      ...files.map((file) => ({
+      ...acceptedFiles.map((file) => ({
         queue_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         file,
         parent_folder_id: parentFolderId,
@@ -597,7 +616,7 @@ export default function App() {
         progress: 0,
       })),
     ]);
-    setUploadFormError(null);
+    setUploadFormError(oversizedFiles.length > 0 ? buildUploadSizeLimitMessage(oversizedFiles) : null);
     setError(null);
     return true;
   }
@@ -853,8 +872,37 @@ export default function App() {
         window.clearTimeout(timeoutId);
       }
       uploadDismissTimeoutsRef.current.clear();
+      if (uploadWarningTimeoutRef.current !== null) {
+        window.clearTimeout(uploadWarningTimeoutRef.current);
+        uploadWarningTimeoutRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!uploadFormError) {
+      if (uploadWarningTimeoutRef.current !== null) {
+        window.clearTimeout(uploadWarningTimeoutRef.current);
+        uploadWarningTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (uploadWarningTimeoutRef.current !== null) {
+      window.clearTimeout(uploadWarningTimeoutRef.current);
+    }
+    uploadWarningTimeoutRef.current = window.setTimeout(() => {
+      setUploadFormError(null);
+      uploadWarningTimeoutRef.current = null;
+    }, UPLOAD_WARNING_DISMISS_DELAY_MS);
+
+    return () => {
+      if (uploadWarningTimeoutRef.current !== null) {
+        window.clearTimeout(uploadWarningTimeoutRef.current);
+        uploadWarningTimeoutRef.current = null;
+      }
+    };
+  }, [uploadFormError]);
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1625,7 +1673,7 @@ export default function App() {
   }
 
   function renderUploadQueue() {
-    if (currentView !== "drive" || uploadQueue.length === 0) {
+    if (currentView !== "drive" || (uploadQueue.length === 0 && !uploadFormError)) {
       return null;
     }
 
@@ -1640,6 +1688,7 @@ export default function App() {
             {activeUploadCount} active / {uploadQueue.length} total
           </span>
         </div>
+        {uploadFormError ? <div className="error-banner">{uploadFormError}</div> : null}
         <div className="upload-queue-list">
           {uploadQueue.map((item) => (
             <div className={`upload-queue-row upload-status-${item.status}`} key={item.queue_id}>
@@ -2041,7 +2090,6 @@ export default function App() {
                   <button className="primary-button" type="submit" disabled={pendingUploadFiles.length === 0}>
                     Add to Upload Queue
                   </button>
-                  {uploadFormError ? <p className="error-text">{uploadFormError}</p> : null}
                 </form>
               </section>
             </>
