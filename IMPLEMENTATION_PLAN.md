@@ -747,9 +747,9 @@ Deferred to the next slice:
 - [x] Add `Referrer-Policy: strict-origin-when-cross-origin`
 - [x] Add `Permissions-Policy`
 - [x] Add `Strict-Transport-Security` only when the effective public request scheme is HTTPS
-- [ ] Stop trusting uploaded MIME metadata as the download response `media_type`
-- [ ] Serve downloads as `application/octet-stream` while keeping `Content-Disposition: attachment`
-- [ ] Keep stored MIME metadata only for metadata/search/display use, not browser execution type
+- [x] Stop trusting uploaded MIME metadata as the download response `media_type`
+- [x] Serve downloads as `application/octet-stream` while keeping `Content-Disposition: attachment`
+- [x] Keep stored MIME metadata only for metadata/search/display use, not browser execution type
 - [ ] Add explicit host allowlisting for public requests
 - [ ] Add explicit CORS policy that preserves the current same-origin architecture
 - [ ] Keep cross-origin browser access denied by default unless the configured public origin is explicitly needed
@@ -783,11 +783,11 @@ Deferred to the next slice:
 
 ### 6.11.3 Download content-type hardening
 
-- [ ] Change file download responses to use `application/octet-stream` by default
-- [ ] Preserve attachment download behavior with `Content-Disposition`
-- [ ] Do not allow user-controlled upload MIME metadata to become the browser execution type on download
-- [ ] Keep MIME metadata available for non-execution uses if needed by search/details UI
-- [ ] Pair the download hardening with `X-Content-Type-Options: nosniff`
+- [x] Change file download responses to use `application/octet-stream` by default
+- [x] Preserve attachment download behavior with `Content-Disposition`
+- [x] Do not allow user-controlled upload MIME metadata to become the browser execution type on download
+- [x] Keep MIME metadata available for non-execution uses if needed by search/details UI
+- [x] Pair the download hardening with `X-Content-Type-Options: nosniff`
 
 ### 6.11.4 Host and CORS hardening
 

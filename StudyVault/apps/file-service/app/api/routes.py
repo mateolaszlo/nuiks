@@ -122,7 +122,7 @@ def build_public_router(service: FileService) -> APIRouter:
         file_record, content = await service.download_file(user=user, file_id=file_id)
         return StreamingResponse(
             iter([content]),
-            media_type=file_record.mime_type,
+            media_type="application/octet-stream",
             headers={
                 "content-disposition": build_attachment_content_disposition(file_record.filename),
             },

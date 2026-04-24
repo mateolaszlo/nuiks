@@ -1314,7 +1314,7 @@ def test_file_download_streams_content_from_object_store() -> None:
 
     assert download_response.status_code == 200
     assert download_response.content == b"hello studyvault"
-    assert download_response.headers["content-type"].startswith("text/plain")
+    assert download_response.headers["content-type"].startswith("application/octet-stream")
     assert (
         download_response.headers["content-disposition"]
         == 'attachment; filename="lecture.txt"; filename*=UTF-8\'\'lecture.txt'
@@ -1350,10 +1350,38 @@ def test_file_download_sanitizes_unsafe_filename_in_content_disposition() -> Non
 
     header = download_response.headers["content-disposition"]
     assert download_response.status_code == 200
+    assert download_response.headers["content-type"].startswith("application/octet-stream")
     assert "\r" not in header
     assert "\n" not in header
     assert 'filename="badname.txt"' in header
     assert "filename*=UTF-8''badname.txt" in header
+
+
+def test_file_download_does_not_trust_uploaded_mime_type_for_response_content_type() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        upload_response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("invoice.html", b"<script>alert(1)</script>", "text/html")},
+        )
+        file_id = upload_response.json()["file_id"]
+        download_response = client.get(
+            f"/api/files/{file_id}/download",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert download_response.status_code == 200
+    assert download_response.content == b"<script>alert(1)</script>"
+    assert download_response.headers["content-type"].startswith("application/octet-stream")
+    assert (
+        download_response.headers["content-disposition"]
+        == 'attachment; filename="invoice.html"; filename*=UTF-8\'\'invoice.html'
+    )
 
 
 def test_file_download_returns_not_found_when_object_content_is_missing() -> None:
@@ -1652,5 +1680,6 @@ def test_file_download_emits_encoded_filename_for_non_ascii_name() -> None:
 
     header = download_response.headers["content-disposition"]
     assert download_response.status_code == 200
+    assert download_response.headers["content-type"].startswith("application/octet-stream")
     assert 'filename="zeton notes.pdf"' in header
     assert "filename*=UTF-8''%C5%BEet%C3%B3n%20notes.pdf" in header
