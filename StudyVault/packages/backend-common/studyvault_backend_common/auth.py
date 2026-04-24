@@ -82,6 +82,9 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
             bind_authenticated_user(user_id=user.subject, username=user.username, email=user.email)
             return user
 
+        if not settings.audience:
+            raise RuntimeError("JWT audience must be configured when auth is enabled")
+
         if credentials is None:
             raise api_error(
                 status_code=401,
@@ -125,7 +128,7 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
                 key,
                 algorithms=list(ALLOWED_JWT_ALGORITHMS),
                 issuer=settings.issuer,
-                options={"verify_aud": settings.audience is not None},
+                options={"verify_aud": True},
                 audience=settings.audience,
             )
         except Exception as exc:  # pragma: no cover - exact library exception is not important

@@ -735,11 +735,11 @@ Deferred to the next slice:
 
 ## 6.11 Security hardening
 
-- [ ] Enforce JWT audience validation for all public `/api/v1/...` routes
-- [ ] Stop passing `audience=None` for normal public route authentication
-- [ ] Use the intended frontend client audience for browser-issued access tokens
-- [ ] Keep internal `/internal/...` routes on their existing internal-token model
-- [ ] Reject tokens with missing or mismatched audience claims as unauthorized
+- [x] Enforce JWT audience validation for all public `/api/v1/...` routes
+- [x] Stop passing `audience=None` for normal public route authentication
+- [x] Use the intended frontend client audience for browser-issued access tokens
+- [x] Keep internal `/internal/...` routes on their existing internal-token model
+- [x] Reject tokens with missing or mismatched audience claims as unauthorized
 - [ ] Add a browser-facing security header baseline at the nginx gateway
 - [ ] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
 - [ ] Add `X-Content-Type-Options: nosniff`
@@ -760,15 +760,15 @@ Deferred to the next slice:
 
 ### 6.11.1 JWT audience enforcement
 
-- [ ] Update the shared auth helper so public API JWT validation requires an expected audience
+- [x] Update the shared auth helper so public API JWT validation requires an expected audience
 - [ ] Add a shared auth setting for the expected public token audience if one is not already exposed cleanly
-- [ ] Default the public audience to `studyvault-frontend` unless a stronger repo-wide auth setting is introduced
-- [ ] Update file-service public routes to require the public audience
-- [ ] Update catalog-service public routes to require the public audience
-- [ ] Update search-service public routes to require the public audience
-- [ ] Update activity-service public routes to require the public audience
-- [ ] Keep issuer, signature, and algorithm validation unchanged
-- [ ] Return stable `401` structured auth errors for wrong-audience tokens
+- [x] Default the public audience to `studyvault-frontend` unless a stronger repo-wide auth setting is introduced
+- [x] Update file-service public routes to require the public audience
+- [x] Update catalog-service public routes to require the public audience
+- [x] Update search-service public routes to require the public audience
+- [x] Update activity-service public routes to require the public audience
+- [x] Keep issuer, signature, and algorithm validation unchanged
+- [x] Return stable `401` structured auth errors for wrong-audience tokens
 
 ### 6.11.2 Browser response hardening
 
@@ -808,8 +808,8 @@ Deferred to the next slice:
 
 ### 6.11.6 Security regression coverage
 
-- [ ] Add auth tests proving same-realm wrong-audience tokens are rejected
-- [ ] Add auth tests proving correct-audience tokens still work
+- [x] Add auth tests proving same-realm wrong-audience tokens are rejected
+- [x] Add auth tests proving correct-audience tokens still work
 - [ ] Add config or response tests for the gateway security headers
 - [ ] Add tests proving HSTS is tied to effective HTTPS requests only
 - [ ] Add download tests proving spoofed upload MIME types do not control download `media_type`
