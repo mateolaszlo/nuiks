@@ -191,6 +191,19 @@ def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
     assert "proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;" in nginx_contents
 
 
+def test_gateway_browser_security_headers_are_configured() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+
+    assert 'add_header X-Content-Type-Options "nosniff" always;' in nginx_contents
+    assert 'add_header X-Frame-Options "SAMEORIGIN" always;' in nginx_contents
+    assert 'add_header Referrer-Policy "strict-origin-when-cross-origin" always;' in nginx_contents
+    assert 'add_header Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()" always;' in nginx_contents
+    assert "map $studyvault_forwarded_proto $studyvault_hsts_header" in nginx_contents
+    assert 'https "max-age=31536000; includeSubDomains";' in nginx_contents
+    assert "add_header Strict-Transport-Security $studyvault_hsts_header always;" in nginx_contents
+
+
 def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:
     project_root = Path(__file__).resolve().parents[2]
     init_script = project_root / "infra" / "postgres" / "initdb" / "01-create-keycloak-db.sh"

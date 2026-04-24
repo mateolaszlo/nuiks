@@ -740,13 +740,13 @@ Deferred to the next slice:
 - [x] Use the intended frontend client audience for browser-issued access tokens
 - [x] Keep internal `/internal/...` routes on their existing internal-token model
 - [x] Reject tokens with missing or mismatched audience claims as unauthorized
-- [ ] Add a browser-facing security header baseline at the nginx gateway
+- [x] Add a browser-facing security header baseline at the nginx gateway
 - [ ] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
-- [ ] Add `X-Content-Type-Options: nosniff`
+- [x] Add `X-Content-Type-Options: nosniff`
 - [ ] Add `X-Frame-Options: DENY` or equivalent CSP `frame-ancestors 'none'`
-- [ ] Add `Referrer-Policy: strict-origin-when-cross-origin`
-- [ ] Add `Permissions-Policy`
-- [ ] Add `Strict-Transport-Security` only when the effective public request scheme is HTTPS
+- [x] Add `Referrer-Policy: strict-origin-when-cross-origin`
+- [x] Add `Permissions-Policy`
+- [x] Add `Strict-Transport-Security` only when the effective public request scheme is HTTPS
 - [ ] Stop trusting uploaded MIME metadata as the download response `media_type`
 - [ ] Serve downloads as `application/octet-stream` while keeping `Content-Disposition: attachment`
 - [ ] Keep stored MIME metadata only for metadata/search/display use, not browser execution type
@@ -774,11 +774,12 @@ Deferred to the next slice:
 
 - [ ] Add a CSP that works with the current frontend assets, Keycloak login pages, and proxied static resources
 - [ ] Validate the CSP against `/`, `/realms/`, `/resources/`, and current frontend asset loading before considering the header complete
-- [ ] Add `nosniff` at the gateway for browser-facing responses
-- [ ] Add anti-framing protection at the gateway
-- [ ] Add a referrer policy at the gateway
-- [ ] Add a permissions policy at the gateway
-- [ ] Emit HSTS only when the effective forwarded scheme is HTTPS
+- [x] Add `nosniff` at the gateway for browser-facing responses
+- [x] Add anti-framing protection at the gateway
+- [x] Use `X-Frame-Options: SAMEORIGIN` until a stricter CSP-compatible framing policy can replace it without breaking silent SSO
+- [x] Add a referrer policy at the gateway
+- [x] Add a permissions policy at the gateway
+- [x] Emit HSTS only when the effective forwarded scheme is HTTPS
 
 ### 6.11.3 Download content-type hardening
 
@@ -810,8 +811,8 @@ Deferred to the next slice:
 
 - [x] Add auth tests proving same-realm wrong-audience tokens are rejected
 - [x] Add auth tests proving correct-audience tokens still work
-- [ ] Add config or response tests for the gateway security headers
-- [ ] Add tests proving HSTS is tied to effective HTTPS requests only
+- [x] Add config or response tests for the gateway security headers
+- [x] Add tests proving HSTS is tied to effective HTTPS requests only
 - [ ] Add download tests proving spoofed upload MIME types do not control download `media_type`
 - [ ] Add tests proving download responses remain attachments
 - [ ] Add tests for explicit host/CORS rejection behavior
