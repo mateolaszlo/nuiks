@@ -5,12 +5,29 @@ const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL ?? "http://localhost:920
 
 async function loginAs(page: Page, username: string, password: string) {
   await page.goto(BASE_URL);
-  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
-  await page.getByRole("button", { name: "Log In With Keycloak" }).click();
-  await expect(page).toHaveURL(/\/realms\/studyvault\//);
-  await expect(page.locator("#username")).toBeVisible();
-  await page.locator("#username").fill(username);
+  const loginButton = page.getByRole("button", { name: "Log In With Keycloak" });
+  const usernameInput = page.locator("#username");
+  const dashboardIdentity = page.getByText(username, { exact: true }).first();
+  const adminConsole = page.getByText("Admin Console").first();
+
+  const entryState = await Promise.any([
+    loginButton.waitFor({ state: "visible", timeout: 30_000 }).then(() => "login"),
+    usernameInput.waitFor({ state: "visible", timeout: 30_000 }).then(() => "keycloak"),
+    dashboardIdentity.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
+    adminConsole.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
+  ]);
+
+  if (entryState === "ready") {
+    return;
+  }
+  if (entryState === "login") {
+    await expect(loginButton).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
+    await loginButton.click();
+  }
+  await expect(page).toHaveURL(/\/realms\/studyvault\//, { timeout: 30_000 });
+  await expect(usernameInput).toBeVisible();
+  await usernameInput.fill(username);
   await page.locator("#password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
 }
@@ -754,11 +771,40 @@ test("admin dashboard stays usable when one admin section fails", async ({ page 
   await loginAs(page, "admin", "admin123");
 
   await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Some admin data could not be refreshed. Displayed data may be incomplete.")).toBeVisible();
+  await expect(page.getByText("Some admin data could not be refreshed: Errors. Displayed data may be incomplete.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Errors / Low-Level Info" })).toBeVisible();
+  await expect(page.locator(".notice-card-warning").filter({ hasText: "Admin errors backend unavailable. Try again in a moment." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toHaveCount(0);
+});
+
+test("admin action failures stay local to the users section", async ({ page }) => {
+  await page.route("**/api/v1/admin/users/*/reset-password", async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        detail: "Password reset backend unavailable",
+        code: "service_unavailable",
+        category: "unavailable",
+        recoverable: false,
+        context: {
+          service: "keycloak",
+          operation: "reset-password",
+        },
+      }),
+    });
+  });
+
+  await loginAs(page, "admin", "admin123");
+
+  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  const usersSection = page.locator(".content-surface").filter({ has: page.getByRole("heading", { name: "Users" }) }).first();
+  await usersSection.getByRole("button", { name: "Reset Password" }).first().click();
+
+  await expect(usersSection.locator(".notice-card-warning")).toContainText("Password reset backend unavailable. Service keycloak • Operation reset-password. Try again in a moment.");
+  await expect(page.locator(".error-banner")).toHaveCount(0);
 });
 
 test("upload network failures show a connection-oriented message", async ({ page }) => {

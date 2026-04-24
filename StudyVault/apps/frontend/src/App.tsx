@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 
-import { ApiClient, isApiError, isAuthApiError, isPermissionApiError } from "./api/client";
+import { ApiClient, ApiError, isApiError, isAuthApiError, isPermissionApiError } from "./api/client";
 import type {
   ActivityRecord,
   AdminAuditEvent,
@@ -37,6 +37,7 @@ type MoveDestination = { value: string; label: string };
 type DropTargetKey = "drive-surface" | "trash" | `folder:${string}` | `breadcrumb:${string}` | "breadcrumb:root";
 type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
+type AdminDataSection = AdminSection | "health";
 type DrivePanelMode = "hidden" | "details" | "activity";
 type UploadStatus = "queued" | "uploading" | "processing" | "done" | "failed";
 type LocalActionError =
@@ -61,6 +62,14 @@ const MAX_ACTIVE_UPLOADS = 2;
 const DONE_UPLOAD_DISMISS_DELAY_MS = 1500;
 const MAX_CLIENT_UPLOAD_BYTES = 99 * 1024 * 1024;
 const UPLOAD_WARNING_DISMISS_DELAY_MS = 5000;
+const SAFE_ADMIN_ERROR_CONTEXT_KEYS = [
+  "service",
+  "target_user_id",
+  "target_username",
+  "requested_limit",
+  "max_limit",
+  "operation",
+] as const;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -101,6 +110,74 @@ function getHealthDetailPreview(detail: string, maxLength = 96): string {
     return detail;
   }
   return `${detail.slice(0, maxLength).trimEnd()}…`;
+}
+
+function buildAdminFailureSummary(failedSections: AdminDataSection[]): string | null {
+  if (failedSections.length === 0) {
+    return null;
+  }
+  const labels = failedSections.map((section) => {
+    switch (section) {
+      case "users":
+        return "Users";
+      case "audit":
+        return "Audit";
+      case "health":
+        return "Health";
+      case "errors":
+        return "Errors";
+    }
+  });
+  return `Some admin data could not be refreshed: ${labels.join(", ")}. Displayed data may be incomplete.`;
+}
+
+function getSafeAdminContextText(error: ApiError): string | null {
+  const safeEntries = SAFE_ADMIN_ERROR_CONTEXT_KEYS.flatMap((key) => {
+    const value = error.context[key];
+    return value === undefined || value === null ? [] : [[key, String(value)] as const];
+  });
+  if (safeEntries.length === 0) {
+    return null;
+  }
+  return safeEntries
+    .map(([key, value]) => {
+      switch (key) {
+        case "service":
+          return `Service ${value}`;
+        case "target_username":
+          return `User ${value}`;
+        case "target_user_id":
+          return `User id ${value}`;
+        case "requested_limit":
+          return `Requested limit ${value}`;
+        case "max_limit":
+          return `Max limit ${value}`;
+        case "operation":
+          return `Operation ${value}`;
+      }
+    })
+    .join(" • ");
+}
+
+function getAdminErrorMessage(error: unknown, fallback: string): string {
+  if (isApiError(error)) {
+    const contextText = getSafeAdminContextText(error);
+    switch (error.code) {
+      case "service_unavailable":
+      case "storage_unavailable":
+        return contextText
+          ? `${error.message}. ${contextText}. Try again in a moment.`
+          : `${error.message}. Try again in a moment.`;
+      case "admin_access_required":
+        return "You no longer have permission to perform this admin action.";
+      default:
+        return contextText ? `${error.message}. ${contextText}.` : error.message;
+    }
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
 }
 
 function buildDriveItemPath(breadcrumbs: BreadcrumbEntry[], item: DriveItem): string {
@@ -354,6 +431,7 @@ export default function App() {
   const [adminErrors, setAdminErrors] = useState<AdminErrorRecord[]>([]);
   const [adminHealth, setAdminHealth] = useState<AdminHealthSummary | null>(null);
   const [adminPartialRefreshWarning, setAdminPartialRefreshWarning] = useState<string | null>(null);
+  const [adminSectionErrors, setAdminSectionErrors] = useState<Partial<Record<AdminDataSection, string>>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
@@ -508,16 +586,26 @@ export default function App() {
       throw firstAuthFailure.reason;
     }
 
-    const successfulResults = results.filter((result) => result.status === "fulfilled");
-    if (successfulResults.length === 0) {
-      const firstFailure = results.find((result) => result.status === "rejected");
-      throw (firstFailure && firstFailure.status === "rejected"
-        ? firstFailure.reason
-        : new Error("Admin refresh failed"));
-    }
-
     const [usersPayload, auditPayload, healthPayload, errorsPayload] = results;
-    const hasFailure = results.some((result) => result.status === "rejected");
+    const nextSectionErrors: Partial<Record<AdminDataSection, string>> = {};
+    const failedSections: AdminDataSection[] = [];
+
+    if (usersPayload.status === "rejected") {
+      nextSectionErrors.users = getAdminErrorMessage(usersPayload.reason, "Users could not be refreshed.");
+      failedSections.push("users");
+    }
+    if (auditPayload.status === "rejected") {
+      nextSectionErrors.audit = getAdminErrorMessage(auditPayload.reason, "Audit events could not be refreshed.");
+      failedSections.push("audit");
+    }
+    if (healthPayload.status === "rejected") {
+      nextSectionErrors.health = getAdminErrorMessage(healthPayload.reason, "Health summary could not be refreshed.");
+      failedSections.push("health");
+    }
+    if (errorsPayload.status === "rejected") {
+      nextSectionErrors.errors = getAdminErrorMessage(errorsPayload.reason, "Error records could not be refreshed.");
+      failedSections.push("errors");
+    }
 
     startTransition(() => {
       if (usersPayload.status === "fulfilled") {
@@ -532,9 +620,8 @@ export default function App() {
       if (errorsPayload.status === "fulfilled") {
         setAdminErrors(errorsPayload.value);
       }
-      setAdminPartialRefreshWarning(
-        hasFailure ? "Some admin data could not be refreshed. Displayed data may be incomplete." : null,
-      );
+      setAdminSectionErrors(nextSectionErrors);
+      setAdminPartialRefreshWarning(buildAdminFailureSummary(failedSections));
     });
   }
 
@@ -634,6 +721,7 @@ export default function App() {
       setSearchResults([]);
       setSearchModeActive(false);
       setSearchFormError(null);
+      setAdminSectionErrors({});
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
       setContextMenu(null);
@@ -1468,13 +1556,19 @@ export default function App() {
     try {
       setIsBusy(true);
       setPasswordResetResult(null);
+      setError(null);
       await action();
       await refreshAdminPanel();
       setError(null);
+      setAdminSectionErrors((current) => ({ ...current, users: undefined }));
     } catch (actionError) {
-      const message = handleApiFailure(actionError, "Admin action failed");
-      if (message) {
-        setError(message);
+      if (isAuthApiError(actionError)) {
+        enterAuthRecovery(actionError);
+      } else {
+        setAdminSectionErrors((current) => ({
+          ...current,
+          users: getAdminErrorMessage(actionError, "Admin action failed."),
+        }));
       }
     } finally {
       setIsBusy(false);
@@ -1484,14 +1578,20 @@ export default function App() {
   async function handlePasswordReset(userId: string) {
     try {
       setIsBusy(true);
+      setError(null);
       const result = await api.resetPassword(userId);
       setPasswordResetResult(result);
       await refreshAdminPanel();
       setError(null);
+      setAdminSectionErrors((current) => ({ ...current, users: undefined }));
     } catch (actionError) {
-      const message = handleApiFailure(actionError, "Password reset failed");
-      if (message) {
-        setError(message);
+      if (isAuthApiError(actionError)) {
+        enterAuthRecovery(actionError);
+      } else {
+        setAdminSectionErrors((current) => ({
+          ...current,
+          users: getAdminErrorMessage(actionError, "Password reset failed."),
+        }));
       }
     } finally {
       setIsBusy(false);
@@ -2403,6 +2503,7 @@ export default function App() {
                     <code>{passwordResetResult.temporary_password}</code>
                   </div>
                 ) : null}
+                {adminSectionErrors.users ? <div className="notice-card notice-card-warning">{adminSectionErrors.users}</div> : null}
                 <div className="table-list">
                   {adminUsers.map((user) => (
                     <div className="table-row admin-row" key={user.user_id}>
@@ -2465,6 +2566,7 @@ export default function App() {
                       <h2>Audit Events</h2>
                     </div>
                   </div>
+                  {adminSectionErrors.audit ? <div className="notice-card notice-card-warning">{adminSectionErrors.audit}</div> : null}
                   <div className="table-list">
                     {adminAudit.map((event) => (
                       <div className="table-row compact-row" key={event.event_id}>
@@ -2491,6 +2593,7 @@ export default function App() {
                       <h2>System Health</h2>
                     </div>
                   </div>
+                  {adminSectionErrors.health ? <div className="notice-card notice-card-warning">{adminSectionErrors.health}</div> : null}
                   <div className="table-list">
                     {(adminHealth?.services ?? []).map((service) => (
                       <div className="table-row admin-health-row" key={service.service}>
@@ -2534,6 +2637,7 @@ export default function App() {
                     <h2>Errors / Low-Level Info</h2>
                   </div>
                 </div>
+                {adminSectionErrors.errors ? <div className="notice-card notice-card-warning">{adminSectionErrors.errors}</div> : null}
                 <div className="table-list">
                   {adminErrors.length === 0 ? (
                     <div className="empty-state empty-state-compact">

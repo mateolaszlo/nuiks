@@ -688,7 +688,7 @@ Resulting contract:
 - [x] Extend structured error codes and recovery UX to upload flows
 - [x] Extend structured error codes and recovery UX to search flows
 - [x] Extend structured error codes and recovery UX to auth/session flows
-- [ ] Add admin error display improvements for stable error codes and safe structured context
+- [x] Add admin error display improvements for stable error codes and safe structured context
 
 ### 6.9.1 First implementation slice
 
@@ -719,10 +719,10 @@ Implemented in this slice:
 - public auth failures now return structured auth or permission codes such as missing bearer token, invalid token, unknown signing key, and admin access required
 - upload and search failures now render near the failing UI surface instead of escalating to the page-wide banner by default
 - auth/session failures during authenticated API calls now transition the app back to a relogin-oriented state rather than leaving the user in a broken workspace
+- admin dashboard refresh and user-management actions now keep partial data visible, render per-section/admin-action error messages locally, and only expose a safe subset of structured error context
 
 Deferred to the next slice:
 
-- admin error record enrichment with stable error codes and safe structured context
 - richer admin UI summaries of operational errors
 
 ## 6.10 Documentation refresh
@@ -732,6 +732,90 @@ Deferred to the next slice:
 - [x] Refresh shared/backend docs for structured errors and auth/error contracts
 - [x] Refresh deployment and docs index pages for the top-level `StudyVault/` layout and current validation workflow
 - [x] Verify markdown examples and commands against the current repo layout, `/api/v1` paths, and current test commands
+
+## 6.11 Security hardening
+
+- [ ] Enforce JWT audience validation for all public `/api/v1/...` routes
+- [ ] Stop passing `audience=None` for normal public route authentication
+- [ ] Use the intended frontend client audience for browser-issued access tokens
+- [ ] Keep internal `/internal/...` routes on their existing internal-token model
+- [ ] Reject tokens with missing or mismatched audience claims as unauthorized
+- [ ] Add a browser-facing security header baseline at the nginx gateway
+- [ ] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
+- [ ] Add `X-Content-Type-Options: nosniff`
+- [ ] Add `X-Frame-Options: DENY` or equivalent CSP `frame-ancestors 'none'`
+- [ ] Add `Referrer-Policy: strict-origin-when-cross-origin`
+- [ ] Add `Permissions-Policy`
+- [ ] Add `Strict-Transport-Security` only when the effective public request scheme is HTTPS
+- [ ] Stop trusting uploaded MIME metadata as the download response `media_type`
+- [ ] Serve downloads as `application/octet-stream` while keeping `Content-Disposition: attachment`
+- [ ] Keep stored MIME metadata only for metadata/search/display use, not browser execution type
+- [ ] Add explicit host allowlisting for public requests
+- [ ] Add explicit CORS policy that preserves the current same-origin architecture
+- [ ] Keep cross-origin browser access denied by default unless the configured public origin is explicitly needed
+- [ ] Add first-pass request throttling for abuse-prone public endpoints
+- [ ] Cover at least `/realms/`, `/api/v1/files`, `/api/v1/search`, and `/api/v1/admin/`
+- [ ] Keep the first rate-limit phase nginx-based and per-IP rather than introducing distributed quota state
+- [ ] Add regression tests for JWT audience enforcement, browser security headers, safer downloads, host/CORS policy, and throttling configuration
+
+### 6.11.1 JWT audience enforcement
+
+- [ ] Update the shared auth helper so public API JWT validation requires an expected audience
+- [ ] Add a shared auth setting for the expected public token audience if one is not already exposed cleanly
+- [ ] Default the public audience to `studyvault-frontend` unless a stronger repo-wide auth setting is introduced
+- [ ] Update file-service public routes to require the public audience
+- [ ] Update catalog-service public routes to require the public audience
+- [ ] Update search-service public routes to require the public audience
+- [ ] Update activity-service public routes to require the public audience
+- [ ] Keep issuer, signature, and algorithm validation unchanged
+- [ ] Return stable `401` structured auth errors for wrong-audience tokens
+
+### 6.11.2 Browser response hardening
+
+- [ ] Add a CSP that works with the current frontend assets, Keycloak login pages, and proxied static resources
+- [ ] Validate the CSP against `/`, `/realms/`, `/resources/`, and current frontend asset loading before considering the header complete
+- [ ] Add `nosniff` at the gateway for browser-facing responses
+- [ ] Add anti-framing protection at the gateway
+- [ ] Add a referrer policy at the gateway
+- [ ] Add a permissions policy at the gateway
+- [ ] Emit HSTS only when the effective forwarded scheme is HTTPS
+
+### 6.11.3 Download content-type hardening
+
+- [ ] Change file download responses to use `application/octet-stream` by default
+- [ ] Preserve attachment download behavior with `Content-Disposition`
+- [ ] Do not allow user-controlled upload MIME metadata to become the browser execution type on download
+- [ ] Keep MIME metadata available for non-execution uses if needed by search/details UI
+- [ ] Pair the download hardening with `X-Content-Type-Options: nosniff`
+
+### 6.11.4 Host and CORS hardening
+
+- [ ] Add explicit trusted-host handling for the configured public hostname
+- [ ] Reject unexpected host headers instead of relying on implicit proxy behavior
+- [ ] Add explicit CORS behavior instead of relying on the absence of permissive headers
+- [ ] Keep default behavior same-origin and deny arbitrary cross-origin access
+- [ ] If browser CORS is required for any public path, allow only the configured public origin
+
+### 6.11.5 Rate limiting and abuse controls
+
+- [ ] Add nginx rate-limit zones for public traffic
+- [ ] Apply a conservative per-IP throttle to Keycloak-adjacent auth traffic under `/realms/`
+- [ ] Apply a conservative per-IP throttle to uploads under `/api/v1/files`
+- [ ] Apply a conservative per-IP throttle to search under `/api/v1/search`
+- [ ] Apply a conservative per-IP throttle to admin endpoints under `/api/v1/admin/`
+- [ ] Keep normal single-user interactive behavior unaffected by default limits
+- [ ] Defer advanced per-user quotas and distributed abuse accounting to a later phase
+
+### 6.11.6 Security regression coverage
+
+- [ ] Add auth tests proving same-realm wrong-audience tokens are rejected
+- [ ] Add auth tests proving correct-audience tokens still work
+- [ ] Add config or response tests for the gateway security headers
+- [ ] Add tests proving HSTS is tied to effective HTTPS requests only
+- [ ] Add download tests proving spoofed upload MIME types do not control download `media_type`
+- [ ] Add tests proving download responses remain attachments
+- [ ] Add tests for explicit host/CORS rejection behavior
+- [ ] Add config-level tests for nginx throttling coverage on protected routes
 
 ---
 

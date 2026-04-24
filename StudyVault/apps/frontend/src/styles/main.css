@@ -804,6 +804,12 @@ h3 {
   color: #1f1f1f;
 }
 
+.notice-card-warning {
+  background: #fde8e7;
+  border: 1px solid #f3c5c2;
+  color: #8c1d18;
+}
+
 .health-detail-block {
   display: grid;
   gap: 0.45rem;
