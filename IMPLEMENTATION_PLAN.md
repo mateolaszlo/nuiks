@@ -743,7 +743,6 @@ Deferred to the next slice:
 - [x] Add a browser-facing security header baseline at the nginx gateway
 - [x] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
 - [x] Add `X-Content-Type-Options: nosniff`
-- [ ] Add `X-Frame-Options: DENY` or equivalent CSP `frame-ancestors 'none'`
 - [x] Add `Referrer-Policy: strict-origin-when-cross-origin`
 - [x] Add `Permissions-Policy`
 - [x] Add `Strict-Transport-Security` only when the effective public request scheme is HTTPS
