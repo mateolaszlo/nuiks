@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from studyvault_backend_common.versioning import derive_public_origin_and_hosts
+
 
 def _normalize_saved_object_title(title: str) -> str:
     normalized = "".join(char.lower() if char.isalnum() else " " for char in title)
@@ -68,6 +70,16 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "KEYCLOAK_ADMIN_USERNAME: admin" in result.stdout
     assert "KEYCLOAK_ADMIN_PASSWORD: admin" in result.stdout
     assert "internal-demo-token" not in result.stdout
+
+
+def test_internal_service_urls_match_trusted_host_allowlist() -> None:
+    _, allowed_hosts = derive_public_origin_and_hosts("http://localhost:8080/realms/studyvault")
+
+    assert "catalog-service:8000" in allowed_hosts
+    assert "search-service:8000" in allowed_hosts
+    assert "activity-service:8000" in allowed_hosts
+    assert "file-service:8000" in allowed_hosts
+    assert "keycloak:8080" in allowed_hosts
 
 
 def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:

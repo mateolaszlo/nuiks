@@ -47,6 +47,8 @@ cp .env.example .env
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
+Use `.env.example` as the template for `.env` when starting the Docker Compose stack. Do not pass `.env.test` to `docker compose --env-file`; that file uses fake hosts such as `keycloak.test` and `catalog.test` for Python tests, not real container-to-container networking.
+
 To validate the stack:
 
 ```bash

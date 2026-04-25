@@ -23,14 +23,31 @@ _LOCAL_TRUSTED_HOSTS = [
     "testserver",
 ]
 
+_INTERNAL_TRUSTED_HOSTS = [
+    "catalog-service",
+    "catalog-service:8000",
+    "search-service",
+    "search-service:8000",
+    "file-service",
+    "file-service:8000",
+    "activity-service",
+    "activity-service:8000",
+    "keycloak",
+    "keycloak:8080",
+]
+
 
 def derive_public_origin_and_hosts(issuer_url: str) -> tuple[str | None, list[str]]:
+    allowed_hosts = list(_LOCAL_TRUSTED_HOSTS)
+    for host in _INTERNAL_TRUSTED_HOSTS:
+        if host not in allowed_hosts:
+            allowed_hosts.append(host)
+
     parsed = urlsplit(issuer_url)
     if not parsed.scheme or not parsed.netloc or not parsed.hostname:
-        return None, list(_LOCAL_TRUSTED_HOSTS)
+        return None, allowed_hosts
 
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    allowed_hosts = list(_LOCAL_TRUSTED_HOSTS)
     if parsed.hostname not in allowed_hosts:
         allowed_hosts.insert(0, parsed.hostname)
     if parsed.netloc not in allowed_hosts:
