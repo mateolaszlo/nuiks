@@ -791,6 +791,7 @@ Deferred to the next slice:
 ### 6.11.4 Host and CORS hardening
 
 - [x] Add explicit trusted-host handling for the configured public hostname
+- [x] Allow `localhost` and `127.0.0.1` for container-local `/health` probes without relaxing public host validation
 - [x] Reject unexpected host headers instead of relying on implicit proxy behavior
 - [x] Add explicit CORS behavior instead of relying on the absence of permissive headers
 - [x] Keep default behavior same-origin and deny arbitrary cross-origin access
@@ -815,6 +816,7 @@ Deferred to the next slice:
 - [x] Add download tests proving spoofed upload MIME types do not control download `media_type`
 - [x] Add tests proving download responses remain attachments
 - [x] Add tests for explicit host/CORS rejection behavior
+- [x] Add regression coverage for loopback trusted hosts used by container-local health probes
 - [x] Add config-level tests for nginx throttling coverage on protected routes
 
 ---

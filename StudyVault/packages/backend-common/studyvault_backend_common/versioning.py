@@ -17,18 +17,24 @@ _DOCS_ROUTE_PATHS = {
     "/openapi.json",
 }
 
+_LOCAL_TRUSTED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "testserver",
+]
+
 
 def derive_public_origin_and_hosts(issuer_url: str) -> tuple[str | None, list[str]]:
     parsed = urlsplit(issuer_url)
     if not parsed.scheme or not parsed.netloc or not parsed.hostname:
-        return None, ["testserver"]
+        return None, list(_LOCAL_TRUSTED_HOSTS)
 
     origin = f"{parsed.scheme}://{parsed.netloc}"
-    allowed_hosts = [parsed.hostname]
+    allowed_hosts = list(_LOCAL_TRUSTED_HOSTS)
+    if parsed.hostname not in allowed_hosts:
+        allowed_hosts.insert(0, parsed.hostname)
     if parsed.netloc not in allowed_hosts:
         allowed_hosts.append(parsed.netloc)
-    if "testserver" not in allowed_hosts:
-        allowed_hosts.append("testserver")
     return origin, allowed_hosts
 
 
