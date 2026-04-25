@@ -145,6 +145,7 @@ This matters in this repository because `apps/file-service/app/services/files.py
 - create folder at root
 - create nested folder
 - reject duplicate sibling name
+- keep committed folder creation successful even if post-persist search indexing fails
 - move folder to root
 - reject move into self
 - reject move into descendant
@@ -156,6 +157,7 @@ This matters in this repository because `apps/file-service/app/services/files.py
 ### File-service
 
 - upload into folder
+- keep upload success tied to object storage plus catalog persistence, while tolerating post-persist search or activity fanout failures
 - rename file
 - move file
 - trash file
@@ -190,6 +192,7 @@ This matters in this repository because `apps/file-service/app/services/files.py
 
 Using Playwright:
 
+- capture and reuse authenticated storage state for seeded `demo` and `admin` users so the suite does not repeatedly hit gateway auth throttles
 - create folder from root
 - navigate with breadcrumbs
 - upload file into current folder
@@ -359,6 +362,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add internal file hard-delete endpoint
 - [x] Add internal folder hard-delete endpoint
 - [x] Add internal catalog export route
+- [x] Keep folder create responses successful after the folder is persisted even if search publication fails
 
 ## 6.3 `apps/file-service`
 
@@ -371,6 +375,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add `delete()` to object store abstraction
 - [x] Keep the existing single-file `/api/files` contract as the backend primitive for queued uploads
 - [x] Document in code/comments that upload completion happens only after downstream sync, so frontend `processing` state is expected
+- [x] Keep upload success dependent on catalog persistence, while treating post-persist search and activity fanout as best effort
 
 ## 6.4 `apps/search-service`
 
@@ -426,6 +431,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Prevent default browser file-open behavior during external drag-and-drop over the Drive app
 - [x] Auto-dismiss successful upload queue entries after a short delay
 - [x] Delay `Processing…` until the browser has actually completed the upload phase
+- [x] Reuse Playwright auth state for seeded users so browser E2E coverage avoids repeated auth throttling
 
 ### 6.6.1 Drive browser UX refresh
 
@@ -792,6 +798,7 @@ Deferred to the next slice:
 
 - [x] Add explicit trusted-host handling for the configured public hostname
 - [x] Allow `localhost` and `127.0.0.1` for container-local `/health` probes without relaxing public host validation
+- [x] Allow first-party Docker Compose service hostnames and host:port pairs for internal service-to-service HTTP calls and admin health probes
 - [x] Reject unexpected host headers instead of relying on implicit proxy behavior
 - [x] Add explicit CORS behavior instead of relying on the absence of permissive headers
 - [x] Keep default behavior same-origin and deny arbitrary cross-origin access
@@ -822,3 +829,4 @@ Deferred to the next slice:
 ---
 
 Revision note: expanded the implementation plan to cover desktop file drag-and-drop, a client-side upload queue, and Google Drive–style upload progress because the current repository already has the backend primitives and now mainly needs a frontend execution plan for the next UX phase.
+Revision note: updated the plan after implementation work that made folder create and file upload resilient to post-persist downstream failures, widened trusted-host handling for internal Docker Compose service calls, and changed Playwright to reuse stored auth state for seeded users so E2E runs stop tripping gateway auth throttling.
