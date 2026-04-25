@@ -204,6 +204,25 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert "add_header Strict-Transport-Security $studyvault_hsts_header always;" in nginx_contents
 
 
+def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_auth_rate:10m rate=30r/m;" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_upload_rate:10m rate=10r/m;" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_search_rate:10m rate=60r/m;" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_admin_rate:10m rate=20r/m;" in nginx_contents
+    assert "limit_req_status 429;" in nginx_contents
+    assert "location /realms/ {" in nginx_contents
+    assert "limit_req zone=studyvault_auth_rate burst=10 nodelay;" in nginx_contents
+    assert "location /api/v1/files {" in nginx_contents
+    assert "limit_req zone=studyvault_upload_rate burst=5 nodelay;" in nginx_contents
+    assert "location /api/v1/search {" in nginx_contents
+    assert "limit_req zone=studyvault_search_rate burst=20 nodelay;" in nginx_contents
+    assert "location ^~ /api/v1/admin/ {" in nginx_contents
+    assert "limit_req zone=studyvault_admin_rate burst=10 nodelay;" in nginx_contents
+
+
 def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:
     project_root = Path(__file__).resolve().parents[2]
     init_script = project_root / "infra" / "postgres" / "initdb" / "01-create-keycloak-db.sh"

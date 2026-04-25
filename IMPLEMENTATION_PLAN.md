@@ -753,10 +753,10 @@ Deferred to the next slice:
 - [x] Add explicit host allowlisting for public requests
 - [x] Add explicit CORS policy that preserves the current same-origin architecture
 - [x] Keep cross-origin browser access denied by default unless the configured public origin is explicitly needed
-- [ ] Add first-pass request throttling for abuse-prone public endpoints
-- [ ] Cover at least `/realms/`, `/api/v1/files`, `/api/v1/search`, and `/api/v1/admin/`
-- [ ] Keep the first rate-limit phase nginx-based and per-IP rather than introducing distributed quota state
-- [ ] Add regression tests for JWT audience enforcement, browser security headers, safer downloads, host/CORS policy, and throttling configuration
+- [x] Add first-pass request throttling for abuse-prone public endpoints
+- [x] Cover at least `/realms/`, `/api/v1/files`, `/api/v1/search`, and `/api/v1/admin/`
+- [x] Keep the first rate-limit phase nginx-based and per-IP rather than introducing distributed quota state
+- [x] Add regression tests for JWT audience enforcement, browser security headers, safer downloads, host/CORS policy, and throttling configuration
 
 ### 6.11.1 JWT audience enforcement
 
@@ -799,13 +799,13 @@ Deferred to the next slice:
 
 ### 6.11.5 Rate limiting and abuse controls
 
-- [ ] Add nginx rate-limit zones for public traffic
-- [ ] Apply a conservative per-IP throttle to Keycloak-adjacent auth traffic under `/realms/`
-- [ ] Apply a conservative per-IP throttle to uploads under `/api/v1/files`
-- [ ] Apply a conservative per-IP throttle to search under `/api/v1/search`
-- [ ] Apply a conservative per-IP throttle to admin endpoints under `/api/v1/admin/`
-- [ ] Keep normal single-user interactive behavior unaffected by default limits
-- [ ] Defer advanced per-user quotas and distributed abuse accounting to a later phase
+- [x] Add nginx rate-limit zones for public traffic
+- [x] Apply a conservative per-IP throttle to Keycloak-adjacent auth traffic under `/realms/`
+- [x] Apply a conservative per-IP throttle to uploads under `/api/v1/files`
+- [x] Apply a conservative per-IP throttle to search under `/api/v1/search`
+- [x] Apply a conservative per-IP throttle to admin endpoints under `/api/v1/admin/`
+- [x] Keep normal single-user interactive behavior unaffected by default limits
+- [x] Defer advanced per-user quotas and distributed abuse accounting to a later phase
 
 ### 6.11.6 Security regression coverage
 
@@ -816,7 +816,7 @@ Deferred to the next slice:
 - [x] Add download tests proving spoofed upload MIME types do not control download `media_type`
 - [x] Add tests proving download responses remain attachments
 - [x] Add tests for explicit host/CORS rejection behavior
-- [ ] Add config-level tests for nginx throttling coverage on protected routes
+- [x] Add config-level tests for nginx throttling coverage on protected routes
 
 ---
 
