@@ -750,9 +750,9 @@ Deferred to the next slice:
 - [x] Stop trusting uploaded MIME metadata as the download response `media_type`
 - [x] Serve downloads as `application/octet-stream` while keeping `Content-Disposition: attachment`
 - [x] Keep stored MIME metadata only for metadata/search/display use, not browser execution type
-- [ ] Add explicit host allowlisting for public requests
-- [ ] Add explicit CORS policy that preserves the current same-origin architecture
-- [ ] Keep cross-origin browser access denied by default unless the configured public origin is explicitly needed
+- [x] Add explicit host allowlisting for public requests
+- [x] Add explicit CORS policy that preserves the current same-origin architecture
+- [x] Keep cross-origin browser access denied by default unless the configured public origin is explicitly needed
 - [ ] Add first-pass request throttling for abuse-prone public endpoints
 - [ ] Cover at least `/realms/`, `/api/v1/files`, `/api/v1/search`, and `/api/v1/admin/`
 - [ ] Keep the first rate-limit phase nginx-based and per-IP rather than introducing distributed quota state
@@ -791,11 +791,11 @@ Deferred to the next slice:
 
 ### 6.11.4 Host and CORS hardening
 
-- [ ] Add explicit trusted-host handling for the configured public hostname
-- [ ] Reject unexpected host headers instead of relying on implicit proxy behavior
-- [ ] Add explicit CORS behavior instead of relying on the absence of permissive headers
-- [ ] Keep default behavior same-origin and deny arbitrary cross-origin access
-- [ ] If browser CORS is required for any public path, allow only the configured public origin
+- [x] Add explicit trusted-host handling for the configured public hostname
+- [x] Reject unexpected host headers instead of relying on implicit proxy behavior
+- [x] Add explicit CORS behavior instead of relying on the absence of permissive headers
+- [x] Keep default behavior same-origin and deny arbitrary cross-origin access
+- [x] If browser CORS is required for any public path, allow only the configured public origin
 
 ### 6.11.5 Rate limiting and abuse controls
 
@@ -813,9 +813,9 @@ Deferred to the next slice:
 - [x] Add auth tests proving correct-audience tokens still work
 - [x] Add config or response tests for the gateway security headers
 - [x] Add tests proving HSTS is tied to effective HTTPS requests only
-- [ ] Add download tests proving spoofed upload MIME types do not control download `media_type`
-- [ ] Add tests proving download responses remain attachments
-- [ ] Add tests for explicit host/CORS rejection behavior
+- [x] Add download tests proving spoofed upload MIME types do not control download `media_type`
+- [x] Add tests proving download responses remain attachments
+- [x] Add tests for explicit host/CORS rejection behavior
 - [ ] Add config-level tests for nginx throttling coverage on protected routes
 
 ---

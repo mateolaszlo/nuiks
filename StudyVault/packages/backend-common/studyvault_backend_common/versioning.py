@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, FastAPI
 from fastapi_versioning import VersionedFastAPI
+from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .errors import register_error_handlers
 from .logging import install_request_logging
@@ -12,6 +16,20 @@ _DOCS_ROUTE_PATHS = {
     "/redoc",
     "/openapi.json",
 }
+
+
+def derive_public_origin_and_hosts(issuer_url: str) -> tuple[str | None, list[str]]:
+    parsed = urlsplit(issuer_url)
+    if not parsed.scheme or not parsed.netloc or not parsed.hostname:
+        return None, ["testserver"]
+
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    allowed_hosts = [parsed.hostname]
+    if parsed.netloc not in allowed_hosts:
+        allowed_hosts.append(parsed.netloc)
+    if "testserver" not in allowed_hosts:
+        allowed_hosts.append("testserver")
+    return origin, allowed_hosts
 
 
 def _remove_generated_docs_routes(app: FastAPI) -> None:
@@ -54,6 +72,8 @@ def build_versioned_service_app(
     public_router: APIRouter,
     internal_router: APIRouter | None = None,
     openapi_tags: list[dict[str, str]] | None = None,
+    allowed_hosts: list[str] | None = None,
+    allowed_origins: list[str] | None = None,
 ) -> FastAPI:
     public_app = FastAPI(
         title=title,
@@ -76,6 +96,16 @@ def build_versioned_service_app(
     )
     _remove_generated_docs_routes(app)
     register_error_handlers(app)
+    if allowed_hosts:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+    if allowed_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     install_request_logging(app)
 
     if internal_router is not None:

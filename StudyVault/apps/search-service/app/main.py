@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from studyvault_backend_common.logging import configure_logging
 from studyvault_backend_common.startup import retry_startup
-from studyvault_backend_common.versioning import build_versioned_service_app
+from studyvault_backend_common.versioning import build_versioned_service_app, derive_public_origin_and_hosts
 
 from app.api.routes import build_internal_router, build_public_router
 from app.core.config import get_settings
@@ -26,11 +26,14 @@ def create_app(repository=None) -> FastAPI:
         retry_startup(repository.ensure_indexes)
 
     service = SearchService(repository)
+    public_origin, allowed_hosts = derive_public_origin_and_hosts(settings.keycloak_issuer_url)
     app = build_versioned_service_app(
         title="StudyVault Search Service",
         service_name=settings.service_name,
         public_router=build_public_router(service),
         internal_router=build_internal_router(service),
+        allowed_hosts=allowed_hosts,
+        allowed_origins=[public_origin] if public_origin is not None else None,
         openapi_tags=[
             {
                 "name": "Search",
