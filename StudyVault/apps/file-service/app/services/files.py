@@ -205,6 +205,30 @@ class FileService:
         )
 
     @staticmethod
+    def _log_downstream_sync_failure(
+        *,
+        user: AuthenticatedUser,
+        file_record: FileRecord,
+        downstream_service: str,
+        operation: str,
+        exc: ServiceClientError,
+    ) -> None:
+        logger.error(
+            "downstream sync failed",
+            event_name="downstream_sync_failed",
+            event_category="downstream",
+            file_id=file_record.file_id,
+            owner_id=file_record.owner_id,
+            owner_username=user.username,
+            owner_email=user.email,
+            filename=file_record.filename,
+            downstream_service=downstream_service,
+            operation=operation,
+            status="failed",
+            error=str(exc),
+        )
+
+    @staticmethod
     def _validate_upload_metadata(*, filename: str, tags: list[str]) -> list[str]:
         if not filename.strip():
             raise api_error(
@@ -428,18 +452,45 @@ class FileService:
 
         try:
             await self.downstream.publish_catalog(file_record, bearer_token=user.token or "")
-            logger.info(
-                "downstream sync succeeded",
-                event_name="downstream_sync_succeeded",
-                event_category="downstream",
-                file_id=file_record.file_id,
-                owner_id=file_record.owner_id,
-                owner_username=user.username,
-                owner_email=user.email,
+        except ServiceClientError as exc:
+            self._log_downstream_sync_failure(
+                user=user,
+                file_record=file_record,
                 downstream_service="catalog-service",
-                status="succeeded",
+                operation="publish_catalog",
+                exc=exc,
             )
+            raise api_error(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Upload stored, but downstream synchronization failed",
+                code="downstream_sync_failed",
+                category="unavailable",
+                recoverable=False,
+            ) from exc
+
+        logger.info(
+            "downstream sync succeeded",
+            event_name="downstream_sync_succeeded",
+            event_category="downstream",
+            file_id=file_record.file_id,
+            owner_id=file_record.owner_id,
+            owner_username=user.username,
+            owner_email=user.email,
+            downstream_service="catalog-service",
+            status="succeeded",
+        )
+
+        try:
             await self.downstream.publish_search(file_record, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            self._log_downstream_sync_failure(
+                user=user,
+                file_record=file_record,
+                downstream_service="search-service",
+                operation="publish_search",
+                exc=exc,
+            )
+        else:
             logger.info(
                 "downstream sync succeeded",
                 event_name="downstream_sync_succeeded",
@@ -451,10 +502,21 @@ class FileService:
                 downstream_service="search-service",
                 status="succeeded",
             )
+
+        try:
             await self.downstream.publish_activity(
                 ItemActivityEvent.from_file(file_record, action="file_uploaded"),
                 bearer_token=user.token or "",
             )
+        except ServiceClientError as exc:
+            self._log_downstream_sync_failure(
+                user=user,
+                file_record=file_record,
+                downstream_service="activity-service",
+                operation="publish_activity",
+                exc=exc,
+            )
+        else:
             logger.info(
                 "downstream sync succeeded",
                 event_name="downstream_sync_succeeded",
@@ -466,27 +528,6 @@ class FileService:
                 downstream_service="activity-service",
                 status="succeeded",
             )
-        except ServiceClientError as exc:
-            logger.error(
-                "downstream sync failed",
-                event_name="downstream_sync_failed",
-                event_category="downstream",
-                file_id=file_record.file_id,
-                owner_id=file_record.owner_id,
-                owner_username=user.username,
-                owner_email=user.email,
-                filename=file_record.filename,
-                downstream_service="unknown",
-                status="failed",
-                error=str(exc),
-            )
-            raise api_error(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Upload stored, but downstream synchronization failed",
-                code="downstream_sync_failed",
-                category="unavailable",
-                recoverable=False,
-            ) from exc
 
         logger.info(
             "file upload succeeded",

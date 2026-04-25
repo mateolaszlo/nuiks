@@ -20,17 +20,26 @@ class FakeDownstream:
         self.activity_messages: list[str | None] = []
         self.catalog_folders: dict[str, FolderRecord] = {}
         self.move_error: ServiceClientError | None = None
+        self.publish_catalog_error: ServiceClientError | None = None
+        self.publish_search_error: ServiceClientError | None = None
+        self.publish_activity_error: ServiceClientError | None = None
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
+        if self.publish_catalog_error is not None:
+            raise self.publish_catalog_error
         self.catalog_records.append(file_record)
 
     async def publish_search(self, file_record: FileRecord, *, bearer_token: str) -> None:
+        if self.publish_search_error is not None:
+            raise self.publish_search_error
         self.search_records.append(file_record)
 
     async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
         self.search_records = [record for record in self.search_records if record.file_id != item_id]
 
     async def publish_activity(self, event, *, bearer_token: str) -> None:
+        if self.publish_activity_error is not None:
+            raise self.publish_activity_error
         self.activity_file_ids.append(event.item_id)
         self.activity_actions.append(event.action)
         self.activity_item_kinds.append(event.item_kind)
@@ -280,6 +289,82 @@ def test_file_upload_fans_out_to_all_downstream_services() -> None:
     assert downstream.activity_file_ids == [payload["file_id"]]
     assert downstream.activity_actions == ["file_uploaded"]
     assert downstream.activity_item_kinds == ["file"]
+
+
+def test_file_upload_returns_success_when_search_publish_fails_after_catalog_persists() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.publish_search_error = ServiceClientError(
+        "POST http://search.test/internal/search/index failed with status 503"
+    )
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+            data={"tags": "math"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["filename"] == "lecture.txt"
+    assert len(downstream.catalog_records) == 1
+    assert downstream.catalog_records[0].file_id == payload["file_id"]
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == [payload["file_id"]]
+    assert object_store.get(downstream.catalog_records[0].object_key) == b"hello studyvault"
+
+
+def test_file_upload_returns_success_when_activity_publish_fails_after_catalog_persists() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.publish_activity_error = ServiceClientError(
+        "POST http://activity.test/internal/activity/events failed with status 503"
+    )
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(downstream.catalog_records) == 1
+    assert downstream.catalog_records[0].file_id == payload["file_id"]
+    assert len(downstream.search_records) == 1
+    assert downstream.activity_file_ids == []
+    assert object_store.get(downstream.catalog_records[0].object_key) == b"hello studyvault"
+
+
+def test_file_upload_returns_failure_when_catalog_publish_fails() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.publish_catalog_error = ServiceClientError(
+        "POST http://catalog.test/internal/catalog/files failed with status 503"
+    )
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/files",
+            headers={"authorization": "Bearer fake"},
+            files={"file": ("lecture.txt", b"hello studyvault", "text/plain")},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Upload stored, but downstream synchronization failed"
+    assert response.json()["code"] == "downstream_sync_failed"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
 
 
 def test_file_old_unversioned_public_path_returns_not_found() -> None:

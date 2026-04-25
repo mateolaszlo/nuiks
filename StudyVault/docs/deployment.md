@@ -207,6 +207,8 @@ Use these Cloudflare settings:
 
 StudyVault does not terminate TLS on the VM itself. Cloudflare provides the browser-facing HTTPS layer and forwards traffic to the origin on port `8080`. The nginx config must preserve the browser-facing HTTPS scheme from Cloudflare headers rather than trusting the origin hop alone, otherwise Keycloak can reject login with `ssl_required`.
 
+If uploads or other same-origin API calls show a browser warning such as `Content-Security-Policy-Report-Only ... connect-src 'none'`, verify the header at the public hostname before changing the app stack. The checked-in nginx config in `infra/nginx/nginx.conf` serves an enforcing CSP with `connect-src 'self'`, so a stricter report-only header usually means Cloudflare or another edge proxy is injecting it. Confirm the public response headers for both `/` and `/api/v1/files`, and make sure any edge-managed CSP or CSP report-only policy still allows same-origin `connect-src` requests.
+
 ### 4. Start the Stack
 
 ```bash

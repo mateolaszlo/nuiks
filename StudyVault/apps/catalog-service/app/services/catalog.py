@@ -191,7 +191,23 @@ class CatalogService:
             path_depth=created.path_depth,
             status="succeeded",
         )
-        self._publish_search_item(DriveItem.from_folder(created), bearer_token=user.token)
+        try:
+            self._publish_search_item(DriveItem.from_folder(created), bearer_token=user.token)
+        except Exception as exc:
+            logger.error(
+                "catalog folder search publish failed after persistence",
+                event_name="catalog_folder_search_publish_failed",
+                event_category="catalog",
+                operation="create_folder",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=created.folder_id,
+                parent_folder_id=created.parent_folder_id,
+                folder_name=created.name,
+                status="failed",
+                error=str(exc),
+            )
         return created
 
     def rename_folder(self, user: AuthenticatedUser, folder_id: str, request: RenameItemRequest) -> FolderRecord:

@@ -10,8 +10,11 @@ class FakeSearchPublisher:
     def __init__(self) -> None:
         self.published_items: list[DriveItem] = []
         self.deleted_item_ids: list[str] = []
+        self.publish_error: Exception | None = None
 
     async def publish_search_item(self, item: DriveItem, *, bearer_token: str) -> None:
+        if self.publish_error is not None:
+            raise self.publish_error
         self.published_items.append(item)
 
     async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
@@ -2644,6 +2647,27 @@ def test_catalog_create_folder_publishes_folder_search_item() -> None:
     assert published.kind == "folder"
     assert published.name == "Projects"
     assert published.item_id == response.json()["folder_id"]
+
+
+def test_catalog_create_folder_returns_success_when_search_publish_fails_after_persist() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    downstream = FakeSearchPublisher()
+    downstream.publish_error = RuntimeError("search unavailable")
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/catalog/folders",
+            json={"name": "Projects"},
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["name"] == "Projects"
+    assert repository.get_folder("test-user", payload["folder_id"]) is not None
+    assert downstream.published_items == []
 
 
 def test_catalog_rename_folder_publishes_updated_folder_search_item() -> None:
