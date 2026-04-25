@@ -180,6 +180,28 @@ function getAdminErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getBootstrapErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as { message?: unknown; error?: unknown; detail?: unknown };
+    if (typeof candidate.message === "string" && candidate.message.trim()) {
+      return candidate.message;
+    }
+    if (typeof candidate.error === "string" && candidate.error.trim()) {
+      return candidate.error;
+    }
+    if (typeof candidate.detail === "string" && candidate.detail.trim()) {
+      return candidate.detail;
+    }
+  }
+  return "Authentication setup failed. Retry in a moment.";
+}
+
 function buildDriveItemPath(breadcrumbs: BreadcrumbEntry[], item: DriveItem): string {
   return [...breadcrumbs.map((entry) => entry.name), item.name].join(" / ");
 }
@@ -819,7 +841,7 @@ export default function App() {
         }
       } catch (bootstrapError) {
         setAuthState("error");
-        setError(bootstrapError instanceof Error ? bootstrapError.message : String(bootstrapError));
+        setError(getBootstrapErrorMessage(bootstrapError));
       }
     }
 

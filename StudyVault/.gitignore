@@ -11,3 +11,4 @@ dist/
 !.env.test
 playwright-report/
 test-results/
+apps/frontend/tests/e2e/.auth/

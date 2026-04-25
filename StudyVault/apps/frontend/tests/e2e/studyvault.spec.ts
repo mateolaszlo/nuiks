@@ -1,36 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:8080";
-const ELASTICSEARCH_URL = process.env.ELASTICSEARCH_URL ?? "http://localhost:9200";
-
-async function loginAs(page: Page, username: string, password: string) {
-  await page.goto(BASE_URL);
-  const loginButton = page.getByRole("button", { name: "Log In With Keycloak" });
-  const usernameInput = page.locator("#username");
-  const dashboardIdentity = page.getByText(username, { exact: true }).first();
-  const adminConsole = page.getByText("Admin Console").first();
-
-  const entryState = await Promise.any([
-    loginButton.waitFor({ state: "visible", timeout: 30_000 }).then(() => "login"),
-    usernameInput.waitFor({ state: "visible", timeout: 30_000 }).then(() => "keycloak"),
-    dashboardIdentity.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
-    adminConsole.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
-  ]);
-
-  if (entryState === "ready") {
-    return;
-  }
-  if (entryState === "login") {
-    await expect(loginButton).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
-    await loginButton.click();
-  }
-  await expect(page).toHaveURL(/\/realms\/studyvault\//, { timeout: 30_000 });
-  await expect(usernameInput).toBeVisible();
-  await usernameInput.fill(username);
-  await page.locator("#password").fill(password);
-  await page.getByRole("button", { name: /sign in/i }).click();
-}
+import {
+  ADMIN_STORAGE_STATE,
+  DEMO_STORAGE_STATE,
+  ELASTICSEARCH_URL,
+  loginAs,
+  openAdminWorkspace,
+  openDriveWorkspace,
+} from "./helpers";
 
 test("login, upload, search, activity, download, and log ingestion", async ({ page, request }) => {
   const uniqueId = Date.now().toString();
@@ -109,14 +86,16 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
     .toBeGreaterThan(0);
 });
 
+test.describe("authenticated drive workspace", () => {
+  test.use({ storageState: DEMO_STORAGE_STATE });
+
 test("file can be dragged into a folder tile", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `folder-${uniqueId}`;
   const filename = `drag-${uniqueId}.txt`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -146,8 +125,7 @@ test("external files can be dropped onto the current drive surface and enter the
   const filename = `external-drop-${uniqueId}.txt`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -192,8 +170,7 @@ test("external files can be dropped onto a folder tile and upload into that fold
   const filenames = [`tile-drop-a-${uniqueId}.txt`, `tile-drop-b-${uniqueId}.txt`];
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -260,8 +237,7 @@ test("external files can be dropped onto a breadcrumb and upload into that ances
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
   const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(parentFolderName);
@@ -317,8 +293,7 @@ test("duplicate folder creation stays local to the create-folder panel", async (
   const uniqueId = Date.now().toString();
   const folderName = `Projects-${uniqueId}`;
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -339,8 +314,7 @@ test("same-name file move conflict stays local to the move form", async ({ page 
   const filename = `notes-${uniqueId}.txt`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -390,8 +364,7 @@ test("single click selects a folder and double click navigates into it", async (
   const folderName = `single-click-${uniqueId}`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "New Folder" }).click();
   await page.getByLabel("Folder name").fill(folderName);
@@ -413,8 +386,7 @@ test("single click selects a folder and double click navigates into it", async (
 });
 
 test("new folder action moved into drive header and sidebar can collapse", async ({ page }) => {
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
   const sidebar = page.locator("aside.sidebar").first();
@@ -439,8 +411,7 @@ test("context menu info opens details and selection overrides activity panel", a
   const tag = `info-tag-${uniqueId}`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -470,8 +441,7 @@ test("long file names expose full value in grid tooltip and details panel", asyn
   const filename = `very-long-studyvault-file-name-${uniqueId}-with-extra-description-to-test-hover-expansion-and-tooltips.txt`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -492,9 +462,7 @@ test("long file names expose full value in grid tooltip and details panel", asyn
 });
 
 test("refresh keeps the existing authenticated session", async ({ page }) => {
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.reload();
 
@@ -503,11 +471,13 @@ test("refresh keeps the existing authenticated session", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toHaveCount(0);
 });
 
-test("admin login shows admin indicator", async ({ page }) => {
-  await loginAs(page, "admin", "admin123");
+});
 
-  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Users" }) }).first()).toBeVisible();
+test.describe("authenticated admin workspace", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
+test("admin login shows admin indicator", async ({ page }) => {
+  await openAdminWorkspace(page);
   await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
 
   const usersNav = page.getByRole("button", { name: "Users" }).first();
@@ -530,6 +500,11 @@ test("admin login shows admin indicator", async ({ page }) => {
   await expect(detailToggle).toHaveAttribute("aria-expanded", "true");
 });
 
+});
+
+test.describe("authenticated drive uploads and recovery", () => {
+  test.use({ storageState: DEMO_STORAGE_STATE });
+
 test("multiple files can be queued from the picker and complete in the shared upload queue", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const firstFilename = `queue-a-${uniqueId}.txt`;
@@ -537,8 +512,7 @@ test("multiple files can be queued from the picker and complete in the shared up
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
   const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles([
     {
@@ -594,8 +568,7 @@ test("failed queued uploads stay visible with retry and dismiss actions", async 
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -643,8 +616,7 @@ test("oversized uploads show a friendly message when nginx returns an HTML 413 p
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -674,9 +646,7 @@ test("drive bootstrap survives activity service failure", async ({ page }) => {
     });
   });
 
-  await loginAs(page, "demo", "demo123");
-
-  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
   await expect(page.locator(".error-banner").filter({ hasText: "Drive load failed" })).toHaveCount(0);
 });
 
@@ -700,8 +670,7 @@ test("trash view survives activity service failure", async ({ page }) => {
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   failActivity = true;
   await page.getByRole("button", { name: "Trash" }).click();
@@ -734,8 +703,7 @@ test("successful uploads stay successful when activity refresh fails", async ({ 
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   failActivity = true;
   await page.locator("#upload-file").setInputFiles({
@@ -754,6 +722,11 @@ test("successful uploads stay successful when activity refresh fails", async ({ 
   await expect(page.locator(".upload-queue-row").filter({ hasText: `Upload failed:` })).toHaveCount(0);
 });
 
+});
+
+test.describe("authenticated admin recovery", () => {
+  test.use({ storageState: ADMIN_STORAGE_STATE });
+
 test("admin dashboard stays usable when one admin section fails", async ({ page }) => {
   await page.route("**/api/v1/admin/errors**", async (route) => {
     await route.fulfill({
@@ -768,9 +741,7 @@ test("admin dashboard stays usable when one admin section fails", async ({ page 
     });
   });
 
-  await loginAs(page, "admin", "admin123");
-
-  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await openAdminWorkspace(page);
   await expect(page.getByText("Some admin data could not be refreshed: Errors. Displayed data may be incomplete.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Audit Events" })).toBeVisible();
@@ -797,15 +768,18 @@ test("admin action failures stay local to the users section", async ({ page }) =
     });
   });
 
-  await loginAs(page, "admin", "admin123");
-
-  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await openAdminWorkspace(page);
   const usersSection = page.locator(".content-surface").filter({ has: page.getByRole("heading", { name: "Users" }) }).first();
   await usersSection.getByRole("button", { name: "Reset Password" }).first().click();
 
   await expect(usersSection.locator(".notice-card-warning")).toContainText("Password reset backend unavailable. Service keycloak • Operation reset-password. Try again in a moment.");
   await expect(page.locator(".error-banner")).toHaveCount(0);
 });
+
+});
+
+test.describe("authenticated drive network and auth recovery", () => {
+  test.use({ storageState: DEMO_STORAGE_STATE });
 
 test("upload network failures show a connection-oriented message", async ({ page }) => {
   const uniqueId = Date.now().toString();
@@ -821,8 +795,7 @@ test("upload network failures show a connection-oriented message", async ({ page
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.locator("#upload-file").setInputFiles({
     name: filename,
@@ -853,8 +826,7 @@ test("search failures stay local to the search form and preserve the query", asy
     });
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   await page.getByPlaceholder("Search files and folders").fill(query);
   await page.getByRole("button", { name: "Search" }).click();
@@ -884,8 +856,7 @@ test("auth api failures return the user to a relogin-oriented screen", async ({ 
     await route.fallback();
   });
 
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo")).toBeVisible({ timeout: 60_000 });
+  await openDriveWorkspace(page);
 
   failNextSearch = true;
   await page.getByPlaceholder("Search files and folders").fill("trigger-auth-recovery");
@@ -893,4 +864,6 @@ test("auth api failures return the user to a relogin-oriented screen", async ({ 
 
   await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible();
   await expect(page.getByText("Your session expired or became invalid. Sign in again.")).toBeVisible();
+});
+
 });

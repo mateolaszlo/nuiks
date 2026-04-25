@@ -127,6 +127,7 @@ docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 If your user needs elevated permissions, use `sudo docker compose ...`.
+Use `.env.example` as the template for the runtime `.env` file. Do not run Compose with `.env.test`; it is a fake-host test fixture file for Python tests and will break inter-container URLs like `catalog-service` and `keycloak`.
 
 Run smoke tests:
 
@@ -169,6 +170,8 @@ PLAYWRIGHT_BASE_URL=http://localhost:8080 \
 ELASTICSEARCH_URL=http://localhost:9200 \
 npx playwright test tests/e2e/studyvault.spec.ts
 ```
+
+The Playwright run now captures reusable authenticated storage state for the seeded `demo` and `admin` accounts before the main specs execute. That setup runs automatically; you do not need to log in manually between tests.
 
 Useful options:
 
