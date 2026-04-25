@@ -195,6 +195,17 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     project_root = Path(__file__).resolve().parents[2]
     nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
 
+    assert 'add_header Content-Security-Policy "default-src \'self\';' in nginx_contents
+    assert "base-uri 'self';" in nginx_contents
+    assert "object-src 'none';" in nginx_contents
+    assert "form-action 'self';" in nginx_contents
+    assert "frame-ancestors 'self';" in nginx_contents
+    assert "frame-src 'self';" in nginx_contents
+    assert "img-src 'self' data:;" in nginx_contents
+    assert "font-src 'self' data:;" in nginx_contents
+    assert "connect-src 'self';" in nginx_contents
+    assert "script-src 'self' 'unsafe-inline';" in nginx_contents
+    assert "style-src 'self' 'unsafe-inline'" in nginx_contents
     assert 'add_header X-Content-Type-Options "nosniff" always;' in nginx_contents
     assert 'add_header X-Frame-Options "SAMEORIGIN" always;' in nginx_contents
     assert 'add_header Referrer-Policy "strict-origin-when-cross-origin" always;' in nginx_contents

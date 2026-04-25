@@ -741,7 +741,7 @@ Deferred to the next slice:
 - [x] Keep internal `/internal/...` routes on their existing internal-token model
 - [x] Reject tokens with missing or mismatched audience claims as unauthorized
 - [x] Add a browser-facing security header baseline at the nginx gateway
-- [ ] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
+- [x] Add `Content-Security-Policy` for the current same-origin frontend and proxied Keycloak paths
 - [x] Add `X-Content-Type-Options: nosniff`
 - [ ] Add `X-Frame-Options: DENY` or equivalent CSP `frame-ancestors 'none'`
 - [x] Add `Referrer-Policy: strict-origin-when-cross-origin`
@@ -772,8 +772,8 @@ Deferred to the next slice:
 
 ### 6.11.2 Browser response hardening
 
-- [ ] Add a CSP that works with the current frontend assets, Keycloak login pages, and proxied static resources
-- [ ] Validate the CSP against `/`, `/realms/`, `/resources/`, and current frontend asset loading before considering the header complete
+- [x] Add a CSP that works with the current frontend assets, Keycloak login pages, and proxied static resources
+- [x] Validate the CSP against `/`, `/realms/`, `/resources/`, and current frontend asset loading before considering the header complete
 - [x] Add `nosniff` at the gateway for browser-facing responses
 - [x] Add anti-framing protection at the gateway
 - [x] Use `X-Frame-Options: SAMEORIGIN` until a stricter CSP-compatible framing policy can replace it without breaking silent SSO
