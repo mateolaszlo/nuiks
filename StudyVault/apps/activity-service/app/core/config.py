@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
+from studyvault_backend_common.auth import DEFAULT_PUBLIC_TOKEN_AUDIENCE, resolve_public_token_audience
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     keycloak_issuer_url: str = "http://localhost:8080/realms/studyvault"
     keycloak_jwks_url: str = "http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs"
     keycloak_client_id: str = "studyvault-frontend"
+    public_token_audience: str = DEFAULT_PUBLIC_TOKEN_AUDIENCE
     keycloak_admin_username: str = "admin"
     keycloak_admin_password: str = "admin"
     activity_mongodb_url: str = "mongodb://mongodb:27017"
@@ -49,6 +51,10 @@ def _resolve_keycloak_admin_password() -> str:
 def get_settings() -> Settings:
     return Settings(
         auth_disabled=os.environ.get("STUDYVAULT_AUTH_DISABLED", "false").lower() == "true",
+        public_token_audience=resolve_public_token_audience(
+            os.environ.get("STUDYVAULT_PUBLIC_TOKEN_AUDIENCE"),
+            fallback_client_id=os.environ.get("KEYCLOAK_CLIENT_ID"),
+        ),
         internal_token=os.environ.get(
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",

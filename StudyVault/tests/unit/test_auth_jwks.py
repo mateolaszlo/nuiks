@@ -7,13 +7,33 @@ import pytest
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
+from studyvault_backend_common.auth import (
+    DEFAULT_PUBLIC_TOKEN_AUDIENCE,
+    AuthSettings,
+    build_auth_dependency,
+    resolve_public_token_audience,
+)
 from studyvault_backend_common.models import STUDYVAULT_ADMIN_ROLE
 
 
 class FakeJwksCache:
     async def get(self, jwks_url: str) -> dict[str, Any]:
         return {"keys": [{"kid": "test-kid", "alg": "RS256", "kty": "RSA"}]}
+
+
+def test_resolve_public_token_audience_prefers_explicit_setting() -> None:
+    assert (
+        resolve_public_token_audience("studyvault-api", fallback_client_id="studyvault-frontend")
+        == "studyvault-api"
+    )
+
+
+def test_resolve_public_token_audience_falls_back_to_client_id() -> None:
+    assert resolve_public_token_audience(None, fallback_client_id="studyvault-frontend") == "studyvault-frontend"
+
+
+def test_resolve_public_token_audience_uses_default_when_nothing_is_configured() -> None:
+    assert resolve_public_token_audience(None) == DEFAULT_PUBLIC_TOKEN_AUDIENCE
 
 
 def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.MonkeyPatch) -> None:

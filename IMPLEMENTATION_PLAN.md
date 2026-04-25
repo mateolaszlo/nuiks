@@ -761,7 +761,7 @@ Deferred to the next slice:
 ### 6.11.1 JWT audience enforcement
 
 - [x] Update the shared auth helper so public API JWT validation requires an expected audience
-- [ ] Add a shared auth setting for the expected public token audience if one is not already exposed cleanly
+- [x] Add a shared auth setting for the expected public token audience if one is not already exposed cleanly
 - [x] Default the public audience to `studyvault-frontend` unless a stronger repo-wide auth setting is introduced
 - [x] Update file-service public routes to require the public audience
 - [x] Update catalog-service public routes to require the public audience

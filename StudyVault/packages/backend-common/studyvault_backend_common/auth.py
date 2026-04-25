@@ -17,6 +17,7 @@ from .models import AuthenticatedUser
 
 security = HTTPBearer(auto_error=False)
 ALLOWED_JWT_ALGORITHMS = ("RS256",)
+DEFAULT_PUBLIC_TOKEN_AUDIENCE = "studyvault-frontend"
 
 
 class AuthSettings(BaseModel):
@@ -24,6 +25,14 @@ class AuthSettings(BaseModel):
     audience: str | None = None
     jwks_url: str
     auth_disabled: bool = False
+
+
+def resolve_public_token_audience(
+    configured_audience: str | None,
+    *,
+    fallback_client_id: str | None = None,
+) -> str:
+    return configured_audience or fallback_client_id or DEFAULT_PUBLIC_TOKEN_AUDIENCE
 
 
 class JwksCache:
