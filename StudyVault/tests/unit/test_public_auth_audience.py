@@ -80,10 +80,12 @@ def test_public_services_validate_jwt_audience(
         decode_calls.append(kwargs)
         return {
             "sub": "user-1",
+            "iss": "http://keycloak.test/realms/studyvault",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
             "aud": "studyvault-frontend",
+            "azp": "studyvault-frontend",
         }
 
     monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
@@ -95,8 +97,7 @@ def test_public_services_validate_jwt_audience(
         requester(client)
 
     assert decode_calls, f"expected jwt.decode to be called for {service_name}"
-    assert decode_calls[0]["audience"] == "studyvault-frontend"
-    assert decode_calls[0]["options"]["verify_aud"] is True
+    assert decode_calls[0]["options"]["verify_aud"] is False
 
 
 def test_public_services_use_explicit_public_token_audience_override(
@@ -116,10 +117,12 @@ def test_public_services_use_explicit_public_token_audience_override(
         decode_calls.append(kwargs)
         return {
             "sub": "user-1",
+            "iss": "http://keycloak.test/realms/studyvault",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
             "aud": "studyvault-api",
+            "azp": "studyvault-frontend",
         }
 
     monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
@@ -131,4 +134,40 @@ def test_public_services_use_explicit_public_token_audience_override(
         client.get("/api/search?q=math", headers={"authorization": "Bearer fake-token"})
 
     assert decode_calls
-    assert decode_calls[0]["audience"] == "studyvault-api"
+    assert decode_calls[0]["options"]["verify_aud"] is False
+
+
+def test_public_services_accept_matching_azp_when_audience_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
+    decode_calls: list[dict[str, Any]] = []
+
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+
+    def fake_decode(*args, **kwargs):
+        decode_calls.append(kwargs)
+        return {
+            "sub": "user-1",
+            "iss": "http://keycloak.test/realms/studyvault",
+            "email": "demo@example.com",
+            "preferred_username": "demo",
+            "realm_access": {"roles": ["user"]},
+            "aud": "account",
+            "azp": "studyvault-frontend",
+        }
+
+    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", fake_decode)
+
+    module = load_service_module("catalog")
+    app = module.create_app(repository=module.InMemoryCatalogRepository())
+
+    with TestClient(app) as client:
+        response = client.get("/api/catalog/files", headers={"authorization": "Bearer fake-token"})
+
+    assert response.status_code == 200
+    assert decode_calls

@@ -40,6 +40,19 @@
       "webOrigins": [
         "__STUDYVAULT_FRONTEND_WEB_ORIGIN__"
       ],
+      "protocolMappers": [
+        {
+          "name": "frontend-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "studyvault-frontend",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       }

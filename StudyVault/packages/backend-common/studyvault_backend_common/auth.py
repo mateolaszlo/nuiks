@@ -11,18 +11,20 @@ from jose import jwt
 from pydantic import BaseModel
 
 from .errors import api_error
-from .logging import bind_authenticated_user
+from .logging import bind_authenticated_user, get_logger
 from .models import AuthenticatedUser
 
 
 security = HTTPBearer(auto_error=False)
 ALLOWED_JWT_ALGORITHMS = ("RS256",)
 DEFAULT_PUBLIC_TOKEN_AUDIENCE = "studyvault-frontend"
+logger = get_logger(__name__)
 
 
 class AuthSettings(BaseModel):
     issuer: str
     audience: str | None = None
+    client_id: str | None = None
     jwks_url: str
     auth_disabled: bool = False
 
@@ -75,6 +77,35 @@ def _build_user(claims: dict[str, Any], token: str | None = None) -> Authenticat
     )
 
 
+def _normalize_audience_values(value: Any) -> list[str]:
+    if isinstance(value, str) and value:
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return [candidate for candidate in value if isinstance(candidate, str) and candidate]
+    return []
+
+
+def _log_public_token_rejection(
+    *,
+    reason: str,
+    issuer: str | None,
+    audience: Any,
+    authorized_party: Any,
+    token_kid: Any,
+) -> None:
+    logger.warning(
+        "public token rejected",
+        event_name="public_token_rejected",
+        event_category="auth",
+        reason=reason,
+        issuer=issuer,
+        audience=audience,
+        authorized_party=authorized_party,
+        token_kid=token_kid,
+        status="rejected",
+    )
+
+
 def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Callable[..., Awaitable[AuthenticatedUser]]:
     async def dependency(
         credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
@@ -103,9 +134,17 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
             )
 
         token = credentials.credentials
+        unverified_header: dict[str, Any] | None = None
         try:
             unverified_header = jwt.get_unverified_header(token)
         except Exception as exc:  # pragma: no cover - exact library exception is not important
+            _log_public_token_rejection(
+                reason="malformed_header",
+                issuer=None,
+                audience=None,
+                authorized_party=None,
+                token_kid=None,
+            )
             raise api_error(
                 status_code=401,
                 detail="Invalid token",
@@ -113,6 +152,13 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
                 category="auth",
             ) from exc
         if unverified_header.get("alg") not in ALLOWED_JWT_ALGORITHMS:
+            _log_public_token_rejection(
+                reason="invalid_algorithm",
+                issuer=None,
+                audience=None,
+                authorized_party=None,
+                token_kid=unverified_header.get("kid"),
+            )
             raise api_error(
                 status_code=401,
                 detail="Invalid token",
@@ -124,6 +170,13 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
         keys = jwks.get("keys", [])
         key = next((candidate for candidate in keys if candidate.get("kid") == unverified_header.get("kid")), None)
         if key is None:
+            _log_public_token_rejection(
+                reason="unknown_signing_key",
+                issuer=None,
+                audience=None,
+                authorized_party=None,
+                token_kid=unverified_header.get("kid"),
+            )
             raise api_error(
                 status_code=401,
                 detail="Unknown signing key",
@@ -136,17 +189,61 @@ def build_auth_dependency(settings_provider: Callable[[], AuthSettings]) -> Call
                 token,
                 key,
                 algorithms=list(ALLOWED_JWT_ALGORITHMS),
-                issuer=settings.issuer,
-                options={"verify_aud": True},
-                audience=settings.audience,
+                options={"verify_aud": False, "verify_iss": False},
             )
         except Exception as exc:  # pragma: no cover - exact library exception is not important
+            _log_public_token_rejection(
+                reason="decode_failed",
+                issuer=None,
+                audience=None,
+                authorized_party=None,
+                token_kid=unverified_header.get("kid"),
+            )
             raise api_error(
                 status_code=401,
                 detail="Invalid token",
                 code="invalid_token",
                 category="auth",
             ) from exc
+
+        claims_issuer = claims.get("iss")
+        if claims_issuer != settings.issuer:
+            _log_public_token_rejection(
+                reason="issuer_mismatch",
+                issuer=claims_issuer if isinstance(claims_issuer, str) else None,
+                audience=claims.get("aud"),
+                authorized_party=claims.get("azp"),
+                token_kid=unverified_header.get("kid"),
+            )
+            raise api_error(
+                status_code=401,
+                detail="Invalid token",
+                code="invalid_token",
+                category="auth",
+            )
+
+        accepted_audiences = {settings.audience}
+        if settings.client_id:
+            accepted_audiences.add(settings.client_id)
+        token_audiences = set(_normalize_audience_values(claims.get("aud")))
+        authorized_party = claims.get("azp")
+        if not (
+            token_audiences.intersection(accepted_audiences)
+            or (isinstance(authorized_party, str) and authorized_party in accepted_audiences)
+        ):
+            _log_public_token_rejection(
+                reason="audience_mismatch",
+                issuer=claims_issuer,
+                audience=claims.get("aud"),
+                authorized_party=authorized_party,
+                token_kid=unverified_header.get("kid"),
+            )
+            raise api_error(
+                status_code=401,
+                detail="Invalid token",
+                code="invalid_token",
+                category="auth",
+            )
 
         user = _build_user(claims, token)
         bind_authenticated_user(user_id=user.subject, username=user.username, email=user.email)

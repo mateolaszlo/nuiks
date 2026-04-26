@@ -178,6 +178,9 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
             "sub": "admin-user",
+            "iss": "http://keycloak.test/realms/studyvault",
+            "aud": "studyvault-frontend",
+            "azp": "studyvault-frontend",
             "email": "admin@example.com",
             "preferred_username": "admin",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
@@ -269,6 +272,9 @@ def test_admin_audit_rejects_limit_above_max(monkeypatch: pytest.MonkeyPatch) ->
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
             "sub": "admin-user",
+            "iss": "http://keycloak.test/realms/studyvault",
+            "aud": "studyvault-frontend",
+            "azp": "studyvault-frontend",
             "email": "admin@example.com",
             "preferred_username": "admin",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
@@ -306,6 +312,9 @@ def test_admin_errors_rejects_limit_below_one(monkeypatch: pytest.MonkeyPatch) -
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
             "sub": "admin-user",
+            "iss": "http://keycloak.test/realms/studyvault",
+            "aud": "studyvault-frontend",
+            "azp": "studyvault-frontend",
             "email": "admin@example.com",
             "preferred_username": "admin",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},

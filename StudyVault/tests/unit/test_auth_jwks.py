@@ -48,6 +48,9 @@ def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.Monke
         decode_calls["kwargs"] = kwargs
         return {
             "sub": "user-1",
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "studyvault-frontend",
+            "azp": "studyvault-frontend",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user"]},
@@ -60,6 +63,7 @@ def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.Monke
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -77,8 +81,8 @@ def test_auth_dependency_builds_user_from_valid_claims(monkeypatch: pytest.Monke
     assert response.json()["subject"] == "user-1"
     assert response.json()["roles"] == ["user"]
     assert decode_calls["kwargs"]["algorithms"] == ["RS256"]
-    assert decode_calls["kwargs"]["audience"] == "studyvault-frontend"
-    assert decode_calls["kwargs"]["options"]["verify_aud"] is True
+    assert decode_calls["kwargs"]["options"]["verify_aud"] is False
+    assert decode_calls["kwargs"]["options"]["verify_iss"] is False
 
 
 def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,6 +102,7 @@ def test_auth_dependency_rejects_invalid_token(monkeypatch: pytest.MonkeyPatch) 
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -138,6 +143,7 @@ def test_auth_dependency_rejects_malformed_token_header(monkeypatch: pytest.Monk
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -161,6 +167,8 @@ def test_auth_dependency_rejects_token_missing_subject_claim(monkeypatch: pytest
     monkeypatch.setattr(
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "studyvault-frontend",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user"]},
@@ -172,6 +180,7 @@ def test_auth_dependency_rejects_token_missing_subject_claim(monkeypatch: pytest
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -205,6 +214,7 @@ def test_auth_dependency_rejects_unexpected_header_algorithm(monkeypatch: pytest
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -224,6 +234,7 @@ def test_auth_dependency_rejects_missing_bearer_token() -> None:
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -248,6 +259,7 @@ def test_auth_dependency_rejects_unknown_signing_key(monkeypatch: pytest.MonkeyP
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -270,6 +282,8 @@ def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
             "sub": "admin-1",
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "studyvault-frontend",
             "email": "admin@example.com",
             "preferred_username": "admin",
             "realm_access": {"roles": ["user", STUDYVAULT_ADMIN_ROLE]},
@@ -281,6 +295,7 @@ def test_auth_dependency_preserves_admin_role(monkeypatch: pytest.MonkeyPatch) -
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -306,6 +321,8 @@ def test_auth_dependency_binds_identity_context(monkeypatch: pytest.MonkeyPatch)
         "studyvault_backend_common.auth.jwt.decode",
         lambda *args, **kwargs: {
             "sub": "user-42",
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "studyvault-frontend",
             "email": "demo@example.com",
             "preferred_username": "demo",
             "realm_access": {"roles": ["user"]},
@@ -317,6 +334,7 @@ def test_auth_dependency_binds_identity_context(monkeypatch: pytest.MonkeyPatch)
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -334,6 +352,7 @@ def test_auth_dependency_rejects_missing_audience_configuration_when_auth_enable
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience=None,
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )
@@ -344,23 +363,64 @@ def test_auth_dependency_rejects_missing_audience_configuration_when_auth_enable
     assert str(exc.value) == "JWT audience must be configured when auth is enabled"
 
 
-def test_auth_dependency_rejects_token_with_wrong_audience(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auth_dependency_accepts_token_with_matching_azp_when_audience_differs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
     monkeypatch.setattr(
         "studyvault_backend_common.auth.jwt.get_unverified_header",
         lambda token: {"kid": "test-kid", "alg": "RS256"},
     )
-
-    def raise_decode(*args, **kwargs):
-        raise ValueError("wrong audience")
-
-    monkeypatch.setattr("studyvault_backend_common.auth.jwt.decode", raise_decode)
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "user-azp",
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "account",
+            "azp": "studyvault-frontend",
+            "preferred_username": "azp-user",
+            "realm_access": {"roles": ["user"]},
+        },
+    )
 
     dependency = build_auth_dependency(
         lambda: AuthSettings(
             issuer="http://issuer.test/realms/studyvault",
             jwks_url="http://issuer.test/certs",
             audience="studyvault-frontend",
+            client_id="studyvault-frontend",
+            auth_disabled=False,
+        )
+    )
+
+    user = asyncio.run(dependency(credentials=type("Creds", (), {"credentials": "azp-token"})()))
+
+    assert user.subject == "user-azp"
+    assert user.username == "azp-user"
+
+
+def test_auth_dependency_rejects_token_with_wrong_audience_and_azp(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("studyvault_backend_common.auth.get_jwks_cache", lambda: FakeJwksCache())
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.get_unverified_header",
+        lambda token: {"kid": "test-kid", "alg": "RS256"},
+    )
+    monkeypatch.setattr(
+        "studyvault_backend_common.auth.jwt.decode",
+        lambda *args, **kwargs: {
+            "sub": "user-bad",
+            "iss": "http://issuer.test/realms/studyvault",
+            "aud": "account",
+            "azp": "other-client",
+            "preferred_username": "bad-user",
+            "realm_access": {"roles": ["user"]},
+        },
+    )
+
+    dependency = build_auth_dependency(
+        lambda: AuthSettings(
+            issuer="http://issuer.test/realms/studyvault",
+            jwks_url="http://issuer.test/certs",
+            audience="studyvault-frontend",
+            client_id="studyvault-frontend",
             auth_disabled=False,
         )
     )

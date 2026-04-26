@@ -67,6 +67,7 @@ def build_public_router(service: CatalogService) -> APIRouter:
         lambda: AuthSettings(
             issuer=settings.keycloak_issuer_url,
             audience=settings.public_token_audience,
+            client_id=settings.keycloak_client_id,
             jwks_url=settings.keycloak_jwks_url,
             auth_disabled=settings.auth_disabled,
         )
