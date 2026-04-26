@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMON_PATH = ROOT / "packages" / "backend-common"
+TEST_ENV_FILE = ROOT / ".env.test"
 SERVICE_ROOTS = {
     "catalog": ROOT / "apps" / "catalog-service",
     "search": ROOT / "apps" / "search-service",
@@ -39,29 +40,23 @@ def load_service_module(service_name: str, module_name: str = "app.main"):
     return importlib.import_module(module_name)
 
 
+def load_test_env_values() -> dict[str, str]:
+    env_values: dict[str, str] = {}
+    for raw_line in TEST_ENV_FILE.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        if not key or not _:
+            raise ValueError(f"Invalid env assignment in {TEST_ENV_FILE}: {raw_line!r}")
+        env_values[key] = value
+    env_values["STUDYVAULT_SKIP_APP_BOOTSTRAP"] = "true"
+    return env_values
+
+
 @pytest.fixture(autouse=True)
 def test_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    env_values = {
-        "KEYCLOAK_REALM": "studyvault",
-        "KEYCLOAK_ISSUER_URL": "http://keycloak.test/realms/studyvault",
-        "KEYCLOAK_JWKS_URL": "http://keycloak.test/realms/studyvault/protocol/openid-connect/certs",
-        "KEYCLOAK_CLIENT_ID": "studyvault-frontend",
-        "STUDYVAULT_AUTH_DISABLED": "true",
-        "CATALOG_INTERNAL_URL": "http://catalog.test",
-        "SEARCH_INTERNAL_URL": "http://search.test",
-        "ACTIVITY_INTERNAL_URL": "http://activity.test",
-        "FILE_INTERNAL_URL": "http://file.test",
-        "STUDYVAULT_INTERNAL_TOKEN": "internal-test-token",
-        "CATALOG_DATABASE_URL": "sqlite+pysqlite:///:memory:",
-        "SEARCH_MONGODB_URL": "mongodb://mongodb.test:27017",
-        "ACTIVITY_MONGODB_URL": "mongodb://mongodb.test:27017",
-        "FILE_S3_ENDPOINT": "http://minio.test:9000",
-        "FILE_S3_ACCESS_KEY": "minioadmin",
-        "FILE_S3_SECRET_KEY": "minioadmin",
-        "FILE_S3_BUCKET": "studyvault-files-test",
-        "STUDYVAULT_SKIP_APP_BOOTSTRAP": "true",
-    }
-    for key, value in env_values.items():
+    for key, value in load_test_env_values().items():
         monkeypatch.setenv(key, value)
 
     yield
