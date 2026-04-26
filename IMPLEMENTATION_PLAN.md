@@ -188,6 +188,14 @@ This matters in this repository because `apps/file-service/app/services/files.py
 - restore after original parent removal falls back to root
 - purge worker deletes expired items
 
+### Completed in this run
+
+- added `apps/purge-worker/Dockerfile` so the existing purge worker can run as its own Python container
+- added `purge-worker` to `infra/docker/compose/docker-compose.yml` as an internal-only service
+- configured Compose defaults for hourly purge execution with `PURGE_RUN_MODE=loop` and `PURGE_INTERVAL_SECONDS=3600`
+- verified the worker remains unexposed to the host and uses internal URLs for catalog, file, and search calls
+- added Compose smoke coverage for the new worker service and its schedule-related environment wiring
+
 ## 4.3 Frontend E2E tests
 
 Using Playwright:
@@ -830,3 +838,30 @@ Deferred to the next slice:
 
 Revision note: expanded the implementation plan to cover desktop file drag-and-drop, a client-side upload queue, and Google Drive–style upload progress because the current repository already has the backend primitives and now mainly needs a frontend execution plan for the next UX phase.
 Revision note: updated the plan after implementation work that made folder create and file upload resilient to post-persist downstream failures, widened trusted-host handling for internal Docker Compose service calls, and changed Playwright to reuse stored auth state for seeded users so E2E runs stop tripping gateway auth throttling.
+
+
+## 6.12 User Profile and Password Management
+
+### Context and Policy
+- **Product scope:** Add an avatar dropdown to the frontend navigation bar showing the user's name and email. Include links to Keycloak's native Account Management Console for profile edits and password changes, along with a logout action. Custom React profile forms and custom Keycloak themes are out of scope.
+- **Consistency & State:** Keycloak is strictly authoritative for user data. Because the StudyVault backend ties relationships to immutable Keycloak IDs (`owner_id`), changing an email or password will not break files or database logic. To prevent the frontend from showing stale session data after an edit, the app must trigger a silent token refresh when returning from the Keycloak console.
+- **Edge cases:** Historical entries in the activity logs and existing file metadata will retain denormalized usernames/emails from the time they were recorded. We accept this staleness and will not run retroactive database migrations for name changes.
+
+### Task list
+
+#### `apps/frontend`
+- [ ] Add a user avatar component to the top right of the navigation bar
+- [ ] Extract `name` (or `preferred_username`) and `email` from the active Keycloak JWT token
+- [ ] Add a clickable dropdown menu attached to the user avatar
+- [ ] Display the extracted user information at the top of the dropdown menu
+- [ ] Add a "Manage Account" link redirecting to the Keycloak account console (`/realms/studyvault/account/`)
+- [ ] Add a "Change Password" link redirecting to the Keycloak password update page
+- [ ] Add a "Logout" action that triggers the Keycloak session termination flow
+- [ ] Implement an automatic token refresh strategy (e.g., on window focus) to update the UI if the user altered their profile
+- [ ] Ensure the dropdown menu dismisses correctly when clicking outside
+
+#### Testing
+- [ ] Add Playwright E2E test verifying the avatar menu displays correct token details
+- [ ] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
+- [ ] Add Playwright E2E test verifying the "Logout" flow
+- [ ] Manually verify that changing the user's name/email in Keycloak cleanly updates the frontend display upon returning, without requiring a hard browser refresh
