@@ -195,6 +195,7 @@ This matters in this repository because `apps/file-service/app/services/files.py
 - configured Compose defaults for hourly purge execution with `PURGE_RUN_MODE=loop` and `PURGE_INTERVAL_SECONDS=3600`
 - verified the worker remains unexposed to the host and uses internal URLs for catalog, file, and search calls
 - added Compose smoke coverage for the new worker service and its schedule-related environment wiring
+- switched pytest test environment bootstrapping to read `StudyVault/.env.test` directly, so the tracked env fixture is now the single source of truth for fake-host test settings
 
 ## 4.3 Frontend E2E tests
 
