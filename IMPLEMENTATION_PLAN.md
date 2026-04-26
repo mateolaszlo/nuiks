@@ -930,3 +930,124 @@ Revision note: updated the plan after implementation work that made folder creat
 - [ ] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
 - [ ] Add `file-service` integration test proving an upload is rejected if it pushes the user past their configured limit
 - [ ] Update Playwright E2E tests: mock the `/api/v1/users/me/usage` endpoint to return 99% usage, attempt to upload a file, and verify the frontend queue displays a quota error
+
+## 6.15 Security Review and Baseline Hardening
+
+### 6.15.1 Secret and artifact hygiene
+
+- [ ] Add a short `StudyVault/docs/security.md` section explaining the local `--env-file StudyVault/.env` workflow
+- [ ] Document that `StudyVault/.env` is required for local Docker Compose but must not be committed or shared
+- [ ] Add a pre-commit or CI secret scan using a tool such as `gitleaks` or `trufflehog`
+- [ ] Configure the secret scan to fail on real-looking API keys, private keys, database URLs with passwords, Keycloak admin credentials, MinIO credentials, and `STUDYVAULT_INTERNAL_TOKEN`
+- [ ] Add an allowlist only for known fake fixtures such as `.env.example` and `.env.test`
+
+### 6.15.2 Frontend exposure and network-call checks
+
+- [ ] Audit all `import.meta.env` usage in `apps/frontend` and confirm only safe `VITE_*` public values are referenced
+- [ ] Confirm no backend-only values such as database URLs, internal service tokens, MinIO secrets, or Keycloak admin credentials are referenced by frontend code
+- [ ] Build the frontend and search the generated `dist/` output for known secret variable names and local secret values
+- [ ] Search frontend source for `apiKey`, `secret`, `password`, `token`, `Authorization`, `Bearer`, and direct service URLs
+- [ ] Verify frontend network calls go only through the intended same-origin gateway paths such as `/api/v1/...` and proxied Keycloak paths
+- [ ] Confirm the browser never calls internal service hostnames directly, such as `catalog-service`, `file-service`, `search-service`, `activity-service`, `minio`, `postgres`, or `mongo`
+- [ ] Confirm no admin service token is sent from the browser
+- [ ] Confirm access tokens are sent only in the `Authorization` header for authenticated API calls
+- [ ] Confirm no access token, refresh token, temporary password, or reset secret is written to localStorage, sessionStorage, query strings, or application logs
+- [ ] Add a Playwright or smoke check that fails if known local secret values appear in page HTML, loaded JavaScript, or captured network request URLs
+
+### 6.15.3 Security headers and browser hardening
+
+- [ ] Add `server_tokens off;` to nginx so version details are not advertised by default
+- [ ] Keep `X-Content-Type-Options: nosniff` on browser-facing responses
+- [ ] Keep `Referrer-Policy: strict-origin-when-cross-origin` on browser-facing responses
+- [ ] Keep `Permissions-Policy` restrictive for unused browser capabilities
+- [ ] Add `Cross-Origin-Opener-Policy: same-origin` if it does not break Keycloak login/account flows
+- [ ] Add `Cross-Origin-Resource-Policy: same-origin` for same-origin application responses if compatible with proxied assets
+- [ ] Prefer CSP `frame-ancestors` over relying only on `X-Frame-Options`
+- [ ] Keep `X-Frame-Options: SAMEORIGIN` only as a compatibility fallback while Keycloak silent SSO constraints are evaluated
+- [ ] Replace broad `script-src 'unsafe-inline'` with nonce/hash-based exceptions or route-specific CSP where practical
+- [ ] Keep `style-src 'unsafe-inline'` only if required by the current frontend/Keycloak rendering path, and document why it remains necessary
+- [ ] Add a separate CSP note for `silent-check-sso.html` if that file is the reason inline script is still allowed
+- [ ] Add `Cache-Control: no-store` for `/api/v1/admin/` responses and other sensitive JSON responses
+- [ ] Add `Cache-Control: no-store` for responses that can include temporary passwords, account-management state, or token-adjacent details
+- [ ] Increase production HSTS to a preload-ready value only after end-to-end HTTPS is confirmed stable
+- [ ] Add regression tests or nginx config checks for the final browser header set
+
+### 6.15.4 TLS, proxy, and public deployment posture
+
+- [ ] Confirm OAuth redirect URIs, web origins, and public frontend URLs match the real production hostname
+- [ ] Confirm cookies and Keycloak session behavior remain correct behind the production proxy
+
+### 6.15.5 Keycloak and authentication hardening
+
+- [ ] Split local/dev Keycloak settings from production Keycloak settings
+- [ ] Keep `start-dev` only for local development
+- [ ] Use production Keycloak startup mode for deployed environments
+- [ ] Enable strict hostname behavior in production
+- [ ] Disable direct access grants for the browser SPA client unless a specific tested flow requires them
+- [ ] Enable Keycloak brute-force protection for production
+- [ ] Keep the public client audience contract aligned with backend JWT audience validation
+- [ ] Confirm wrong-audience tokens are rejected by every public service
+- [ ] Confirm internal routes cannot be reached with only a browser access token
+- [ ] Confirm internal-token values are never exposed to frontend code, frontend build output, or network responses
+- [ ] Upgrade Keycloak to a currently supported patched image before production deployment
+
+### 6.15.6 API and admin-route hardening
+
+- [ ] Verify every public `/api/v1/...` route requires the shared auth dependency unless it is intentionally public
+- [ ] Verify every admin route requires an admin role check in addition to normal authentication
+- [ ] Verify every internal `/internal/...` route requires `X-Internal-Token`
+- [ ] Confirm internal routes are not exposed through nginx public routing
+- [ ] Add explicit tests for unauthenticated, wrong-role, wrong-audience, and wrong-internal-token access
+- [ ] For temporary password return, mark the response `Cache-Control: no-store`
+- [ ] For temporary password return, ensure the temporary password is shown only once and is never logged
+- [ ] Ensure request and error logs do not include bearer tokens, internal tokens, temporary passwords, reset links, or full database URLs
+- [ ] Add log redaction for known sensitive header and field names
+
+### 6.15.7 OWASP baseline review
+
+- [ ] Map current controls and remaining gaps to the OWASP Top 10 categories
+- [ ] Document Broken Access Control checks for owner scoping, admin-only routes, and internal-only routes
+- [ ] Document Cryptographic Failures checks for TLS mode, HSTS, token handling, and secret storage
+- [ ] Document Injection checks for SQLAlchemy query construction, search regex escaping, and input validation
+- [ ] Document Insecure Design decisions around temporary passwords, account recovery, and admin operations
+- [ ] Document Security Misconfiguration checks for nginx, Keycloak, Compose, CORS, CSP, and trusted hosts
+- [ ] Document Vulnerable and Outdated Components checks for frontend packages, Python packages, Docker images, and GitHub Actions
+- [ ] Document Identification and Authentication Failure checks for Keycloak client settings, token validation, rate limiting, and brute-force controls
+- [ ] Document Software and Data Integrity checks for dependency lockfiles, image pinning, and CI build provenance
+- [ ] Document Logging and Monitoring checks for audit usefulness and sensitive-data redaction
+- [ ] Document SSRF checks confirming no public user-controlled URL fetch path exists
+- [ ] Convert any confirmed OWASP gaps into tracked implementation tasks in this section
+
+### 6.15.8 Dependency, image, and supply-chain hardening
+
+- [ ] Upgrade Vite and frontend dependencies to patched supported versions
+- [ ] Run `npm audit` or an equivalent frontend dependency scan in CI
+- [ ] Add Python dependency scanning with `pip-audit`, `uv audit`, or an equivalent tool
+- [ ] Pin Python dependencies through a lockfile or equivalent reproducible dependency mechanism
+- [ ] Scan Docker images for known vulnerabilities before release
+- [ ] Pin production Docker images to explicit patch versions or digests where practical
+- [ ] Keep local development images flexible only where it materially improves development speed
+- [ ] Review GitHub Actions or CI workflows for unpinned third-party actions
+- [ ] Pin high-risk CI actions by SHA or trusted version tags
+- [ ] Add a release checklist item requiring dependency and image scans to pass
+
+### 6.15.9 Container and Compose hardening
+
+- [ ] Run application containers as non-root users where practical
+- [ ] Add `read_only: true` to services that do not need a writable filesystem
+- [ ] Add explicit writable temp/cache mounts only where needed
+- [ ] Add `cap_drop: ["ALL"]` where service functionality allows it
+- [ ] Add `security_opt: ["no-new-privileges:true"]` where compatible
+- [ ] Avoid exposing database, Mongo, MinIO, and internal service ports publicly in production
+- [ ] Keep only nginx or the intended ingress publicly reachable
+- [ ] Keep development-only port mappings clearly marked as local-only
+- [ ] Confirm Compose health checks do not require weakening public host validation
+- [ ] Confirm backup/export volumes do not include secrets unless encrypted and intentionally retained
+
+### 6.15.10 Logging, monitoring, and sensitive-data handling
+
+- [ ] Define which logs are safe for local troubleshooting and which logs are sensitive
+- [ ] Redact `Authorization`, `Cookie`, `Set-Cookie`, `X-Internal-Token`, password, token, secret, and database URL values from logs
+- [ ] Ensure ELK or any log dashboard is not publicly exposed without authentication
+- [ ] Add basic security event logging for failed auth, denied admin access, internal-token failures, and rate-limit events
+- [ ] Ensure security event logs remain useful without recording raw secrets
