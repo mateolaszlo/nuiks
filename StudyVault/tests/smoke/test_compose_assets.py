@@ -35,6 +35,7 @@ def test_docker_compose_config_contains_required_services() -> None:
         "gateway",
         "keycloak",
         "file-service",
+        "purge-worker",
         "catalog-service",
         "search-service",
         "activity-service",
@@ -67,6 +68,9 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "CATALOG_INTERNAL_URL: http://catalog-service:8000" in result.stdout
     assert "SEARCH_INTERNAL_URL: http://search-service:8000" in result.stdout
     assert "ACTIVITY_INTERNAL_URL: http://activity-service:8000" in result.stdout
+    assert "FILE_INTERNAL_URL: http://file-service:8000" in result.stdout
+    assert "PURGE_RUN_MODE: loop" in result.stdout
+    assert "PURGE_INTERVAL_SECONDS: \"3600\"" in result.stdout
     assert "KEYCLOAK_ADMIN_USERNAME: admin" in result.stdout
     assert "KEYCLOAK_ADMIN_PASSWORD: admin" in result.stdout
     assert "internal-demo-token" not in result.stdout

@@ -267,6 +267,31 @@ services:
         gelf-address: "udp://127.0.0.1:12201"
         tag: "file-service"
 
+  purge-worker:
+    build:
+      context: ../../..
+      dockerfile: apps/purge-worker/Dockerfile
+    environment:
+      CATALOG_INTERNAL_URL: http://catalog-service:8000
+      FILE_INTERNAL_URL: http://file-service:8000
+      SEARCH_INTERNAL_URL: http://search-service:8000
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
+      PURGE_RUN_MODE: loop
+      PURGE_INTERVAL_SECONDS: 3600
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      file-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: "purge-worker"
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     environment:
