@@ -196,6 +196,11 @@ This matters in this repository because `apps/file-service/app/services/files.py
 - verified the worker remains unexposed to the host and uses internal URLs for catalog, file, and search calls
 - added Compose smoke coverage for the new worker service and its schedule-related environment wiring
 - switched pytest test environment bootstrapping to read `StudyVault/.env.test` directly, so the tracked env fixture is now the single source of truth for fake-host test settings
+- updated backend public-token validation to enforce issuer, accept the frontend client through `aud` or `azp`, and log safe auth-mismatch diagnostics without logging raw tokens
+- added a Keycloak audience mapper for the `studyvault-frontend` client so newly registered users receive compatible access tokens
+- aligned activity-service and auth unit tests with the stricter token-claim requirements introduced by the new validation rules
+- replaced the static nginx gateway config with an env-rendered template and exposed auth, upload, search, and admin rate/burst settings through `.env`
+- raised the default admin-panel gateway rate limits so repeated enable/disable and password-reset actions do not trip normal `429` throttling
 
 ## 4.3 Frontend E2E tests
 
