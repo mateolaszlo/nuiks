@@ -62,6 +62,10 @@ Edit `.env` before starting the stack.
 
 - `STUDYVAULT_PUBLIC_BASE_URL` is the externally visible app URL. For local use it stays `http://localhost:8080`. For LAN use it becomes something like `http://192.168.1.50:8080`. For Cloudflare use it becomes something like `https://studyvault.example.com`.
 - `STUDYVAULT_GATEWAY_BIND_ADDRESS` controls whether the main gateway listens only on localhost or on all interfaces. Keep `0.0.0.0` when other devices must reach the app.
+- `STUDYVAULT_AUTH_RATE` and `STUDYVAULT_AUTH_BURST` control nginx throttling for Keycloak login traffic.
+- `STUDYVAULT_UPLOAD_RATE` and `STUDYVAULT_UPLOAD_BURST` control nginx throttling for file-upload requests.
+- `STUDYVAULT_SEARCH_RATE` and `STUDYVAULT_SEARCH_BURST` control nginx throttling for search traffic.
+- `STUDYVAULT_ADMIN_RATE` and `STUDYVAULT_ADMIN_BURST` control nginx throttling for admin-panel API calls. The defaults are intentionally higher than the other interactive routes so enable/disable and password-reset workflows do not trip `429` under normal use.
 - `STUDYVAULT_ADMIN_BIND_ADDRESS` controls raw Keycloak, Kibana, Elasticsearch, MinIO, and Logstash host exposure. Keep `127.0.0.1` unless you are intentionally opening troubleshooting access.
 - `STUDYVAULT_DB_BIND_ADDRESS` controls PostgreSQL and MongoDB host exposure. Keep `127.0.0.1`.
 
@@ -82,6 +86,8 @@ STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
 KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
+STUDYVAULT_ADMIN_RATE=120r/m
+STUDYVAULT_ADMIN_BURST=30
 ```
 
 Start the full stack:
@@ -173,6 +179,8 @@ STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
 KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=replace-with-a-strong-secret
+STUDYVAULT_ADMIN_RATE=120r/m
+STUDYVAULT_ADMIN_BURST=30
 ```
 
 Change `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` before exposing the stack outside your own machine.
@@ -209,7 +217,7 @@ StudyVault does not terminate TLS on the VM itself. Cloudflare provides the brow
 
 The nginx gateway also restores the real client IP from `CF-Connecting-IP`, but only when the request source matches the checked-in Cloudflare proxy CIDRs in `infra/nginx/cloudflare-realip.conf`. This keeps nginx rate limits keyed to the browser client instead of the Cloudflare edge IP while still rejecting spoofed client-IP headers from untrusted direct origin traffic.
 
-If uploads or other same-origin API calls show a browser warning such as `Content-Security-Policy-Report-Only ... connect-src 'none'`, verify the header at the public hostname before changing the app stack. The checked-in nginx config in `infra/nginx/nginx.conf` serves an enforcing CSP with `connect-src 'self'`, so a stricter report-only header usually means Cloudflare or another edge proxy is injecting it. Confirm the public response headers for both `/` and `/api/v1/files`, and make sure any edge-managed CSP or CSP report-only policy still allows same-origin `connect-src` requests.
+If uploads or other same-origin API calls show a browser warning such as `Content-Security-Policy-Report-Only ... connect-src 'none'`, verify the header at the public hostname before changing the app stack. The checked-in nginx template in `infra/nginx/nginx.conf.template` renders an enforcing CSP with `connect-src 'self'`, so a stricter report-only header usually means Cloudflare or another edge proxy is injecting it. Confirm the public response headers for both `/` and `/api/v1/files`, and make sure any edge-managed CSP or CSP report-only policy still allows same-origin `connect-src` requests.
 
 ### 4. Start the Stack
 

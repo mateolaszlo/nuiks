@@ -148,6 +148,8 @@ def test_keycloak_realm_template_renders_public_base_url() -> None:
 
     assert "https://studyvault.example.com/*" in contents
     assert '"webOrigins": [' in contents
+    assert '"protocolMapper": "oidc-audience-mapper"' in contents
+    assert '"included.client.audience": "studyvault-frontend"' in contents
     assert "__STUDYVAULT_" not in contents
 
 
@@ -177,7 +179,7 @@ def test_frontend_keycloak_uses_same_origin_default() -> None:
 
 def test_internal_fanout_is_not_exposed_through_gateway() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
     downstream_contents = (project_root / "apps" / "file-service" / "app" / "services" / "downstream.py").read_text()
     config_contents = (project_root / "apps" / "file-service" / "app" / "core" / "config.py").read_text()
 
@@ -194,7 +196,7 @@ def test_internal_fanout_is_not_exposed_through_gateway() -> None:
 
 def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
 
     assert "map $http_cf_visitor $studyvault_cloudflare_proto" in nginx_contents
     assert '~*"https" https;' in nginx_contents
@@ -209,7 +211,7 @@ def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
 
 def test_gateway_cloudflare_real_ip_restore_is_configured() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
     realip_contents = (project_root / "infra" / "nginx" / "cloudflare-realip.conf").read_text()
     compose_contents = (project_root / "infra" / "docker" / "compose" / "docker-compose.yml").read_text()
 
@@ -227,7 +229,7 @@ def test_gateway_cloudflare_real_ip_restore_is_configured() -> None:
 
 def test_gateway_browser_security_headers_are_configured() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
 
     assert 'add_header Content-Security-Policy "default-src \'self\';' in nginx_contents
     assert "base-uri 'self';" in nginx_contents
@@ -251,21 +253,33 @@ def test_gateway_browser_security_headers_are_configured() -> None:
 
 def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
+    render_script = (project_root / "infra" / "nginx" / "render-nginx.sh").read_text()
+    compose_contents = (project_root / "infra" / "docker" / "compose" / "docker-compose.yml").read_text()
+    env_example = (project_root / ".env.example").read_text()
 
-    assert "limit_req_zone $binary_remote_addr zone=studyvault_auth_rate:10m rate=30r/m;" in nginx_contents
-    assert "limit_req_zone $binary_remote_addr zone=studyvault_upload_rate:10m rate=10r/m;" in nginx_contents
-    assert "limit_req_zone $binary_remote_addr zone=studyvault_search_rate:10m rate=60r/m;" in nginx_contents
-    assert "limit_req_zone $binary_remote_addr zone=studyvault_admin_rate:10m rate=20r/m;" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_auth_rate:10m rate=${STUDYVAULT_AUTH_RATE};" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_upload_rate:10m rate=${STUDYVAULT_UPLOAD_RATE};" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_search_rate:10m rate=${STUDYVAULT_SEARCH_RATE};" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_admin_rate:10m rate=${STUDYVAULT_ADMIN_RATE};" in nginx_contents
     assert "limit_req_status 429;" in nginx_contents
     assert "location /realms/ {" in nginx_contents
-    assert "limit_req zone=studyvault_auth_rate burst=10 nodelay;" in nginx_contents
+    assert "limit_req zone=studyvault_auth_rate burst=${STUDYVAULT_AUTH_BURST} nodelay;" in nginx_contents
     assert "location /api/v1/files {" in nginx_contents
-    assert "limit_req zone=studyvault_upload_rate burst=5 nodelay;" in nginx_contents
+    assert "limit_req zone=studyvault_upload_rate burst=${STUDYVAULT_UPLOAD_BURST} nodelay;" in nginx_contents
     assert "location /api/v1/search {" in nginx_contents
-    assert "limit_req zone=studyvault_search_rate burst=20 nodelay;" in nginx_contents
+    assert "limit_req zone=studyvault_search_rate burst=${STUDYVAULT_SEARCH_BURST} nodelay;" in nginx_contents
     assert "location ^~ /api/v1/admin/ {" in nginx_contents
-    assert "limit_req zone=studyvault_admin_rate burst=10 nodelay;" in nginx_contents
+    assert "limit_req zone=studyvault_admin_rate burst=${STUDYVAULT_ADMIN_BURST} nodelay;" in nginx_contents
+    assert "envsubst '${STUDYVAULT_AUTH_RATE} ${STUDYVAULT_UPLOAD_RATE} ${STUDYVAULT_SEARCH_RATE} ${STUDYVAULT_ADMIN_RATE}" in render_script
+    assert "command: [\"/bin/sh\", \"/app/render-nginx.sh\"]" in compose_contents
+    assert "STUDYVAULT_ADMIN_RATE: ${STUDYVAULT_ADMIN_RATE:-120r/m}" in compose_contents
+    assert "STUDYVAULT_ADMIN_BURST: ${STUDYVAULT_ADMIN_BURST:-30}" in compose_contents
+    assert "STUDYVAULT_AUTH_RATE=30r/m" in env_example
+    assert "STUDYVAULT_UPLOAD_RATE=10r/m" in env_example
+    assert "STUDYVAULT_SEARCH_RATE=60r/m" in env_example
+    assert "STUDYVAULT_ADMIN_RATE=120r/m" in env_example
+    assert "STUDYVAULT_ADMIN_BURST=30" in env_example
 
 
 def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:

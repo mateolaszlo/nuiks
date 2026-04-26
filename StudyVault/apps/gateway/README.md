@@ -1,6 +1,6 @@
 # Gateway
 
-StudyVault uses nginx as the public gateway. The active nginx configuration lives in `infra/nginx/nginx.conf`.
+StudyVault uses nginx as the public gateway. The active gateway config is rendered from `infra/nginx/nginx.conf.template`.
 
 ## Routed Paths
 

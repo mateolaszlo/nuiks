@@ -22,11 +22,22 @@ services:
 
   gateway:
     image: nginx:1.27-alpine
+    command: ["/bin/sh", "/app/render-nginx.sh"]
+    environment:
+      STUDYVAULT_AUTH_RATE: ${STUDYVAULT_AUTH_RATE:-30r/m}
+      STUDYVAULT_AUTH_BURST: ${STUDYVAULT_AUTH_BURST:-10}
+      STUDYVAULT_UPLOAD_RATE: ${STUDYVAULT_UPLOAD_RATE:-10r/m}
+      STUDYVAULT_UPLOAD_BURST: ${STUDYVAULT_UPLOAD_BURST:-5}
+      STUDYVAULT_SEARCH_RATE: ${STUDYVAULT_SEARCH_RATE:-60r/m}
+      STUDYVAULT_SEARCH_BURST: ${STUDYVAULT_SEARCH_BURST:-20}
+      STUDYVAULT_ADMIN_RATE: ${STUDYVAULT_ADMIN_RATE:-120r/m}
+      STUDYVAULT_ADMIN_BURST: ${STUDYVAULT_ADMIN_BURST:-30}
     ports:
       - "${STUDYVAULT_GATEWAY_BIND_ADDRESS:-0.0.0.0}:8080:80"
     volumes:
-      - ../../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ../../nginx/cloudflare-realip.conf:/etc/nginx/cloudflare-realip.conf:ro
+      - ../../nginx/render-nginx.sh:/app/render-nginx.sh:ro
     depends_on:
       frontend:
         condition: service_healthy
