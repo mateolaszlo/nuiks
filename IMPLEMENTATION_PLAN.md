@@ -866,3 +866,67 @@ Revision note: updated the plan after implementation work that made folder creat
 - [ ] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
 - [ ] Add Playwright E2E test verifying the "Logout" flow
 - [ ] Manually verify that changing the user's name/email in Keycloak cleanly updates the frontend display upon returning, without requiring a hard browser refresh
+
+## 6.13 Folder Details Expansion (Counts and Size)
+
+### Context and Policy
+- **Product scope:** When a user selects a folder and views it in the right-side details panel, the system must display the total recursive size of the folder's contents, alongside a count of active files and subfolders inside it.
+- **Performance & State:** Because a folder might contain deeply nested directory trees, computing these aggregates on every normal folder list request would slow down grid navigation. Therefore, folder statistics should be queried on demand via a new dedicated endpoint, which is only called when the details panel is actively viewing that folder.
+- **Edge cases:** Items that are currently in the trash must be excluded from both the file count and the total size computation to reflect only active space usage in the selected tree. 
+
+### Task list
+
+#### `apps/catalog-service`
+- [ ] Add a repository CTE (Common Table Expression) or database query to recursively find all descendant items of a given `folder_id`
+- [ ] Aggregate `total_size_bytes` for all descendant files within the tree
+- [ ] Aggregate `file_count` and `folder_count` for all descendant items
+- [ ] Expose a new GET endpoint at `/api/v1/folders/{folder_id}/stats` returning the computed totals
+- [ ] Ensure the recursive query explicitly ignores any items where `is_trashed` / `trashed_at` is true
+
+#### `apps/frontend`
+- [ ] Add a `getFolderStats(folderId: string)` definition to `apps/frontend/src/api/client.ts`
+- [ ] Update the right-side details panel component to trigger a stats fetch when the `selectedItem` is of kind `Folder`
+- [ ] Add a localized loading indicator (e.g., skeleton text or a small spinner) inside the details panel while stats are being fetched
+- [ ] Format and display the `total_size_bytes` using the existing human-readable size formatter
+- [ ] Display the counts cleanly in the metadata block (e.g., "Contains: 42 files, 3 folders")
+
+#### Testing
+- [ ] Add `catalog-service` unit tests proving the recursive size calculation correctly sums deeply nested files
+- [ ] Add `catalog-service` unit tests proving trashed descendant files and folders are excluded from stats
+- [ ] Update Playwright E2E tests: select a folder with known test seed data and verify the details panel eventually renders the correct total size and item count
+
+## 6.14 Instance Quotas and Storage Limits
+
+### Context and Policy
+- **Product scope:** Introduce basic instance-wide guardrails to prevent untethered growth. This includes a hard limit on the total number of registered users across the instance, a per-user storage quota, and a visual storage usage gauge in the left sidebar.
+- **Account Limits:** Controlled via a `.env` variable (e.g., `MAX_REGISTERED_USERS=20`). Since Keycloak manages user identities directly, enforcing this requires restricting the Keycloak registration flow. If self-registration is enabled, an admin worker or custom Keycloak flow execution must track the user count and disable new registrations when the threshold is hit. 
+- **Storage Quota:** Controlled via a `.env` variable (e.g., `USER_STORAGE_QUOTA_BYTES=1073741824` for 1GB). The `file-service` must validate the user's current storage total in the database before accepting new uploads.
+- **Edge cases:** Trashed files still consume object storage, but for MVP quota calculations, we will count only *active* (non-trashed) files against the user's limit. If an upload exceeds the quota, it must return a `413 Payload Too Large` or `402 Payment Required` (using our shared structured error format) and abort before streaming to MinIO.
+
+### Task list
+
+#### `infra/` & Keycloak
+- [ ] Add `MAX_REGISTERED_USERS` and `USER_STORAGE_QUOTA_BYTES` to the base `.env.example` and environment configurations
+- [ ] Implement a lightweight constraint on Keycloak to enforce `MAX_REGISTERED_USERS` (e.g., a periodic sync script in the `admin-service` that toggles Keycloak realm self-registration off when the limit is reached, or documenting manual admin enforcement if API-based sync is too heavy for MVP)
+
+#### `apps/catalog-service`
+- [ ] Add a repository query to calculate the total byte size of all non-trashed files for a specific `owner_id`
+- [ ] Expose an internal GET endpoint `/internal/users/{owner_id}/usage` returning current bytes used and the configured max bytes
+- [ ] Expose a public GET endpoint `/api/v1/users/me/usage` for the frontend to query the current user's storage utilization
+
+#### `apps/file-service`
+- [ ] Before handling an upload stream, make a synchronous call to `/internal/users/{owner_id}/usage` 
+- [ ] Calculate if `current_usage + incoming_content_length > quota`. If true, reject the request immediately with a structured quota error
+- [ ] Ensure backend error messaging states how much space is left and the size of the rejected file
+
+#### `apps/frontend`
+- [ ] Add a `getUserUsage()` request definition in `apps/frontend/src/api/client.ts`
+- [ ] Fetch the user storage usage on initial app load and after any successful upload or permanent delete
+- [ ] Add a visual progress gauge at the bottom of the left Drive sidebar
+- [ ] Format the gauge text in gigabytes (e.g., "400 MB / 1.0 GB used")
+- [ ] Enhance the file upload dropzone and queue to surface the new `quota_exceeded` structural error clearly to the user
+
+#### Testing
+- [ ] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
+- [ ] Add `file-service` integration test proving an upload is rejected if it pushes the user past their configured limit
+- [ ] Update Playwright E2E tests: mock the `/api/v1/users/me/usage` endpoint to return 99% usage, attempt to upload a file, and verify the frontend queue displays a quota error
