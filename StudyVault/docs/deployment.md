@@ -207,6 +207,8 @@ Use these Cloudflare settings:
 
 StudyVault does not terminate TLS on the VM itself. Cloudflare provides the browser-facing HTTPS layer and forwards traffic to the origin on port `8080`. The nginx config must preserve the browser-facing HTTPS scheme from Cloudflare headers rather than trusting the origin hop alone, otherwise Keycloak can reject login with `ssl_required`.
 
+The nginx gateway also restores the real client IP from `CF-Connecting-IP`, but only when the request source matches the checked-in Cloudflare proxy CIDRs in `infra/nginx/cloudflare-realip.conf`. This keeps nginx rate limits keyed to the browser client instead of the Cloudflare edge IP while still rejecting spoofed client-IP headers from untrusted direct origin traffic.
+
 If uploads or other same-origin API calls show a browser warning such as `Content-Security-Policy-Report-Only ... connect-src 'none'`, verify the header at the public hostname before changing the app stack. The checked-in nginx config in `infra/nginx/nginx.conf` serves an enforcing CSP with `connect-src 'self'`, so a stricter report-only header usually means Cloudflare or another edge proxy is injecting it. Confirm the public response headers for both `/` and `/api/v1/files`, and make sure any edge-managed CSP or CSP report-only policy still allows same-origin `connect-src` requests.
 
 ### 4. Start the Stack
@@ -232,6 +234,8 @@ From a browser:
 - log in as `demo` or `admin`
 - upload a file
 - confirm the file appears in the Drive grid, search results, and activity feed
+
+If you observe unexpected shared `429` responses behind Cloudflare, inspect the current Cloudflare proxy IP list and refresh `infra/nginx/cloudflare-realip.conf` if Cloudflare has added or changed ranges since the repo version you deployed.
 
 Do not use `http://<public-ip>:8080` or `https://<public-ip>:8080` as the real auth-path test for a public deployment. The intended path is the Cloudflare-backed `https://` hostname without an explicit port.
 

@@ -207,6 +207,24 @@ def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
     assert "proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;" in nginx_contents
 
 
+def test_gateway_cloudflare_real_ip_restore_is_configured() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
+    realip_contents = (project_root / "infra" / "nginx" / "cloudflare-realip.conf").read_text()
+    compose_contents = (project_root / "infra" / "docker" / "compose" / "docker-compose.yml").read_text()
+
+    assert "include /etc/nginx/cloudflare-realip.conf;" in nginx_contents
+    assert "real_ip_header CF-Connecting-IP;" in nginx_contents
+    assert "real_ip_recursive on;" in nginx_contents
+    assert "set_real_ip_from 127.0.0.1;" in realip_contents
+    assert "set_real_ip_from ::1;" in realip_contents
+    assert "set_real_ip_from 173.245.48.0/20;" in realip_contents
+    assert "set_real_ip_from 103.21.244.0/22;" in realip_contents
+    assert "set_real_ip_from 2400:cb00::/32;" in realip_contents
+    assert "set_real_ip_from 2a06:98c0::/29;" in realip_contents
+    assert "/etc/nginx/cloudflare-realip.conf:ro" in compose_contents
+
+
 def test_gateway_browser_security_headers_are_configured() -> None:
     project_root = Path(__file__).resolve().parents[2]
     nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf").read_text()
