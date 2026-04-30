@@ -282,3 +282,52 @@ def test_purge_worker_rejects_invalid_interval_in_loop_mode(monkeypatch: pytest.
 
     with pytest.raises(ValueError, match="PURGE_INTERVAL_SECONDS must be a positive integer in loop mode"):
         config_module.get_settings()
+
+
+def test_http_purge_client_encodes_expired_trash_query_params() -> None:
+    service_module = load_service_module("purge", module_name="app.services.purge")
+    before = datetime(2026, 4, 30, 17, 25, 33, 719217, tzinfo=timezone.utc)
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="expired.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    folder_record = FolderRecord.create(owner_id="test-user", name="Expired")
+    captured: dict[str, object] = {}
+
+    class StubJsonServiceClient:
+        async def get_json(
+            self,
+            url: str,
+            *,
+            bearer_token: str | None = None,
+            internal_token: str | None = None,
+            query_params: dict[str, object] | None = None,
+        ) -> dict[str, object]:
+            captured["url"] = url
+            captured["bearer_token"] = bearer_token
+            captured["internal_token"] = internal_token
+            captured["query_params"] = query_params
+            return {
+                "files": [file_record.model_dump(mode="json")],
+                "folders": [folder_record.model_dump(mode="json")],
+            }
+
+    client = service_module.HttpPurgeClient(
+        catalog_url="http://catalog-service:8000",
+        file_url="http://file-service:8000",
+        search_url="http://search-service:8000",
+        internal_token="internal-test-token",
+        client=StubJsonServiceClient(),
+    )
+
+    batch = asyncio.run(client.list_expired_trash(before=before, limit=100))
+
+    assert captured["url"] == "http://catalog-service:8000/internal/catalog/trash/expired"
+    assert captured["bearer_token"] is None
+    assert captured["internal_token"] == "internal-test-token"
+    assert captured["query_params"] == {"before": before.isoformat(), "limit": 100}
+    assert [record.file_id for record in batch.files] == [file_record.file_id]
+    assert [record.folder_id for record in batch.folders] == [folder_record.folder_id]

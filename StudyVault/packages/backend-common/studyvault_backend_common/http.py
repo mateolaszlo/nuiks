@@ -116,6 +116,7 @@ class JsonServiceClient:
         *,
         bearer_token: str | None = None,
         internal_token: str | None = None,
+        query_params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         headers: dict[str, str] = {}
         if bearer_token:
@@ -124,7 +125,7 @@ class JsonServiceClient:
             headers["x-internal-token"] = internal_token
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url, headers=headers, params=query_params)
             if response.is_error:
                 raise self._build_service_error("GET", url, response)
             return response.json()

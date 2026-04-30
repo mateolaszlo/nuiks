@@ -55,8 +55,9 @@ class HttpPurgeClient:
 
     async def list_expired_trash(self, *, before: datetime, limit: int) -> ExpiredTrashBatch:
         payload = await self.client.get_json(
-            f"{self.catalog_url}/internal/catalog/trash/expired?before={before.isoformat()}&limit={limit}",
+            f"{self.catalog_url}/internal/catalog/trash/expired",
             internal_token=self.internal_token,
+            query_params={"before": before.isoformat(), "limit": limit},
         )
         return ExpiredTrashBatch(
             files=[FileRecord(**record) for record in payload.get("files", [])],
