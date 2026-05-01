@@ -91,7 +91,7 @@ def test_metricbeat_config_uses_reduced_sampling_and_metricsets() -> None:
     metricbeat_config = project_root / "infra" / "observability" / "metricbeat.yml"
     contents = metricbeat_config.read_text()
 
-    assert "period: 5m" in contents
+    assert contents.count("period: 1m") == 2
     assert "- process" not in contents
     assert "- process_summary" not in contents
     assert "- network" not in contents
@@ -105,26 +105,88 @@ def test_kibana_saved_object_bundle_exists() -> None:
     bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
 
     assert bundle.exists()
-    objects = [json.loads(line) for line in bundle.read_text().splitlines()]
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
     dashboard_objects = [obj for obj in objects if obj.get("type") == "dashboard"]
+    config_objects = [obj for obj in objects if obj.get("type") == "config"]
     dashboard_ids = {obj["id"] for obj in dashboard_objects}
     dashboard_titles = {
         _normalize_saved_object_title(obj["attributes"]["title"])
         for obj in dashboard_objects
         if obj.get("attributes", {}).get("title")
     }
-    data_view_titles = {
-        obj["attributes"]["title"]
-        for obj in objects
-        if obj.get("type") == "index-pattern" and obj.get("attributes", {}).get("title")
-    }
 
-    assert "studyvault-logs-*" in data_view_titles
-    assert "metricbeat*" in data_view_titles
-    assert len(dashboard_objects) == 6
+    assert all(obj.get("type") != "index-pattern" for obj in objects)
+    assert len(dashboard_objects) >= 6
     assert len(dashboard_ids) == len(dashboard_objects)
-    assert "studyvault executive overview" in dashboard_titles
-    assert "studyvault search analytics2" in dashboard_titles
+    assert len(config_objects) == 1
+    assert config_objects[0].get("attributes", {}).get("theme:darkMode") == "enabled"
+    assert "studyvault upload pipeline" in dashboard_titles
+    assert "studyvault ops overview" in dashboard_titles
+    assert "studyvault admin and auth" in dashboard_titles
+
+
+def test_kibana_saved_objects_match_pinned_importer_version() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
+
+    for obj in objects:
+        if obj.get("type") not in {"search", "dashboard"}:
+            continue
+        assert obj.get("typeMigrationVersion") == "10.2.0"
+
+
+def test_kibana_saved_searches_bind_runtime_data_views() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
+
+    for obj in objects:
+        if obj.get("type") != "search":
+            continue
+        search_source = json.loads(obj["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
+        assert search_source.get("indexRefName") == "kibanaSavedObjectMeta.searchSourceJSON.index"
+
+
+def test_admin_auth_saved_searches_include_keycloak_auth_attempt_events() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
+
+    admin_search = next(
+        obj
+        for obj in objects
+        if obj.get("type") == "search" and obj.get("attributes", {}).get("title") == "StudyVault Admin"
+    )
+    auth_search = next(
+        obj
+        for obj in objects
+        if obj.get("type") == "search" and obj.get("attributes", {}).get("title") == "StudyVault Auth"
+    )
+    admin_search_source = json.loads(admin_search["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
+    auth_attributes = auth_search["attributes"]
+    auth_search_source = json.loads(auth_attributes["kibanaSavedObjectMeta"]["searchSourceJSON"])
+
+    assert "admin_password_reset" in admin_search_source["query"]["query"]
+    for event_name in ["auth_login", "auth_login_failed", "auth_register", "auth_register_failed"]:
+        assert event_name in auth_search_source["query"]["query"]
+    assert "username" in auth_attributes["columns"]
+    assert "client_ip" in auth_attributes["columns"]
+
+
+def test_kibana_dashboard_objects_use_supported_time_fields() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
+
+    for obj in objects:
+        if obj.get("type") != "dashboard":
+            continue
+        attributes = obj.get("attributes", {})
+        assert "timeRange" not in attributes
+        assert attributes.get("timeFrom")
+        assert attributes.get("timeTo")
+        assert attributes.get("version") == 2
 
 
 def test_keycloak_realm_template_renders_public_base_url() -> None:
@@ -153,6 +215,17 @@ def test_keycloak_realm_template_renders_public_base_url() -> None:
     assert "__STUDYVAULT_" not in contents
 
 
+def test_keycloak_realm_enables_failed_auth_event_types() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = project_root / "infra" / "keycloak" / "studyvault-realm.template.json"
+    contents = template.read_text()
+
+    assert '"LOGIN"' in contents
+    assert '"LOGIN_ERROR"' in contents
+    assert '"REGISTER"' in contents
+    assert '"REGISTER_ERROR"' in contents
+
+
 def test_bootstrap_declares_float_metricbeat_docker_cpu_fields() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
@@ -165,6 +238,40 @@ def test_bootstrap_declares_float_metricbeat_docker_cpu_fields() -> None:
         "reset_metricbeat_data_streams",
     ]:
         assert field_name in contents
+
+
+def test_bootstrap_validates_saved_object_importer_compatibility() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
+    contents = bootstrap_script.read_text()
+
+    assert 'KIBANA_VERSION = "8.15.3"' in contents
+    assert 'MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.2.0"' in contents
+    assert "validate_saved_object_compatibility(export_path)" in contents
+    assert "must not include index-pattern objects" in contents
+    assert "missing-indexRefName" in contents
+    assert "missing-timeFrom" in contents
+    assert "missing-timeTo" in contents
+    assert ":timeRange" in contents
+
+
+def test_bootstrap_declares_runtime_data_views() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
+    contents = bootstrap_script.read_text()
+
+    assert '"id": "studyvault-logs"' in contents
+    assert '"title": "studyvault-logs-*"' in contents
+    assert '"id": "metricbeat"' in contents
+    assert '"title": "metricbeat*"' in contents
+
+
+def test_logstash_promotes_emitted_event_timestamp_to_index_timestamp() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    contents = (project_root / "infra" / "observability" / "logstash.conf").read_text()
+
+    assert 'match => ["event_timestamp", "ISO8601"]' in contents
+    assert 'target => "@timestamp"' in contents
 
 
 def test_frontend_keycloak_uses_same_origin_default() -> None:
@@ -206,7 +313,36 @@ def test_gateway_cloudflare_proxy_handling_preserves_https_scheme() -> None:
     assert "~^:https$ https;" in nginx_contents
     assert "map $studyvault_forwarded_proto $studyvault_forwarded_port" in nginx_contents
     assert "https 443;" in nginx_contents
+    assert "proxy_set_header X-Forwarded-Host $host;" in nginx_contents
     assert "proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;" in nginx_contents
+
+
+def test_logstash_preserves_request_observability_fields() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    contents = (project_root / "infra" / "observability" / "logstash.conf").read_text()
+
+    for field_name in [
+        "route_template",
+        "client_ip",
+        "client_ip_source",
+        "forwarded_for",
+        "user_agent",
+        "request_outcome",
+        "request_content_length",
+        "response_content_length",
+        'target => "client_geo"',
+    ]:
+        assert field_name in contents
+
+
+def test_logstash_drops_local_gateway_probe_noise() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    contents = (project_root / "infra" / "observability" / "logstash.conf").read_text()
+
+    assert '[service] == "gateway"' in contents
+    assert '127\\.0\\.0\\.1' in contents
+    assert '"Wget' in contents
+    assert "drop {}" in contents
 
 
 def test_gateway_cloudflare_real_ip_restore_is_configured() -> None:

@@ -10,6 +10,8 @@ from uuid import uuid4
 
 KIBANA_URL = "http://kibana:5601"
 ELASTICSEARCH_URL = "http://elasticsearch:9200"
+KIBANA_VERSION = "8.15.3"
+MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.2.0"
 DASHBOARD_EXPORT_DIR = Path("/app/kibana")
 DATA_VIEWS = [
     {
@@ -92,6 +94,95 @@ METRICBEAT_FLOAT_FIELDS = {
 SAVED_OBJECT_EXPORTS = [
     DASHBOARD_EXPORT_DIR / "studyvault-observability.ndjson",
 ]
+
+
+def _parse_version_parts(value: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in value.split("."))
+
+
+def validate_saved_object_compatibility(export_path: Path) -> None:
+    incompatible_objects: list[tuple[str, str, str]] = []
+    invalid_dashboards: list[str] = []
+    invalid_searches: list[str] = []
+    invalid_index_patterns: list[str] = []
+    for line in export_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        object_type = payload.get("type")
+        object_id = payload.get("id", "unknown-id")
+        if object_type == "index-pattern":
+            invalid_index_patterns.append(object_id)
+            continue
+        if object_type not in {"search", "dashboard"}:
+            continue
+        type_migration_version = payload.get("typeMigrationVersion")
+        if not isinstance(type_migration_version, str):
+            continue
+        if _parse_version_parts(type_migration_version) > _parse_version_parts(
+            MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION
+        ):
+            incompatible_objects.append((object_type, object_id, type_migration_version))
+        if object_type == "dashboard":
+            attributes = payload.get("attributes")
+            if not isinstance(attributes, dict):
+                invalid_dashboards.append(f"{object_id}:missing-attributes")
+                continue
+            if "timeRange" in attributes:
+                invalid_dashboards.append(f"{object_id}:timeRange")
+            if "timeFrom" not in attributes:
+                invalid_dashboards.append(f"{object_id}:missing-timeFrom")
+            if "timeTo" not in attributes:
+                invalid_dashboards.append(f"{object_id}:missing-timeTo")
+            if attributes.get("version") != 2:
+                invalid_dashboards.append(f"{object_id}:version")
+        if object_type == "search":
+            attributes = payload.get("attributes")
+            if not isinstance(attributes, dict):
+                invalid_searches.append(f"{object_id}:missing-attributes")
+                continue
+            search_source = attributes.get("kibanaSavedObjectMeta", {}).get("searchSourceJSON")
+            if not isinstance(search_source, str):
+                invalid_searches.append(f"{object_id}:missing-searchSourceJSON")
+                continue
+            try:
+                parsed_search_source = json.loads(search_source)
+            except json.JSONDecodeError:
+                invalid_searches.append(f"{object_id}:invalid-searchSourceJSON")
+                continue
+            if parsed_search_source.get("indexRefName") != "kibanaSavedObjectMeta.searchSourceJSON.index":
+                invalid_searches.append(f"{object_id}:missing-indexRefName")
+
+    if incompatible_objects:
+        details = ", ".join(
+            f"{object_type}:{object_id}@{version}"
+            for object_type, object_id, version in incompatible_objects
+        )
+        raise RuntimeError(
+            "Saved object bundle is incompatible with the pinned Kibana version "
+            f"{KIBANA_VERSION}: found typeMigrationVersion newer than "
+            f"{MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION} ({details})"
+        )
+    if invalid_index_patterns:
+        details = ", ".join(invalid_index_patterns)
+        raise RuntimeError(
+            "Saved object bundle must not include index-pattern objects because data views "
+            f"are provisioned separately by bootstrap ({details})"
+        )
+    if invalid_searches:
+        details = ", ".join(invalid_searches)
+        raise RuntimeError(
+            "Saved object bundle contains search objects incompatible with the pinned "
+            f"Kibana version {KIBANA_VERSION}: expected searchSourceJSON.indexRefName "
+            f"to bind the runtime-created data view ({details})"
+        )
+    if invalid_dashboards:
+        details = ", ".join(invalid_dashboards)
+        raise RuntimeError(
+            "Saved object bundle contains dashboard attributes incompatible with the "
+            f"pinned Kibana version {KIBANA_VERSION}: expected timeFrom/timeTo and "
+            f"version=2 with no timeRange ({details})"
+        )
 
 
 def request_json(
@@ -253,6 +344,7 @@ def ensure_data_view(view_id: str, title: str, time_field: str) -> None:
 def import_saved_objects(export_path: Path) -> None:
     if not export_path.exists():
         raise RuntimeError(f"Saved object export not found: {export_path}")
+    validate_saved_object_compatibility(export_path)
 
     boundary = f"----studyvault-kibana-{uuid4().hex}"
     file_bytes = export_path.read_bytes()

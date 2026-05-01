@@ -106,6 +106,10 @@ def expected_dashboard_objects() -> list[dict]:
     return [obj for obj in load_saved_object_bundle() if obj.get("type") == "dashboard"]
 
 
+def expected_search_objects() -> list[dict]:
+    return [obj for obj in load_saved_object_bundle() if obj.get("type") == "search"]
+
+
 def assert_kibana_data_view(view_id: str) -> None:
     request = urllib.request.Request(
         f"http://127.0.0.1:5601/api/data_views/data_view/{view_id}",
@@ -140,6 +144,25 @@ def assert_kibana_saved_object_exists(saved_object_type: str, saved_object_id: s
             pass
         time.sleep(3)
     raise RuntimeError(f"Kibana {saved_object_type} {title} ({saved_object_id}) was not created")
+
+
+def assert_kibana_search_object_references_data_view(saved_object_id: str, expected_view_id: str) -> None:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:5601/api/saved_objects/search/{saved_object_id}",
+        headers={"kbn-xsrf": "true"},
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    references = payload.get("references", [])
+    if not any(
+        reference.get("type") == "index-pattern"
+        and reference.get("id") == expected_view_id
+        and reference.get("name") == "kibanaSavedObjectMeta.searchSourceJSON.index"
+        for reference in references
+    ):
+        raise RuntimeError(
+            f"Kibana search {saved_object_id} is not bound to data view {expected_view_id}"
+        )
 
 
 def trigger_backend_requests() -> None:
@@ -184,6 +207,24 @@ def assert_backend_logs_indexed() -> None:
         "Backend service logs with structured fields were not indexed for: "
         + ", ".join(sorted(pending_services))
     )
+
+
+def assert_request_observability_fields_indexed() -> None:
+    url = (
+        "http://127.0.0.1:9200/studyvault-logs-*/_search"
+        "?q=event_name:request_*&size=5&sort=@timestamp:desc"
+    )
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        hits = payload.get("hits", {}).get("hits", [])
+        for hit in hits:
+            source = hit.get("_source", {})
+            if source.get("route_template") and source.get("request_outcome"):
+                return
+        time.sleep(3)
+    raise RuntimeError("Structured request observability fields were not indexed")
 
 
 def assert_metricbeat_documents_indexed() -> None:
@@ -238,6 +279,17 @@ def main() -> None:
     assert_metricbeat_field_is_float("docker.cpu.total.norm.pct")
     assert_kibana_data_view("studyvault-logs")
     assert_kibana_data_view("metricbeat")
+    for search in expected_search_objects():
+        expected_view = next(
+            (
+                reference["id"]
+                for reference in search.get("references", [])
+                if reference.get("type") == "index-pattern"
+            ),
+            None,
+        )
+        if expected_view:
+            assert_kibana_search_object_references_data_view(search["id"], expected_view)
     for dashboard in expected_dashboard_objects():
         assert_kibana_saved_object_exists(
             "dashboard",
@@ -246,6 +298,7 @@ def main() -> None:
         )
     trigger_backend_requests()
     assert_backend_logs_indexed()
+    assert_request_observability_fields_indexed()
     assert_metricbeat_documents_indexed()
 
 
