@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import secrets
 from collections.abc import Iterable
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -15,6 +18,17 @@ from studyvault_backend_common.models import (
     AdminUserSummary,
     STUDYVAULT_ADMIN_ROLE,
 )
+from studyvault_backend_common.logging import get_logger
+
+
+logger = get_logger(__name__)
+KEYCLOAK_AUTH_EVENT_TYPE_MAP = {
+    "LOGIN": "auth_login",
+    "LOGIN_ERROR": "auth_login_failed",
+    "REGISTER": "auth_register",
+    "REGISTER_ERROR": "auth_register_failed",
+}
+KEYCLOAK_AUTH_SUCCESS_EVENT_NAMES = {"auth_login", "auth_register"}
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -53,6 +67,53 @@ class AuditLogGateway(Protocol):
 
 class ServiceHealthGateway(Protocol):
     async def check_services(self) -> list[AdminServiceHealth]: ...
+
+
+class AuthEventSyncCheckpointStore(Protocol):
+    def get_auth_event_sync_checkpoint(self) -> tuple[datetime, str] | None: ...
+
+    def save_auth_event_sync_checkpoint(self, created_at: datetime, event_id: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class AuthEventSyncCheckpoint:
+    created_at: datetime
+    event_id: str
+
+
+def _normalize_keycloak_auth_event(item: dict[str, Any]) -> AdminAuditEvent | None:
+    raw_event_type = str(item.get("type") or "").upper()
+    normalized_event_type = KEYCLOAK_AUTH_EVENT_TYPE_MAP.get(raw_event_type)
+    if normalized_event_type is None:
+        return None
+
+    details = dict(item.get("details") or {})
+    username = details.get("username")
+    email = details.get("email")
+    client_ip = item.get("ipAddress")
+    if client_ip:
+        details["client_ip"] = client_ip
+    error = details.get("error")
+    if error:
+        details["error"] = error
+    action = "login" if raw_event_type.startswith("LOGIN") else "register"
+    status = "succeeded" if normalized_event_type in KEYCLOAK_AUTH_SUCCESS_EVENT_NAMES else "failed"
+    return AdminAuditEvent(
+        event_id=item.get("id") or f"kc-{item.get('time')}",
+        event_type=normalized_event_type,
+        category="auth",
+        actor_user_id=item.get("userId"),
+        actor_username=username,
+        actor_email=email,
+        target_user_id=item.get("userId"),
+        target_username=username,
+        target_email=email,
+        status=status,
+        service="keycloak",
+        message=f"Keycloak {action} {'succeeded' if status == 'succeeded' else 'failed'}",
+        metadata=details,
+        created_at=_parse_datetime(item.get("time")) or datetime.now(UTC),
+    )
 
 
 class KeycloakAdminClient:
@@ -159,32 +220,113 @@ class KeycloakAdminClient:
     async def list_auth_events(self, limit: int) -> list[AdminAuditEvent]:
         payload = await self._request(
             "GET",
-            f"/admin/realms/{self.realm}/events?max={limit}&type=LOGIN&type=REGISTER",
+            (
+                f"/admin/realms/{self.realm}/events?max={limit}"
+                "&type=LOGIN&type=LOGIN_ERROR&type=REGISTER&type=REGISTER_ERROR"
+            ),
         )
         events: list[AdminAuditEvent] = []
         for item in payload:
-            details = item.get("details") or {}
-            username = details.get("username")
-            event_type = (item.get("type") or "").lower()
-            events.append(
-                AdminAuditEvent(
-                    event_id=item.get("id") or f"kc-{item.get('time')}",
-                    event_type=f"auth_{event_type}",
-                    category="auth",
-                    actor_user_id=item.get("userId"),
-                    actor_username=username,
-                    actor_email=details.get("email"),
-                    target_user_id=item.get("userId"),
-                    target_username=username,
-                    target_email=details.get("email"),
-                    status="succeeded" if event_type in {"login", "register"} else "unknown",
-                    service="keycloak",
-                    message=f"Keycloak {event_type}",
-                    metadata=details,
-                    created_at=_parse_datetime(item.get("time")) or datetime.now(UTC),
-                )
-            )
+            event = _normalize_keycloak_auth_event(item)
+            if event is not None:
+                events.append(event)
         return events
+
+
+class KeycloakAuthEventSync:
+    def __init__(
+        self,
+        *,
+        keycloak: KeycloakAdminGateway,
+        checkpoint_store: AuthEventSyncCheckpointStore,
+        batch_size: int,
+        interval_seconds: float,
+        emit_event: Callable[[AdminAuditEvent], None] | None = None,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.keycloak = keycloak
+        self.checkpoint_store = checkpoint_store
+        self.batch_size = batch_size
+        self.interval_seconds = interval_seconds
+        self.emit_event = emit_event or self._emit_event
+        self.now = now or (lambda: datetime.now(UTC))
+
+    def initialize_checkpoint(self) -> AuthEventSyncCheckpoint:
+        existing = self._checkpoint()
+        if existing is not None:
+            return existing
+        checkpoint = AuthEventSyncCheckpoint(created_at=self.now(), event_id="")
+        self._save_checkpoint(checkpoint)
+        return checkpoint
+
+    async def sync_once(self) -> int:
+        checkpoint = self.initialize_checkpoint()
+        events = await self.keycloak.list_auth_events(self.batch_size)
+        new_events = [
+            event
+            for event in sorted(events, key=lambda item: (item.created_at, item.event_id))
+            if self._is_after_checkpoint(event, checkpoint)
+        ]
+        for event in new_events:
+            self.emit_event(event)
+            checkpoint = AuthEventSyncCheckpoint(created_at=event.created_at, event_id=event.event_id)
+            self._save_checkpoint(checkpoint)
+        return len(new_events)
+
+    async def run_forever(self, stop_event: asyncio.Event) -> None:
+        self.initialize_checkpoint()
+        while not stop_event.is_set():
+            try:
+                await self.sync_once()
+            except Exception as exc:
+                logger.exception(
+                    "keycloak auth sync failed",
+                    event_name="keycloak_auth_sync_failed",
+                    event_category="auth",
+                    service="activity-service",
+                    status="failed",
+                    error=str(exc),
+                )
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=self.interval_seconds)
+            except asyncio.TimeoutError:
+                continue
+
+    def _checkpoint(self) -> AuthEventSyncCheckpoint | None:
+        stored = self.checkpoint_store.get_auth_event_sync_checkpoint()
+        if stored is None:
+            return None
+        created_at, event_id = stored
+        return AuthEventSyncCheckpoint(created_at=created_at, event_id=event_id)
+
+    def _save_checkpoint(self, checkpoint: AuthEventSyncCheckpoint) -> None:
+        self.checkpoint_store.save_auth_event_sync_checkpoint(checkpoint.created_at, checkpoint.event_id)
+
+    @staticmethod
+    def _is_after_checkpoint(event: AdminAuditEvent, checkpoint: AuthEventSyncCheckpoint) -> bool:
+        return (event.created_at, event.event_id) > (checkpoint.created_at, checkpoint.event_id)
+
+    @staticmethod
+    def _emit_event(event: AdminAuditEvent) -> None:
+        metadata = event.metadata or {}
+        logger.info(
+            event.message,
+            timestamp=event.created_at.isoformat(),
+            event_name=event.event_type,
+            event_category=event.category,
+            service=event.service,
+            status=event.status,
+            actor_user_id=event.actor_user_id,
+            actor_username=event.actor_username,
+            actor_email=event.actor_email,
+            target_user_id=event.target_user_id,
+            target_username=event.target_username,
+            target_email=event.target_email,
+            username=event.actor_username or event.target_username,
+            email=event.actor_email or event.target_email,
+            client_ip=metadata.get("client_ip"),
+            error=metadata.get("error"),
+        )
 
 
 class ElasticsearchAuditClient:

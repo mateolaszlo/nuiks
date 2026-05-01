@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime
+
+import pytest
+
+from studyvault_backend_common.models import AdminAuditEvent
+from tests.conftest import load_service_module
+
+
+def test_keycloak_admin_client_normalizes_success_and_failure_auth_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("activity", "app.services.admin_integrations")
+    client = module.KeycloakAdminClient(
+        base_url="http://keycloak:8080",
+        realm="studyvault",
+        username="admin",
+        password="admin",
+    )
+
+    async def fake_request(method: str, path: str, **kwargs):
+        assert method == "GET"
+        assert "type=LOGIN_ERROR" in path
+        return [
+            {
+                "id": "event-login-ok",
+                "type": "LOGIN",
+                "time": 1_717_100_000_000,
+                "userId": "user-1",
+                "ipAddress": "203.0.113.10",
+                "details": {"username": "demo", "email": "demo@example.com"},
+            },
+            {
+                "id": "event-login-failed",
+                "type": "LOGIN_ERROR",
+                "time": 1_717_100_001_000,
+                "userId": "user-1",
+                "ipAddress": "203.0.113.11",
+                "details": {"username": "demo", "email": "demo@example.com", "error": "invalid_user_credentials"},
+            },
+        ]
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    events = asyncio.run(client.list_auth_events(10))
+
+    assert [event.event_type for event in events] == ["auth_login", "auth_login_failed"]
+    assert [event.status for event in events] == ["succeeded", "failed"]
+    assert events[0].metadata["client_ip"] == "203.0.113.10"
+    assert events[1].metadata["error"] == "invalid_user_credentials"
+
+
+def test_keycloak_auth_sync_seeds_future_only_checkpoint() -> None:
+    main = load_service_module("activity")
+    integrations = load_service_module("activity", "app.services.admin_integrations")
+    repository = main.InMemoryActivityRepository()
+    old_event = AdminAuditEvent(
+        event_id="old-login",
+        event_type="auth_login",
+        category="auth",
+        actor_user_id="user-1",
+        actor_username="demo",
+        target_user_id="user-1",
+        target_username="demo",
+        status="succeeded",
+        service="keycloak",
+        message="Keycloak login succeeded",
+        created_at=datetime(2026, 4, 30, 17, 0, tzinfo=UTC),
+    )
+    keycloak = main.InMemoryKeycloakAdminGateway(auth_events=[old_event])
+    emitted: list[AdminAuditEvent] = []
+    now = datetime(2026, 4, 30, 18, 0, tzinfo=UTC)
+    sync = integrations.KeycloakAuthEventSync(
+        keycloak=keycloak,
+        checkpoint_store=repository,
+        batch_size=50,
+        interval_seconds=30,
+        emit_event=emitted.append,
+        now=lambda: now,
+    )
+
+    synced = asyncio.run(sync.sync_once())
+
+    assert synced == 0
+    assert emitted == []
+    assert repository.get_auth_event_sync_checkpoint() == (now, "")
+
+
+def test_keycloak_auth_sync_emits_only_new_events_after_checkpoint() -> None:
+    main = load_service_module("activity")
+    integrations = load_service_module("activity", "app.services.admin_integrations")
+    repository = main.InMemoryActivityRepository()
+    checkpoint_time = datetime(2026, 4, 30, 18, 0, tzinfo=UTC)
+    repository.save_auth_event_sync_checkpoint(checkpoint_time, "event-a")
+
+    keycloak = main.InMemoryKeycloakAdminGateway(
+        auth_events=[
+            AdminAuditEvent(
+                event_id="event-a",
+                event_type="auth_login",
+                category="auth",
+                actor_user_id="user-1",
+                actor_username="demo",
+                target_user_id="user-1",
+                target_username="demo",
+                status="succeeded",
+                service="keycloak",
+                message="Keycloak login succeeded",
+                created_at=checkpoint_time,
+            ),
+            AdminAuditEvent(
+                event_id="event-b",
+                event_type="auth_login_failed",
+                category="auth",
+                actor_user_id="user-1",
+                actor_username="demo",
+                target_user_id="user-1",
+                target_username="demo",
+                status="failed",
+                service="keycloak",
+                message="Keycloak login failed",
+                created_at=checkpoint_time,
+            ),
+            AdminAuditEvent(
+                event_id="event-c",
+                event_type="auth_register",
+                category="auth",
+                actor_user_id="user-2",
+                actor_username="new-user",
+                target_user_id="user-2",
+                target_username="new-user",
+                status="succeeded",
+                service="keycloak",
+                message="Keycloak register succeeded",
+                created_at=datetime(2026, 4, 30, 18, 1, tzinfo=UTC),
+            ),
+        ]
+    )
+    emitted: list[AdminAuditEvent] = []
+    sync = integrations.KeycloakAuthEventSync(
+        keycloak=keycloak,
+        checkpoint_store=repository,
+        batch_size=50,
+        interval_seconds=30,
+        emit_event=emitted.append,
+    )
+
+    synced = asyncio.run(sync.sync_once())
+    synced_again = asyncio.run(sync.sync_once())
+
+    assert synced == 2
+    assert [event.event_id for event in emitted] == ["event-b", "event-c"]
+    assert repository.get_auth_event_sync_checkpoint() == (
+        datetime(2026, 4, 30, 18, 1, tzinfo=UTC),
+        "event-c",
+    )
+    assert synced_again == 0

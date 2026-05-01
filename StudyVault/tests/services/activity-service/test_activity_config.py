@@ -43,4 +43,7 @@ def test_activity_settings_default_admin_credentials_when_no_env_is_set(monkeypa
 
     assert settings.keycloak_admin_username == "admin"
     assert settings.keycloak_admin_password == "admin"
+    assert settings.keycloak_auth_sync_enabled is True
+    assert settings.keycloak_auth_sync_interval_seconds == 30.0
+    assert settings.keycloak_auth_sync_batch_size == 200
     config.get_settings.cache_clear()

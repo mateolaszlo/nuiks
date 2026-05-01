@@ -14,7 +14,9 @@
   ],
   "enabledEventTypes": [
     "REGISTER",
-    "LOGIN"
+    "REGISTER_ERROR",
+    "LOGIN",
+    "LOGIN_ERROR"
   ],
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true,

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     public_token_audience: str = DEFAULT_PUBLIC_TOKEN_AUDIENCE
     keycloak_admin_username: str = "admin"
     keycloak_admin_password: str = "admin"
+    keycloak_auth_sync_enabled: bool = True
+    keycloak_auth_sync_interval_seconds: float = 30.0
+    keycloak_auth_sync_batch_size: int = 200
     activity_mongodb_url: str = "mongodb://mongodb:27017"
     activity_database_name: str = "studyvault_activity"
     elasticsearch_url: str = "http://elasticsearch:9200"

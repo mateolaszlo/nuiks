@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+from contextlib import suppress
 
 from fastapi import FastAPI
 
@@ -18,6 +20,7 @@ from app.services.admin_integrations import (
     InMemoryAuditLogGateway,
     InMemoryKeycloakAdminGateway,
     InMemoryServiceHealthGateway,
+    KeycloakAuthEventSync,
     KeycloakAdminClient,
 )
 from app.services.activity import ActivityService
@@ -83,6 +86,32 @@ def create_app(repository=None, keycloak_client=None, audit_client=None, health_
     app.state.keycloak_client = keycloak_client
     app.state.audit_client = audit_client
     app.state.health_client = health_client
+    app.state.auth_sync_stop_event = None
+    app.state.auth_sync_task = None
+
+    @app.on_event("startup")
+    async def start_keycloak_auth_sync() -> None:
+        if not settings.keycloak_auth_sync_enabled:
+            return
+        stop_event = asyncio.Event()
+        app.state.auth_sync_stop_event = stop_event
+        auth_sync = KeycloakAuthEventSync(
+            keycloak=keycloak_client,
+            checkpoint_store=repository,
+            batch_size=settings.keycloak_auth_sync_batch_size,
+            interval_seconds=settings.keycloak_auth_sync_interval_seconds,
+        )
+        app.state.auth_sync_task = asyncio.create_task(auth_sync.run_forever(stop_event))
+
+    @app.on_event("shutdown")
+    async def stop_keycloak_auth_sync() -> None:
+        stop_event = getattr(app.state, "auth_sync_stop_event", None)
+        task = getattr(app.state, "auth_sync_task", None)
+        if stop_event is not None:
+            stop_event.set()
+        if task is not None:
+            with suppress(asyncio.CancelledError):
+                await task
     return app
 
 
