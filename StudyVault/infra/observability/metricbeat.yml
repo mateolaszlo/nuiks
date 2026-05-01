@@ -1,6 +1,6 @@
 metricbeat.modules:
   - module: system
-    period: 5m
+    period: 1m
     metricsets:
       - cpu
       - memory
@@ -12,7 +12,7 @@ metricbeat.modules:
     hostfs: /hostfs
 
   - module: docker
-    period: 5m
+    period: 1m
     hosts: ["unix:///var/run/docker.sock"]
     metricsets:
       - container

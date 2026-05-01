@@ -5,6 +5,8 @@ import re
 import sys
 import time
 from contextvars import ContextVar
+from ipaddress import ip_address
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -94,16 +96,73 @@ def sanitize_request_id(value: str | None) -> str:
     return str(uuid4())
 
 
+def _first_forwarded_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+    candidate = value.split(",", 1)[0].strip()
+    return candidate or None
+
+
+def _normalize_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(ip_address(value))
+    except ValueError:
+        return None
+
+
+def _get_client_ip(request: Request) -> tuple[str | None, str]:
+    forwarded = _normalize_ip(_first_forwarded_ip(request.headers.get("x-forwarded-for")))
+    if forwarded:
+        return forwarded, "x-forwarded-for"
+    client_host = _normalize_ip(request.client.host if request.client else None)
+    if client_host:
+        return client_host, "request-client"
+    return None, "unknown"
+
+
+def _route_template(request: Request) -> str:
+    route = request.scope.get("route")
+    path_template = getattr(route, "path", None)
+    return path_template if isinstance(path_template, str) and path_template else request.url.path
+
+
+def _content_length(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _request_context(request: Request) -> dict[str, Any]:
+    client_ip, client_ip_source = _get_client_ip(request)
+    return {
+        "path": request.url.path,
+        "method": request.method,
+        "scheme": request.url.scheme,
+        "host": request.headers.get("host"),
+        "client_ip": client_ip,
+        "client_ip_source": client_ip_source,
+        "forwarded_for": request.headers.get("x-forwarded-for"),
+        "user_agent": request.headers.get("user-agent"),
+        "request_content_length": _content_length(request.headers.get("content-length")),
+        "request_content_type": request.headers.get("content-type"),
+    }
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         structlog.contextvars.clear_contextvars()
         request_id = sanitize_request_id(request.headers.get("x-request-id"))
         request_id_ctx.set(request_id)
+        request_context = _request_context(request)
         structlog.contextvars.bind_contextvars(
             service=configured_service_name,
             request_id=request_id,
-            path=request.url.path,
-            method=request.method,
+            **request_context,
         )
         logger = get_logger(__name__)
         start = time.perf_counter()
@@ -111,15 +170,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception as exc:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            request_context["route_template"] = _route_template(request)
             logger.exception(
                 "request failed",
                 event_name="request_failed",
                 event_category="request",
-                method=request.method,
-                path=request.url.path,
+                request_outcome="exception",
                 status_code=500,
                 duration_ms=duration_ms,
                 error=str(exc),
+                **request_context,
             )
             raise
 
@@ -129,14 +189,23 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             status_code=response.status_code,
             duration_ms=duration_ms,
         ):
+            request_context["route_template"] = _route_template(request)
             logger.info(
                 "request completed",
                 event_name="request_completed",
                 event_category="request",
-                method=request.method,
-                path=request.url.path,
+                request_outcome=(
+                    "server_error"
+                    if response.status_code >= 500
+                    else "client_error"
+                    if response.status_code >= 400
+                    else "success"
+                ),
                 status_code=response.status_code,
                 duration_ms=duration_ms,
+                response_content_length=_content_length(response.headers.get("content-length")),
+                response_content_type=response.headers.get("content-type"),
+                **request_context,
             )
         response.headers["x-request-id"] = request_id
         return response

@@ -3,7 +3,7 @@ import json
 import logging
 from uuid import UUID
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import studyvault_backend_common.logging as logging_module
@@ -123,3 +123,67 @@ def test_should_not_log_fast_success_regular_request() -> None:
 
 def test_should_log_slow_success_request() -> None:
     assert should_log_request(path="/api/v1/search", status_code=200, duration_ms=275.0) is True
+
+
+def test_request_logging_emits_extended_request_context(monkeypatch) -> None:
+    configure_logging("gateway-service")
+    root_logger = logging.getLogger()
+    assert root_logger.handlers
+    stream = io.StringIO()
+    root_logger.handlers[0].stream = stream
+    monkeypatch.setattr(logging_module, "SLOW_REQUEST_THRESHOLD_MS", 0.0)
+
+    app = FastAPI()
+    logging_module.install_request_logging(app)
+
+    @app.post("/items/{item_id}")
+    async def create_item(item_id: str) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/items/123",
+            headers={
+                "x-forwarded-for": "198.51.100.10, 10.0.0.2",
+                "user-agent": "pytest-agent/1.0",
+                "content-type": "application/json",
+                "host": "studyvault.local",
+            },
+            json={"name": "sample"},
+        )
+
+    payload = _find_request_completed_payload(stream)
+    assert response.status_code == 200
+    assert payload["route_template"] == "/items/{item_id}"
+    assert payload["client_ip"] == "198.51.100.10"
+    assert payload["client_ip_source"] == "x-forwarded-for"
+    assert payload["forwarded_for"] == "198.51.100.10, 10.0.0.2"
+    assert payload["user_agent"] == "pytest-agent/1.0"
+    assert payload["host"] == "studyvault.local"
+    assert payload["request_content_type"] == "application/json"
+    assert payload["response_content_type"].startswith("application/json")
+    assert payload["request_outcome"] == "success"
+    assert payload["request_content_length"] > 0
+
+
+def test_request_logging_marks_client_error_outcome(monkeypatch) -> None:
+    configure_logging("gateway-service")
+    root_logger = logging.getLogger()
+    assert root_logger.handlers
+    stream = io.StringIO()
+    root_logger.handlers[0].stream = stream
+    monkeypatch.setattr(logging_module, "SLOW_REQUEST_THRESHOLD_MS", 0.0)
+
+    app = FastAPI()
+    logging_module.install_request_logging(app)
+
+    @app.get("/missing")
+    async def missing() -> None:
+        raise HTTPException(status_code=404, detail="missing")
+
+    with TestClient(app) as client:
+        response = client.get("/missing")
+
+    payload = _find_request_completed_payload(stream)
+    assert response.status_code == 404
+    assert payload["request_outcome"] == "client_error"
