@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from studyvault_backend_common.models import AdminAuditEvent
+from studyvault_backend_common.models import AdminAuditEvent, AuthenticatedUser, STUDYVAULT_ADMIN_ROLE
 from tests.conftest import load_service_module
 
 
@@ -155,3 +155,113 @@ def test_keycloak_auth_sync_emits_only_new_events_after_checkpoint() -> None:
         "event-c",
     )
     assert synced_again == 0
+
+
+def test_elasticsearch_audit_client_queries_indexed_auth_events() -> None:
+    integrations = load_service_module("activity", "app.services.admin_integrations")
+    client = integrations.ElasticsearchAuditClient(elasticsearch_url="http://elasticsearch:9200")
+    captured_payload: dict[str, object] = {}
+
+    async def fake_search(payload: dict[str, object]) -> dict[str, object]:
+        nonlocal captured_payload
+        captured_payload = payload
+        return {
+            "hits": {
+                "hits": [
+                    {
+                        "_id": "auth-1",
+                        "_source": {
+                            "@timestamp": "2026-05-02T10:24:13.101Z",
+                            "event_name": "auth_login_failed",
+                            "event_category": "auth",
+                            "service": "keycloak",
+                            "status": "failed",
+                            "message": "Keycloak login failed",
+                            "username": "demo",
+                            "email": "demo@example.com",
+                            "actor_user_id": "user-1",
+                            "actor_username": "demo",
+                            "actor_email": "demo@example.com",
+                            "target_user_id": "user-1",
+                            "target_username": "demo",
+                            "target_email": "demo@example.com",
+                            "client_ip": "203.0.113.10",
+                            "error": "invalid_user_credentials",
+                        },
+                    }
+                ]
+            }
+        }
+
+    client._search = fake_search  # type: ignore[method-assign]
+
+    events = asyncio.run(client.list_app_audit_events(25))
+
+    assert captured_payload["size"] == 25
+    query_terms = captured_payload["query"]["terms"]["event_name.keyword"]  # type: ignore[index]
+    for event_name in [
+        "auth_login",
+        "auth_login_failed",
+        "auth_register",
+        "auth_register_failed",
+        "admin_password_reset",
+    ]:
+        assert event_name in query_terms
+    assert len(events) == 1
+    assert events[0].event_type == "auth_login_failed"
+    assert events[0].service == "keycloak"
+    assert events[0].actor_username == "demo"
+    assert events[0].metadata == {
+        "client_ip": "203.0.113.10",
+        "error": "invalid_user_credentials",
+    }
+
+
+def test_admin_service_audit_uses_indexed_events_not_live_keycloak() -> None:
+    activity = load_service_module("activity")
+    admin_module = load_service_module("activity", "app.services.admin")
+
+    class ExplodingKeycloakGateway:
+        async def list_users(self):
+            raise AssertionError("list_users should not be called")
+
+        async def set_enabled(self, user_id: str, enabled: bool):
+            raise AssertionError("set_enabled should not be called")
+
+        async def set_admin_role(self, user_id: str, make_admin: bool):
+            raise AssertionError("set_admin_role should not be called")
+
+        async def reset_password(self, user_id: str):
+            raise AssertionError("reset_password should not be called")
+
+        async def list_auth_events(self, limit: int):
+            raise AssertionError("list_auth_events should not be called")
+
+    indexed_event = AdminAuditEvent(
+        event_id="auth-1",
+        event_type="auth_login",
+        category="auth",
+        actor_user_id="user-1",
+        actor_username="demo",
+        target_user_id="user-1",
+        target_username="demo",
+        status="succeeded",
+        service="keycloak",
+        message="Keycloak login succeeded",
+        created_at=datetime(2026, 5, 2, 10, 24, 13, tzinfo=UTC),
+    )
+    audit_gateway = activity.InMemoryAuditLogGateway(audit_events=[indexed_event])
+    service = admin_module.AdminService(
+        keycloak=ExplodingKeycloakGateway(),
+        audit_logs=audit_gateway,
+        service_health=activity.InMemoryServiceHealthGateway(),
+    )
+    actor = AuthenticatedUser(
+        subject="admin-1",
+        username="admin",
+        roles=[STUDYVAULT_ADMIN_ROLE],
+    )
+
+    events = asyncio.run(service.list_audit_events(actor, limit=50))
+
+    assert events == [indexed_event]

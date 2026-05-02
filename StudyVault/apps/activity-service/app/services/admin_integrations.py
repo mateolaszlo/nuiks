@@ -352,6 +352,11 @@ class ElasticsearchAuditClient:
                 "query": {
                     "terms": {
                         "event_name.keyword": [
+                            "auth_login",
+                            "auth_login_failed",
+                            "auth_register",
+                            "auth_register_failed",
+                            "public_token_rejected",
                             "file_upload_succeeded",
                             "file_download_succeeded",
                             "search_executed",
@@ -366,20 +371,21 @@ class ElasticsearchAuditClient:
         events: list[AdminAuditEvent] = []
         for hit in payload.get("hits", {}).get("hits", []):
             source = hit.get("_source", {})
-            username = source.get("owner_id")
+            username = source.get("username") or source.get("owner_username") or source.get("actor_username")
+            email = source.get("email") or source.get("owner_email") or source.get("actor_email")
             events.append(
                 AdminAuditEvent(
                     event_id=hit.get("_id", ""),
                     event_type=source.get("event_name", "unknown_event"),
                     category=source.get("event_category", "application"),
-                    actor_user_id=source.get("owner_id"),
+                    actor_user_id=source.get("actor_user_id", source.get("owner_id")),
                     actor_username=source.get("actor_username", username),
-                    actor_email=source.get("actor_email", source.get("owner_email", source.get("email"))),
+                    actor_email=source.get("actor_email", email),
                     target_user_id=source.get("target_user_id", source.get("owner_id")),
                     target_username=source.get("target_username", username),
-                    target_email=source.get("target_email", source.get("owner_email", source.get("email"))),
-                    owner_username=source.get("owner_username", source.get("username")),
-                    owner_email=source.get("owner_email", source.get("email")),
+                    target_email=source.get("target_email", email),
+                    owner_username=source.get("owner_username", username),
+                    owner_email=source.get("owner_email", email),
                     file_id=source.get("file_id"),
                     filename=source.get("filename"),
                     status=source.get("status"),
@@ -387,7 +393,7 @@ class ElasticsearchAuditClient:
                     message=source.get("message", "Application event"),
                     metadata={
                         key: source[key]
-                        for key in ("query", "result_count", "mime_type", "tags_count", "size")
+                        for key in ("query", "result_count", "mime_type", "tags_count", "size", "client_ip", "error")
                         if key in source
                     },
                     created_at=_parse_datetime(source.get("@timestamp")) or datetime.now(UTC),

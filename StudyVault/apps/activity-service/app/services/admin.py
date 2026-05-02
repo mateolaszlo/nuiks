@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from itertools import chain
-
 from fastapi import status
 
 from studyvault_backend_common.errors import api_error
@@ -105,10 +103,7 @@ class AdminService:
     async def list_audit_events(self, actor: AuthenticatedUser, limit: int = 100) -> list[AdminAuditEvent]:
         self.require_admin(actor)
         safe_limit = min(limit, ADMIN_QUERY_LIMIT_MAX)
-        auth_events = await self.keycloak.list_auth_events(safe_limit)
-        app_events = await self.audit_logs.list_app_audit_events(safe_limit)
-        events = sorted(chain(auth_events, app_events), key=lambda item: item.created_at, reverse=True)
-        return list(events)[:safe_limit]
+        return await self.audit_logs.list_app_audit_events(safe_limit)
 
     async def health_summary(self, actor: AuthenticatedUser) -> AdminHealthSummary:
         self.require_admin(actor)

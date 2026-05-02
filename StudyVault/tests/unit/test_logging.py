@@ -41,6 +41,13 @@ def test_configure_logging_injects_request_context_for_stdlib_logs() -> None:
     assert payload["request_id"] == "req-123"
 
 
+def test_configure_logging_suppresses_httpx_info_noise() -> None:
+    configure_logging("activity-service")
+
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpcore").level == logging.WARNING
+
+
 def test_sanitize_request_id_preserves_valid_value() -> None:
     assert logging_module.sanitize_request_id("req-123.test_value") == "req-123.test_value"
 
