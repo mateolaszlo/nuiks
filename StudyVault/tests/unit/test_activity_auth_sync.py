@@ -35,8 +35,10 @@ def test_keycloak_admin_client_normalizes_success_and_failure_auth_events(monkey
                 "type": "LOGIN_ERROR",
                 "time": 1_717_100_001_000,
                 "userId": "user-1",
+                "clientId": "studyvault-frontend",
                 "ipAddress": "203.0.113.11",
-                "details": {"username": "demo", "email": "demo@example.com", "error": "invalid_user_credentials"},
+                "error": "invalid_user_credentials",
+                "details": {"username": "demo", "email": "demo@example.com"},
             },
         ]
 
@@ -46,8 +48,45 @@ def test_keycloak_admin_client_normalizes_success_and_failure_auth_events(monkey
 
     assert [event.event_type for event in events] == ["auth_login", "auth_login_failed"]
     assert [event.status for event in events] == ["succeeded", "failed"]
+    assert events[1].metadata["client_id"] == "studyvault-frontend"
     assert events[0].metadata["client_ip"] == "203.0.113.10"
     assert events[1].metadata["error"] == "invalid_user_credentials"
+
+
+def test_keycloak_admin_client_preserves_sparse_failure_reason_without_username(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("activity", "app.services.admin_integrations")
+    client = module.KeycloakAdminClient(
+        base_url="http://keycloak:8080",
+        realm="studyvault",
+        username="admin",
+        password="admin",
+    )
+
+    async def fake_request(method: str, path: str, **kwargs):
+        assert method == "GET"
+        return [
+            {
+                "id": "event-login-already-logged-in",
+                "type": "LOGIN_ERROR",
+                "time": 1_717_100_002_000,
+                "ipAddress": "203.0.113.12",
+                "error": "already_logged_in",
+                "details": {
+                    "response_type": "code",
+                    "redirect_uri": "https://studyvault.dev",
+                },
+            }
+        ]
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    events = asyncio.run(client.list_auth_events(10))
+
+    assert len(events) == 1
+    assert events[0].event_type == "auth_login_failed"
+    assert events[0].metadata["error"] == "already_logged_in"
+    assert events[0].metadata["client_ip"] == "203.0.113.12"
+    assert events[0].actor_username is None
 
 
 def test_keycloak_auth_sync_seeds_future_only_checkpoint() -> None:

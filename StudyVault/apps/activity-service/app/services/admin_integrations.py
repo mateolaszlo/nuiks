@@ -90,10 +90,13 @@ def _normalize_keycloak_auth_event(item: dict[str, Any]) -> AdminAuditEvent | No
     details = dict(item.get("details") or {})
     username = details.get("username")
     email = details.get("email")
+    client_id = item.get("clientId")
+    if client_id:
+        details["client_id"] = client_id
     client_ip = item.get("ipAddress")
     if client_ip:
         details["client_ip"] = client_ip
-    error = details.get("error")
+    error = item.get("error") or details.get("error")
     if error:
         details["error"] = error
     action = "login" if raw_event_type.startswith("LOGIN") else "register"

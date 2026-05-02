@@ -171,6 +171,7 @@ def test_admin_auth_saved_searches_include_keycloak_auth_attempt_events() -> Non
     for event_name in ["auth_login", "auth_login_failed", "auth_register", "auth_register_failed"]:
         assert event_name in auth_search_source["query"]["query"]
     assert "username" in auth_attributes["columns"]
+    assert "error" in auth_attributes["columns"]
     assert "client_ip" in auth_attributes["columns"]
 
 
