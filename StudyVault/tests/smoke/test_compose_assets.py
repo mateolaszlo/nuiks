@@ -270,8 +270,19 @@ def test_logstash_promotes_emitted_event_timestamp_to_index_timestamp() -> None:
     project_root = Path(__file__).resolve().parents[2]
     contents = (project_root / "infra" / "observability" / "logstash.conf").read_text()
 
-    assert 'match => ["event_timestamp", "ISO8601"]' in contents
+    assert 'match => ["event_timestamp", "ISO8601", "yyyy-MM-dd HH:mm:ss,SSS"]' in contents
     assert 'target => "@timestamp"' in contents
+    assert 'replace => { "event_timestamp" => "%{@timestamp}" }' in contents
+
+
+def test_bootstrap_declares_studyvault_log_field_mappings() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
+    contents = bootstrap_script.read_text()
+
+    assert "STUDYVAULT_LOG_FIELD_MAPPINGS" in contents
+    assert '"event_timestamp": {"type": "date"}' in contents
+    assert '"location": {"type": "geo_point"}' in contents
 
 
 def test_frontend_keycloak_uses_same_origin_default() -> None:

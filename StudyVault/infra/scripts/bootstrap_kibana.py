@@ -43,6 +43,18 @@ ILM_POLICIES = {
         }
     },
 }
+STUDYVAULT_LOG_FIELD_MAPPINGS = {
+    "event_timestamp": {"type": "date"},
+    "client_geo": {
+        "properties": {
+            "geo": {
+                "properties": {
+                    "location": {"type": "geo_point"},
+                }
+            }
+        }
+    },
+}
 METRICBEAT_FLOAT_FIELDS = {
     "container": {
         "properties": {
@@ -260,7 +272,10 @@ def ensure_log_index_template() -> None:
             "template": {
                 "settings": {
                     "index.lifecycle.name": "studyvault-logs-policy",
-                }
+                },
+                "mappings": {
+                    "properties": STUDYVAULT_LOG_FIELD_MAPPINGS,
+                },
             },
         },
     )
