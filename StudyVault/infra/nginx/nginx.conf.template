@@ -37,6 +37,20 @@ http {
     https "max-age=31536000; includeSubDomains";
   }
 
+  log_format json_analytics escape=json '{'
+    '"event_timestamp": "$time_iso8601", '
+    '"client_ip": "$remote_addr", '
+    '"method": "$request_method", '
+    '"path": "$request_uri", '
+    '"status_code": $status, '
+    '"response_content_length": $body_bytes_sent, '
+    '"user_agent": "$http_user_agent", '
+    '"request_id": "$request_id", '
+    '"service": "gateway"'
+  '}';
+
+  access_log /dev/stdout json_analytics;
+
   server {
     listen 80;
     client_max_body_size 100m;
