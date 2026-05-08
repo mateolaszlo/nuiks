@@ -187,13 +187,23 @@ Change `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KEYCLOAK_ADMIN_PA
 
 ### 2. Open Only the Ports You Need
 
-The minimum public port is `8080` on the VM because nginx inside the Compose stack listens there on the host. Keep every other mapped service on `127.0.0.1`.
+The minimum public port is `8080` on the VM because nginx inside the Compose stack listens there on the host. Keep every other mapped service on `127.0.0.1`. 
 
-Example with UFW:
+To securely restrict access so that only Cloudflare can reach the application, use UFW to whitelist Cloudflare's IP ranges alongside your SSH port:
 
 ```bash
+# Allow SSH access
 sudo ufw allow 22/tcp
-sudo ufw allow 8080/tcp
+
+# Allow Cloudflare IPv4 ranges to port 8080
+for ip in $(curl -s https://www.cloudflare.com/ips-v4); do sudo ufw allow from $ip to any port 8080 proto tcp; done
+
+# Allow Cloudflare IPv6 ranges to port 8080
+for ip in $(curl -s https://www.cloudflare.com/ips-v6); do sudo ufw allow from $ip to any port 8080 proto tcp; done
+
+# Then deny all other access to port 8080
+sudo ufw deny 8080
+
 sudo ufw enable
 sudo ufw status
 ```
