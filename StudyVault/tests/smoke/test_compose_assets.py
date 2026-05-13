@@ -41,7 +41,6 @@ def test_docker_compose_config_contains_required_services() -> None:
         "activity-service",
         "postgres",
         "mongodb",
-        "minio",
         "elasticsearch",
         "logstash",
         "kibana",
@@ -71,9 +70,33 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "FILE_INTERNAL_URL: http://file-service:8000" in result.stdout
     assert "PURGE_RUN_MODE: loop" in result.stdout
     assert "PURGE_INTERVAL_SECONDS: \"3600\"" in result.stdout
+    assert "FILE_S3_ENDPOINT:" in result.stdout
+    assert "FILE_S3_ACCESS_KEY:" in result.stdout
+    assert "FILE_S3_SECRET_KEY:" in result.stdout
+    assert "FILE_S3_BUCKET:" in result.stdout
+    assert "FILE_S3_REGION: us-east-1" in result.stdout
     assert "KEYCLOAK_ADMIN_USERNAME: admin" in result.stdout
     assert "KEYCLOAK_ADMIN_PASSWORD: admin" in result.stdout
     assert "internal-demo-token" not in result.stdout
+
+
+def test_docker_compose_local_minio_profile_exposes_optional_service() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    compose_file = project_root / "infra" / "docker" / "compose" / "docker-compose.yml"
+
+    result = subprocess.run(
+        ["docker", "compose", "--profile", "local-minio", "-f", str(compose_file), "config"],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "minio:" in result.stdout
+    assert "profiles:" in result.stdout
+    assert "- local-minio" in result.stdout
+    assert "FILE_S3_ENDPOINT:" in result.stdout
 
 
 def test_internal_service_urls_match_trusted_host_allowlist() -> None:

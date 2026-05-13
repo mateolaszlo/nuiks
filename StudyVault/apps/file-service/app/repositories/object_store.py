@@ -70,12 +70,28 @@ class S3ObjectStoreRepository:
         )
 
     def ensure_bucket(self) -> None:
-        existing = self.client.list_buckets().get("Buckets", [])
-        if not any(bucket["Name"] == self.bucket_name for bucket in existing):
-            self.client.create_bucket(Bucket=self.bucket_name)
+        try:
+            self.client.head_bucket(Bucket=self.bucket_name)
+        except ClientError as exc:
+            raise ObjectStoreUnavailableError(
+                f"Configured object bucket {self.bucket_name} is not accessible"
+            ) from exc
+        except BotoCoreError as exc:
+            raise ObjectStoreUnavailableError(
+                f"Configured object bucket {self.bucket_name} is not accessible"
+            ) from exc
 
     def ping(self) -> None:
-        self.client.list_buckets()
+        try:
+            self.client.head_bucket(Bucket=self.bucket_name)
+        except ClientError as exc:
+            raise ObjectStoreUnavailableError(
+                f"Configured object bucket {self.bucket_name} is not accessible"
+            ) from exc
+        except BotoCoreError as exc:
+            raise ObjectStoreUnavailableError(
+                f"Configured object bucket {self.bucket_name} is not accessible"
+            ) from exc
 
     def store(self, file_record: FileRecord, stream: BinaryIO, size: int) -> None:
         self.client.put_object(

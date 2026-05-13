@@ -54,7 +54,6 @@ def wait_for_compose_health(timeout_seconds: int = 300) -> None:
             "file-service",
             "postgres",
             "mongodb",
-            "minio",
             "elasticsearch",
             "logstash",
             "kibana",
