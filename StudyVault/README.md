@@ -1,6 +1,6 @@
 # StudyVault
 
-StudyVault is a runnable microservice application for personal file management. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, MinIO object storage, and an ELK-based logging stack.
+StudyVault is a runnable microservice application for personal file management. It includes a React frontend, an nginx gateway, four FastAPI services, Keycloak authentication, PostgreSQL, MongoDB, S3-compatible object storage, and an ELK-based logging stack.
 
 For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
 For the public API reference, use [docs/api.md](docs/api.md).
@@ -18,16 +18,31 @@ Before any non-local deployment, set `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN
 
 Public API routes exposed through the gateway are versioned under `/api/v1/...`.
 
-## Local Stack
+## Default Stack
 
 - app and auth gateway: `http://localhost:8080`
 - raw Keycloak container: `http://localhost:8081`
 - Kibana: `http://localhost:5601`
 - Elasticsearch: `http://localhost:9200`
-- MinIO API: `http://localhost:9000`
-- MinIO console: `http://localhost:9001`
 - PostgreSQL: `localhost:5432`
 - MongoDB: `localhost:27017`
+
+By default, `file-service` expects an external S3-compatible endpoint from `.env` through `FILE_S3_ENDPOINT`, `FILE_S3_ACCESS_KEY`, `FILE_S3_SECRET_KEY`, `FILE_S3_BUCKET`, and `FILE_S3_REGION`. The configured bucket must already exist and be accessible to those credentials.
+
+If you want to run the bundled MinIO container for local development, start Compose with the optional `local-minio` profile and set `.env` like this:
+
+```dotenv
+FILE_S3_ENDPOINT=http://minio:9000
+FILE_S3_ACCESS_KEY=minioadmin
+FILE_S3_SECRET_KEY=minioadmin
+FILE_S3_BUCKET=studyvault-files
+FILE_S3_REGION=us-east-1
+```
+
+Local MinIO endpoints when that profile is enabled:
+
+- MinIO API: `http://localhost:9000`
+- MinIO console: `http://localhost:9001`
 
 ## Seeded Accounts
 
@@ -48,6 +63,12 @@ docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Use `.env.example` as the template for `.env` when starting the Docker Compose stack. Do not pass `.env.test` to `docker compose --env-file`; that file uses fake hosts such as `keycloak.test` and `catalog.test` for Python tests, not real container-to-container networking.
+
+For the bundled local MinIO container instead of a dedicated external MinIO service:
+
+```bash
+docker compose --profile local-minio -f infra/docker/compose/docker-compose.yml up -d --build
+```
 
 To validate the stack:
 

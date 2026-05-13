@@ -15,10 +15,10 @@ By default, the gateway is reachable on port `8080` and everything else stays ho
 - raw Keycloak container: `http://127.0.0.1:8081`
 - Kibana: `http://127.0.0.1:5601`
 - Elasticsearch: `http://127.0.0.1:9200`
-- MinIO API: `http://127.0.0.1:9000`
-- MinIO console: `http://127.0.0.1:9001`
 - PostgreSQL: `127.0.0.1:5432`
 - MongoDB: `127.0.0.1:27017`
+
+The file-service does not require the bundled MinIO container anymore. Its storage target comes from `FILE_S3_ENDPOINT`, `FILE_S3_ACCESS_KEY`, `FILE_S3_SECRET_KEY`, `FILE_S3_BUCKET`, and `FILE_S3_REGION`. The recommended deployment path is a dedicated external MinIO or another S3-compatible service reachable from the VM. The bundled MinIO container is still available through the optional Compose profile `local-minio`.
 
 The environment variables that control this behavior are in `StudyVault/.env.example`.
 
@@ -68,6 +68,9 @@ Edit `.env` before starting the stack.
 - `STUDYVAULT_ADMIN_RATE` and `STUDYVAULT_ADMIN_BURST` control nginx throttling for admin-panel API calls. The defaults are intentionally higher than the other interactive routes so enable/disable and password-reset workflows do not trip `429` under normal use.
 - `STUDYVAULT_ADMIN_BIND_ADDRESS` controls raw Keycloak, Kibana, Elasticsearch, MinIO, and Logstash host exposure. Keep `127.0.0.1` unless you are intentionally opening troubleshooting access.
 - `STUDYVAULT_DB_BIND_ADDRESS` controls PostgreSQL and MongoDB host exposure. Keep `127.0.0.1`.
+- `FILE_S3_ENDPOINT`, `FILE_S3_ACCESS_KEY`, `FILE_S3_SECRET_KEY`, `FILE_S3_BUCKET`, and `FILE_S3_REGION` configure object storage for `file-service`. For dedicated MinIO, use the S3 API port, typically `9000`, not the web console port.
+
+The configured bucket must already exist and be accessible to the supplied credentials before StudyVault starts. The current file-service startup path validates access to that bucket and does not create buckets automatically.
 
 StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` through the `keycloak-realm-render` helper service before Keycloak starts. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
 
@@ -88,12 +91,33 @@ KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
 STUDYVAULT_ADMIN_RATE=120r/m
 STUDYVAULT_ADMIN_BURST=30
+FILE_S3_ENDPOINT=http://10.0.0.10:9000
+FILE_S3_ACCESS_KEY=replace-with-minio-access-key
+FILE_S3_SECRET_KEY=replace-with-minio-secret-key
+FILE_S3_BUCKET=studyvault-files
+FILE_S3_REGION=us-east-1
 ```
 
 Start the full stack:
 
 ```bash
 sudo docker compose --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+```
+
+If you want the bundled local MinIO container instead of a dedicated external MinIO service, change the storage variables in `.env` to:
+
+```dotenv
+FILE_S3_ENDPOINT=http://minio:9000
+FILE_S3_ACCESS_KEY=minioadmin
+FILE_S3_SECRET_KEY=minioadmin
+FILE_S3_BUCKET=studyvault-files
+FILE_S3_REGION=us-east-1
+```
+
+and start Compose with the profile:
+
+```bash
+sudo docker compose --profile local-minio --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Check that Docker Compose accepted the configuration:
@@ -118,6 +142,9 @@ Open these URLs on the same machine:
 - raw Keycloak admin endpoint: `http://127.0.0.1:8081`
 - Kibana: `http://127.0.0.1:5601`
 - Elasticsearch: `http://127.0.0.1:9200`
+
+When the optional `local-minio` profile is enabled:
+
 - MinIO API: `http://127.0.0.1:9000`
 - MinIO console: `http://127.0.0.1:9001`
 
@@ -152,6 +179,7 @@ docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Other devices on the same network should browse to `http://192.168.1.50:8080`. Keep Kibana, MinIO, Elasticsearch, PostgreSQL, and MongoDB on `127.0.0.1` unless you are actively debugging.
+If you are using dedicated external MinIO, the MinIO host itself stays outside this Compose stack; only `file-service` needs network reachability to its S3 API port.
 
 ## Public Deployment on a Linux VM Behind Cloudflare
 
