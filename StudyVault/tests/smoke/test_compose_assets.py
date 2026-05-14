@@ -440,24 +440,32 @@ def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
     env_example = (project_root / ".env.example").read_text()
 
     assert "limit_req_zone $binary_remote_addr zone=studyvault_auth_rate:10m rate=${STUDYVAULT_AUTH_RATE};" in nginx_contents
+    assert "limit_req_zone $binary_remote_addr zone=studyvault_auth_nav_rate:10m rate=${STUDYVAULT_AUTH_NAV_RATE};" in nginx_contents
     assert "limit_req_zone $binary_remote_addr zone=studyvault_upload_rate:10m rate=${STUDYVAULT_UPLOAD_RATE};" in nginx_contents
     assert "limit_req_zone $binary_remote_addr zone=studyvault_search_rate:10m rate=${STUDYVAULT_SEARCH_RATE};" in nginx_contents
     assert "limit_req_zone $binary_remote_addr zone=studyvault_admin_rate:10m rate=${STUDYVAULT_ADMIN_RATE};" in nginx_contents
     assert "limit_req_status 429;" in nginx_contents
+    assert "location = /realms/studyvault/protocol/openid-connect/auth {" in nginx_contents
+    assert "limit_req zone=studyvault_auth_nav_rate burst=${STUDYVAULT_AUTH_NAV_BURST} nodelay;" in nginx_contents
+    assert "location = /realms/studyvault/protocol/openid-connect/token {" in nginx_contents
+    assert "location ^~ /realms/studyvault/login-actions/ {" in nginx_contents
+    assert "location ^~ /realms/studyvault/account/ {" in nginx_contents
     assert "location /realms/ {" in nginx_contents
-    assert "limit_req zone=studyvault_auth_rate burst=${STUDYVAULT_AUTH_BURST} nodelay;" in nginx_contents
+    assert "location = /favicon.ico {" in nginx_contents
+    assert "envsubst '${STUDYVAULT_AUTH_RATE} ${STUDYVAULT_AUTH_NAV_RATE} ${STUDYVAULT_UPLOAD_RATE} ${STUDYVAULT_SEARCH_RATE} ${STUDYVAULT_ADMIN_RATE}" in render_script
     assert "location /api/v1/files {" in nginx_contents
     assert "limit_req zone=studyvault_upload_rate burst=${STUDYVAULT_UPLOAD_BURST} nodelay;" in nginx_contents
     assert "location /api/v1/search {" in nginx_contents
     assert "limit_req zone=studyvault_search_rate burst=${STUDYVAULT_SEARCH_BURST} nodelay;" in nginx_contents
     assert "location ^~ /api/v1/admin/ {" in nginx_contents
     assert "limit_req zone=studyvault_admin_rate burst=${STUDYVAULT_ADMIN_BURST} nodelay;" in nginx_contents
-    assert "envsubst '${STUDYVAULT_AUTH_RATE} ${STUDYVAULT_UPLOAD_RATE} ${STUDYVAULT_SEARCH_RATE} ${STUDYVAULT_ADMIN_RATE}" in render_script
     assert "command: [\"/bin/sh\", \"/app/render-nginx.sh\"]" in compose_contents
     assert "STUDYVAULT_ADMIN_RATE: ${STUDYVAULT_ADMIN_RATE:-120r/m}" in compose_contents
     assert "STUDYVAULT_ADMIN_BURST: ${STUDYVAULT_ADMIN_BURST:-30}" in compose_contents
     assert "STUDYVAULT_AUTH_RATE=360r/m" in env_example
     assert "STUDYVAULT_AUTH_BURST=90" in env_example
+    assert "STUDYVAULT_AUTH_NAV_RATE=480r/m" in env_example
+    assert "STUDYVAULT_AUTH_NAV_BURST=180" in env_example
     assert "STUDYVAULT_UPLOAD_RATE=50r/m" in env_example
     assert "STUDYVAULT_UPLOAD_BURST=50" in env_example
     assert "STUDYVAULT_SEARCH_RATE=80r/m" in env_example

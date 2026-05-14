@@ -63,6 +63,7 @@ Edit `.env` before starting the stack.
 - `STUDYVAULT_PUBLIC_BASE_URL` is the externally visible app URL. For local use it stays `http://localhost:8080`. For LAN use it becomes something like `http://192.168.1.50:8080`. For Cloudflare use it becomes something like `https://studyvault.example.com`.
 - `STUDYVAULT_GATEWAY_BIND_ADDRESS` controls whether the main gateway listens only on localhost or on all interfaces. Keep `0.0.0.0` when other devices must reach the app.
 - `STUDYVAULT_AUTH_RATE` and `STUDYVAULT_AUTH_BURST` control nginx throttling for Keycloak login traffic. The `.env.example` defaults are intentionally relaxed for local development and Playwright runs; tighten them for any shared or internet-exposed deployment.
+- `STUDYVAULT_AUTH_NAV_RATE` and `STUDYVAULT_AUTH_NAV_BURST` control a separate nginx throttle for browser navigation through Keycloak's authorization endpoint. Keep these higher than the token/login limits so native account-console redirects do not trip `429` during normal use.
 - `STUDYVAULT_UPLOAD_RATE` and `STUDYVAULT_UPLOAD_BURST` control nginx throttling for file-upload requests.
 - `STUDYVAULT_SEARCH_RATE` and `STUDYVAULT_SEARCH_BURST` control nginx throttling for search traffic.
 - `STUDYVAULT_ADMIN_RATE` and `STUDYVAULT_ADMIN_BURST` control nginx throttling for admin-panel API calls. The defaults are intentionally higher than the other interactive routes so enable/disable and password-reset workflows do not trip `429` under normal use.
@@ -78,6 +79,8 @@ Keycloak now uses a dedicated PostgreSQL role created from `KEYCLOAK_DB_USER` an
 
 The activity-service admin APIs authenticate to Keycloak with `KEYCLOAK_ADMIN_USERNAME` and `KEYCLOAK_ADMIN_PASSWORD`. If those are unset, StudyVault falls back to `KC_BOOTSTRAP_ADMIN_USERNAME` and `KC_BOOTSTRAP_ADMIN_PASSWORD`, so the example environment keeps them aligned by default.
 
+The frontend profile menu links into Keycloak Account Management through Keycloak-generated URLs rather than hardcoded `/realms/.../account` paths. That preserves Keycloak's own `referrer` and `referrer_uri` query parameters for the account console and password screen.
+
 ## Local Laptop or Single-Host Deployment
 
 Leave `.env` close to the defaults:
@@ -89,6 +92,8 @@ STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_AUTH_RATE=120r/m
 STUDYVAULT_AUTH_BURST=30
+STUDYVAULT_AUTH_NAV_RATE=240r/m
+STUDYVAULT_AUTH_NAV_BURST=60
 KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
 STUDYVAULT_ADMIN_RATE=120r/m
@@ -221,6 +226,8 @@ STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
 KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=replace-with-a-strong-secret
+STUDYVAULT_AUTH_NAV_RATE=120r/m
+STUDYVAULT_AUTH_NAV_BURST=40
 STUDYVAULT_ADMIN_RATE=120r/m
 STUDYVAULT_ADMIN_BURST=30
 ```

@@ -32,12 +32,33 @@ export type AuthProfile = {
   changePasswordUrl: string;
 };
 
-function buildKeycloakAccountUrl(hash = ""): string {
+function buildFallbackAccountUrl(hash = ""): string {
   const baseUrl = new URL(`/realms/${keycloakRealm}/account/`, keycloakBaseUrl).toString();
   if (!hash) {
     return baseUrl;
   }
   return `${baseUrl}${hash}`;
+}
+
+function buildKeycloakAccountUrl(hash = ""): string {
+  let accountUrl = buildFallbackAccountUrl();
+
+  try {
+    const generatedUrl = keycloak.createAccountUrl({ redirectUri: window.location.origin });
+    if (generatedUrl) {
+      accountUrl = generatedUrl;
+    }
+  } catch {
+    // Fall back to the same-origin account console URL until Keycloak is initialized.
+  }
+
+  if (!hash) {
+    return accountUrl;
+  }
+
+  const url = new URL(accountUrl);
+  url.hash = hash;
+  return url.toString();
 }
 
 function buildAuthProfile(): AuthProfile {
@@ -47,8 +68,8 @@ function buildAuthProfile(): AuthProfile {
       email: null,
       username: null,
       avatarLabel: "A",
-      manageAccountUrl: buildKeycloakAccountUrl(),
-      changePasswordUrl: buildKeycloakAccountUrl("#/security/signingin"),
+      manageAccountUrl: buildFallbackAccountUrl(),
+      changePasswordUrl: buildFallbackAccountUrl("#/security/signingin"),
     };
   }
 

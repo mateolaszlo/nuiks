@@ -105,6 +105,8 @@ npx playwright install --with-deps chromium
 PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e
 ```
 
+The profile-menu `Manage Account` and `Change Password` links use Keycloak-generated account-console URLs so the browser keeps Keycloak's native `referrer` and `referrer_uri` parameters. The gateway also splits `/realms/` throttling so login and token actions remain limited without over-throttling normal account-console navigation.
+
 ## Repository Layout
 
 - `apps/` runnable services and frontend

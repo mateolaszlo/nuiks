@@ -6,6 +6,7 @@ http {
   real_ip_header CF-Connecting-IP;
   real_ip_recursive on;
   limit_req_zone $binary_remote_addr zone=studyvault_auth_rate:10m rate=${STUDYVAULT_AUTH_RATE};
+  limit_req_zone $binary_remote_addr zone=studyvault_auth_nav_rate:10m rate=${STUDYVAULT_AUTH_NAV_RATE};
   limit_req_zone $binary_remote_addr zone=studyvault_upload_rate:10m rate=${STUDYVAULT_UPLOAD_RATE};
   limit_req_zone $binary_remote_addr zone=studyvault_search_rate:10m rate=${STUDYVAULT_SEARCH_RATE};
   limit_req_zone $binary_remote_addr zone=studyvault_admin_rate:10m rate=${STUDYVAULT_ADMIN_RATE};
@@ -130,8 +131,50 @@ http {
       proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
     }
 
-    location /realms/ {
+    location = /realms/studyvault/protocol/openid-connect/auth {
+      limit_req zone=studyvault_auth_nav_rate burst=${STUDYVAULT_AUTH_NAV_BURST} nodelay;
+      set $keycloak_service http://keycloak:8080;
+      proxy_pass $keycloak_service$request_uri;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-Host $http_host;
+      proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
+    }
+
+    location = /realms/studyvault/protocol/openid-connect/token {
       limit_req zone=studyvault_auth_rate burst=${STUDYVAULT_AUTH_BURST} nodelay;
+      set $keycloak_service http://keycloak:8080;
+      proxy_pass $keycloak_service$request_uri;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-Host $http_host;
+      proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
+    }
+
+    location ^~ /realms/studyvault/login-actions/ {
+      limit_req zone=studyvault_auth_rate burst=${STUDYVAULT_AUTH_BURST} nodelay;
+      set $keycloak_service http://keycloak:8080;
+      proxy_pass $keycloak_service;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-Host $http_host;
+      proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
+    }
+
+    location ^~ /realms/studyvault/account/ {
+      set $keycloak_service http://keycloak:8080;
+      proxy_pass $keycloak_service;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Forwarded-Host $http_host;
+      proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
+    }
+
+    location /realms/ {
       set $keycloak_service http://keycloak:8080;
       proxy_pass $keycloak_service;
       proxy_set_header Host $http_host;
@@ -159,6 +202,10 @@ http {
       proxy_set_header X-Forwarded-Port $studyvault_forwarded_port;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $studyvault_forwarded_proto;
+    }
+
+    location = /favicon.ico {
+      return 302 /favicon.svg;
     }
 
     location / {
