@@ -113,7 +113,9 @@ test("profile menu shows token details and account links", async ({ page }) => {
 });
 
 test("profile menu logout returns to the unauthenticated entry screen", async ({ page }) => {
-  await openDriveWorkspace(page);
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
 
   await page.getByRole("button", { name: "Open profile menu for demo" }).click();
   await page.getByRole("menuitem", { name: "Logout" }).click();
