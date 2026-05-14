@@ -69,10 +69,29 @@ class S3ObjectStoreRepository:
             region_name=region_name,
         )
 
+    @staticmethod
+    def _is_missing_bucket_error(exc: ClientError) -> bool:
+        error_code = exc.response.get("Error", {}).get("Code")
+        status_code = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        return error_code in {"404", "NoSuchBucket", "NotFound"} or status_code == 404
+
     def ensure_bucket(self) -> None:
         try:
             self.client.head_bucket(Bucket=self.bucket_name)
         except ClientError as exc:
+            if self._is_missing_bucket_error(exc):
+                try:
+                    self.client.create_bucket(Bucket=self.bucket_name)
+                    self.client.head_bucket(Bucket=self.bucket_name)
+                    return
+                except ClientError as create_exc:
+                    raise ObjectStoreUnavailableError(
+                        f"Configured object bucket {self.bucket_name} is not accessible"
+                    ) from create_exc
+                except BotoCoreError as create_exc:
+                    raise ObjectStoreUnavailableError(
+                        f"Configured object bucket {self.bucket_name} is not accessible"
+                    ) from create_exc
             raise ObjectStoreUnavailableError(
                 f"Configured object bucket {self.bucket_name} is not accessible"
             ) from exc
@@ -85,6 +104,8 @@ class S3ObjectStoreRepository:
         try:
             self.client.head_bucket(Bucket=self.bucket_name)
         except ClientError as exc:
+            if self._is_missing_bucket_error(exc):
+                return
             raise ObjectStoreUnavailableError(
                 f"Configured object bucket {self.bucket_name} is not accessible"
             ) from exc

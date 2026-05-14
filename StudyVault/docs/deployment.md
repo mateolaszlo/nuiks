@@ -70,7 +70,7 @@ Edit `.env` before starting the stack.
 - `STUDYVAULT_DB_BIND_ADDRESS` controls PostgreSQL and MongoDB host exposure. Keep `127.0.0.1`.
 - `FILE_S3_ENDPOINT`, `FILE_S3_ACCESS_KEY`, `FILE_S3_SECRET_KEY`, `FILE_S3_BUCKET`, and `FILE_S3_REGION` configure object storage for `file-service`. For dedicated MinIO, use the S3 API port, typically `9000`, not the web console port.
 
-The configured bucket must already exist and be accessible to the supplied credentials before StudyVault starts. The current file-service startup path validates access to that bucket and does not create buckets automatically.
+For dedicated external MinIO or other S3-compatible storage, the configured bucket should already exist and be accessible to the supplied credentials before StudyVault starts. When the optional bundled `local-minio` profile is enabled, `file-service` will create the configured bucket automatically if it is missing and the credentials permit bucket creation.
 
 StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` through the `keycloak-realm-render` helper service before Keycloak starts. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
 

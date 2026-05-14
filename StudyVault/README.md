@@ -39,6 +39,8 @@ FILE_S3_BUCKET=studyvault-files
 FILE_S3_REGION=us-east-1
 ```
 
+When the bundled `local-minio` profile is enabled, StudyVault now auto-creates the `FILE_S3_BUCKET` bucket during `file-service` startup if it is missing and the supplied credentials have bucket-creation rights. Dedicated external MinIO deployments should still pre-create the bucket unless those credentials are intentionally allowed to create it.
+
 Local MinIO endpoints when that profile is enabled:
 
 - MinIO API: `http://localhost:9000`
