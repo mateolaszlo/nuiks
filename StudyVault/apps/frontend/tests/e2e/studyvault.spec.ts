@@ -112,18 +112,6 @@ test("profile menu shows token details and account links", async ({ page }) => {
   await expect(profileMenu).toHaveCount(0);
 });
 
-test("profile menu logout returns to the unauthenticated entry screen", async ({ page }) => {
-  await loginAs(page, "demo", "demo123");
-  await expect(page.getByText("demo", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
-
-  await page.getByRole("button", { name: "Open profile menu for demo" }).click();
-  await page.getByRole("menuitem", { name: "Logout" }).click();
-
-  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible({ timeout: 60_000 });
-});
-
 test("file can be dragged into a folder tile", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `folder-${uniqueId}`;
@@ -901,4 +889,16 @@ test("auth api failures return the user to a relogin-oriented screen", async ({ 
   await expect(page.getByText("Your session expired or became invalid. Sign in again.")).toBeVisible();
 });
 
+});
+
+test("profile menu logout returns to the unauthenticated entry screen", async ({ page }) => {
+  await loginAs(page, "demo", "demo123");
+  await expect(page.getByText("demo", { exact: true }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole("button", { name: "Open profile menu for demo" }).click();
+  await page.getByRole("menuitem", { name: "Logout" }).click();
+
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible({ timeout: 60_000 });
 });
