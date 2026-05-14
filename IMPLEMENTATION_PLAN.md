@@ -870,6 +870,8 @@ Revision note: updated the plan after implementation work that made folder creat
 - [x] Add Playwright E2E test verifying the avatar menu displays correct token details
 - [x] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
 - [x] Add Playwright E2E test verifying the "Logout" flow
+- [x] Refresh Playwright auth/admin workspace selectors so the suite tracks the current admin UI instead of the retired `Admin Console` expectation
+- [x] Relax local `.env.example` auth throttling defaults for manual testing and Playwright, and document that deployment environments should tighten them
 - [ ] Manually verify that changing the user's name/email in Keycloak cleanly updates the frontend display upon returning, without requiring a hard browser refresh
 
 ## 6.13 Folder Details Expansion (Counts and Size)
