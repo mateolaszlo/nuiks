@@ -846,6 +846,7 @@ Revision note: expanded the implementation plan to cover desktop file drag-and-d
 Revision note: updated the plan after implementation work that made folder create and file upload resilient to post-persist downstream failures, widened trusted-host handling for internal Docker Compose service calls, and changed Playwright to reuse stored auth state for seeded users so E2E runs stop tripping gateway auth throttling.
 Revision note: restored the optional bundled `local-minio` Docker profile by letting `file-service` auto-create the configured bucket only when storage reports a true missing-bucket `404`, while keeping inaccessible dedicated buckets as startup failures.
 Revision note: documented the validated local Playwright flow as repo-root `local-minio` Compose startup plus `apps/frontend` test execution, and aligned GitHub Actions so only `main` runs the browser E2E path.
+Revision note: hardened the browser CSP by using a stricter default frontend policy, keeping inline script/style allowances only on proxied Keycloak routes, and moving the silent SSO helper to a same-origin external script so production CSP cleanup can focus on any edge-injected report-only headers.
 
 
 ## 6.12 User Profile and Password Management
@@ -972,11 +973,11 @@ Revision note: documented the validated local Playwright flow as repo-root `loca
 - [ ] Keep `Permissions-Policy` restrictive for unused browser capabilities
 - [ ] Add `Cross-Origin-Opener-Policy: same-origin` if it does not break Keycloak login/account flows
 - [ ] Add `Cross-Origin-Resource-Policy: same-origin` for same-origin application responses if compatible with proxied assets
-- [ ] Prefer CSP `frame-ancestors` over relying only on `X-Frame-Options`
-- [ ] Keep `X-Frame-Options: SAMEORIGIN` only as a compatibility fallback while Keycloak silent SSO constraints are evaluated
-- [ ] Replace broad `script-src 'unsafe-inline'` with nonce/hash-based exceptions or route-specific CSP where practical
-- [ ] Keep `style-src 'unsafe-inline'` only if required by the current frontend/Keycloak rendering path, and document why it remains necessary
-- [ ] Add a separate CSP note for `silent-check-sso.html` if that file is the reason inline script is still allowed
+- [x] Prefer CSP `frame-ancestors` over relying only on `X-Frame-Options`
+- [x] Keep `X-Frame-Options: SAMEORIGIN` only as a compatibility fallback while Keycloak silent SSO constraints are evaluated
+- [x] Replace broad `script-src 'unsafe-inline'` with nonce/hash-based exceptions or route-specific CSP where practical
+- [x] Keep `style-src 'unsafe-inline'` only if required by the current frontend/Keycloak rendering path, and document why it remains necessary
+- [x] Add a separate CSP note for `silent-check-sso.html` if that file is the reason inline script is still allowed
 - [ ] Add `Cache-Control: no-store` for `/api/v1/admin/` responses and other sensitive JSON responses
 - [ ] Add `Cache-Control: no-store` for responses that can include temporary passwords, account-management state, or token-adjacent details
 - [ ] Increase production HSTS to a preload-ready value only after end-to-end HTTPS is confirmed stable
