@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   ADMIN_STORAGE_STATE,
+  BASE_URL,
   DEMO_STORAGE_STATE,
   ELASTICSEARCH_URL,
   loginAs,

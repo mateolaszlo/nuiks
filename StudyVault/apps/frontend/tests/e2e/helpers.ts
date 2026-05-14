@@ -11,13 +11,15 @@ export async function loginAs(page: Page, username: string, password: string) {
   const loginButton = page.getByRole("button", { name: "Log In With Keycloak" });
   const usernameInput = page.locator("#username");
   const dashboardIdentity = page.getByText(username, { exact: true }).first();
-  const adminConsole = page.getByText("Admin Console").first();
+  const driveWorkspace = page.getByRole("heading", { name: "My Drive" }).first();
+  const adminWorkspace = page.getByRole("heading", { name: "Users" }).first();
 
   const entryState = await Promise.any([
     loginButton.waitFor({ state: "visible", timeout: 30_000 }).then(() => "login"),
     usernameInput.waitFor({ state: "visible", timeout: 30_000 }).then(() => "keycloak"),
     dashboardIdentity.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
-    adminConsole.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
+    driveWorkspace.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
+    adminWorkspace.waitFor({ state: "visible", timeout: 30_000 }).then(() => "ready"),
   ]);
 
   if (entryState === "ready") {
@@ -43,6 +45,6 @@ export async function openDriveWorkspace(page: Page, username = "demo") {
 
 export async function openAdminWorkspace(page: Page) {
   await page.goto(BASE_URL);
-  await expect(page.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Users" }).first()).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("heading", { name: "Users" })).toBeVisible({ timeout: 60_000 });
 }

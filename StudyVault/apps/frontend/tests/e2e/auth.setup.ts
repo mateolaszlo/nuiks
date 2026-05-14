@@ -19,7 +19,7 @@ test("capture demo and admin auth state", async ({ browser }) => {
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
   await loginAs(adminPage, "admin", "admin123");
-  await expect(adminPage.getByText("Admin Console")).toBeVisible({ timeout: 60_000 });
+  await expect(adminPage.getByRole("button", { name: "Users" }).first()).toBeVisible({ timeout: 60_000 });
   await expect(adminPage.getByRole("heading", { name: "Users" })).toBeVisible({ timeout: 60_000 });
   await adminContext.storageState({ path: ADMIN_STORAGE_STATE });
   await adminContext.close();

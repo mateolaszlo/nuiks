@@ -62,7 +62,7 @@ Edit `.env` before starting the stack.
 
 - `STUDYVAULT_PUBLIC_BASE_URL` is the externally visible app URL. For local use it stays `http://localhost:8080`. For LAN use it becomes something like `http://192.168.1.50:8080`. For Cloudflare use it becomes something like `https://studyvault.example.com`.
 - `STUDYVAULT_GATEWAY_BIND_ADDRESS` controls whether the main gateway listens only on localhost or on all interfaces. Keep `0.0.0.0` when other devices must reach the app.
-- `STUDYVAULT_AUTH_RATE` and `STUDYVAULT_AUTH_BURST` control nginx throttling for Keycloak login traffic.
+- `STUDYVAULT_AUTH_RATE` and `STUDYVAULT_AUTH_BURST` control nginx throttling for Keycloak login traffic. The `.env.example` defaults are intentionally relaxed for local development and Playwright runs; tighten them for any shared or internet-exposed deployment.
 - `STUDYVAULT_UPLOAD_RATE` and `STUDYVAULT_UPLOAD_BURST` control nginx throttling for file-upload requests.
 - `STUDYVAULT_SEARCH_RATE` and `STUDYVAULT_SEARCH_BURST` control nginx throttling for search traffic.
 - `STUDYVAULT_ADMIN_RATE` and `STUDYVAULT_ADMIN_BURST` control nginx throttling for admin-panel API calls. The defaults are intentionally higher than the other interactive routes so enable/disable and password-reset workflows do not trip `429` under normal use.
@@ -87,6 +87,8 @@ STUDYVAULT_PUBLIC_BASE_URL=http://localhost:8080
 STUDYVAULT_GATEWAY_BIND_ADDRESS=0.0.0.0
 STUDYVAULT_ADMIN_BIND_ADDRESS=127.0.0.1
 STUDYVAULT_DB_BIND_ADDRESS=127.0.0.1
+STUDYVAULT_AUTH_RATE=120r/m
+STUDYVAULT_AUTH_BURST=30
 KEYCLOAK_DB_USER=keycloak
 KEYCLOAK_DB_PASSWORD=studyvault-keycloak-db-password-change-me
 STUDYVAULT_ADMIN_RATE=120r/m
