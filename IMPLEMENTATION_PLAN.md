@@ -847,6 +847,7 @@ Revision note: updated the plan after implementation work that made folder creat
 Revision note: restored the optional bundled `local-minio` Docker profile by letting `file-service` auto-create the configured bucket only when storage reports a true missing-bucket `404`, while keeping inaccessible dedicated buckets as startup failures.
 Revision note: documented the validated local Playwright flow as repo-root `local-minio` Compose startup plus `apps/frontend` test execution, and aligned GitHub Actions so only `main` runs the browser E2E path.
 Revision note: hardened the browser CSP by using a stricter default frontend policy, keeping inline script/style allowances only on proxied Keycloak routes, and moving the silent SSO helper to a same-origin external script so production CSP cleanup can focus on any edge-injected report-only headers.
+Revision note: relaxed frontend-route `style-src` back to `'unsafe-inline'` because `keycloak-js` injects hidden silent-SSO and login-session iframes with inline `display:none` styling before login; script execution remains stricter on frontend routes.
 
 
 ## 6.12 User Profile and Password Management
