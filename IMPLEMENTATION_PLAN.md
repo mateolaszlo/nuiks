@@ -856,20 +856,20 @@ Revision note: updated the plan after implementation work that made folder creat
 ### Task list
 
 #### `apps/frontend`
-- [ ] Add a user avatar component to the top right of the navigation bar
-- [ ] Extract `name` (or `preferred_username`) and `email` from the active Keycloak JWT token
-- [ ] Add a clickable dropdown menu attached to the user avatar
-- [ ] Display the extracted user information at the top of the dropdown menu
-- [ ] Add a "Manage Account" link redirecting to the Keycloak account console (`/realms/studyvault/account/`)
-- [ ] Add a "Change Password" link redirecting to the Keycloak password update page
-- [ ] Add a "Logout" action that triggers the Keycloak session termination flow
-- [ ] Implement an automatic token refresh strategy (e.g., on window focus) to update the UI if the user altered their profile
-- [ ] Ensure the dropdown menu dismisses correctly when clicking outside
+- [x] Add a user avatar component to the top right of the navigation bar
+- [x] Extract `name` (or `preferred_username`) and `email` from the active Keycloak JWT token
+- [x] Add a clickable dropdown menu attached to the user avatar
+- [x] Display the extracted user information at the top of the dropdown menu
+- [x] Add a "Manage Account" link redirecting to the Keycloak account console (`/realms/studyvault/account/`)
+- [x] Add a "Change Password" link redirecting to the Keycloak password update page
+- [x] Add a "Logout" action that triggers the Keycloak session termination flow
+- [x] Implement an automatic token refresh strategy (e.g., on window focus) to update the UI if the user altered their profile
+- [x] Ensure the dropdown menu dismisses correctly when clicking outside
 
 #### Testing
-- [ ] Add Playwright E2E test verifying the avatar menu displays correct token details
-- [ ] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
-- [ ] Add Playwright E2E test verifying the "Logout" flow
+- [x] Add Playwright E2E test verifying the avatar menu displays correct token details
+- [x] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
+- [x] Add Playwright E2E test verifying the "Logout" flow
 - [ ] Manually verify that changing the user's name/email in Keycloak cleanly updates the frontend display upon returning, without requiring a hard browser refresh
 
 ## 6.13 Folder Details Expansion (Counts and Size)
