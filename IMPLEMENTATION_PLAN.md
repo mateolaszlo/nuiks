@@ -873,7 +873,7 @@ Revision note: restored the optional bundled `local-minio` Docker profile by let
 - [x] Add Playwright E2E test verifying the "Logout" flow
 - [x] Refresh Playwright auth/admin workspace selectors so the suite tracks the current admin UI instead of the retired `Admin Console` expectation
 - [x] Relax local `.env.example` auth throttling defaults for manual testing and Playwright, and document that deployment environments should tighten them
-- [x] Keep the logout E2E isolated from shared seeded auth-state reuse so later Drive tests do not inherit a server-side terminated Keycloak session
+- [x] Keep the logout E2E outside the shared seeded auth-state Drive block so later tests do not inherit a server-side terminated Keycloak session
 - [ ] Manually verify that changing the user's name/email in Keycloak cleanly updates the frontend display upon returning, without requiring a hard browser refresh
 
 ## 6.13 Folder Details Expansion (Counts and Size)
