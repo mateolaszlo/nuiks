@@ -71,7 +71,6 @@ const ANONYMOUS_PROFILE: AuthProfile = {
   username: null,
   avatarLabel: "A",
   manageAccountUrl: `${window.location.origin}/realms/studyvault/account/`,
-  changePasswordUrl: `${window.location.origin}/realms/studyvault/account/#/security/signingin`,
 };
 const SAFE_ADMIN_ERROR_CONTEXT_KEYS = [
   "service",
@@ -463,9 +462,6 @@ function AppTopBar(props: {
               <div className="profile-menu-actions">
                 <a href={profile.manageAccountUrl} role="menuitem" className="profile-menu-link">
                   Manage Account
-                </a>
-                <a href={profile.changePasswordUrl} role="menuitem" className="profile-menu-link">
-                  Change Password
                 </a>
                 <button className="profile-menu-button" type="button" role="menuitem" onClick={onLogout}>
                   Logout

@@ -30,18 +30,13 @@ export type AuthProfile = {
   username: string | null;
   avatarLabel: string;
   manageAccountUrl: string;
-  changePasswordUrl: string;
 };
 
-function buildFallbackAccountUrl(hash = ""): string {
-  const baseUrl = new URL(`/realms/${keycloakRealm}/account/`, keycloakBaseUrl).toString();
-  if (!hash) {
-    return baseUrl;
-  }
-  return `${baseUrl}${hash}`;
+function buildFallbackAccountUrl(): string {
+  return new URL(`/realms/${keycloakRealm}/account/`, keycloakBaseUrl).toString();
 }
 
-function buildKeycloakAccountUrl(hash = ""): string {
+function buildKeycloakAccountUrl(): string {
   let accountUrl = buildFallbackAccountUrl();
 
   try {
@@ -53,13 +48,7 @@ function buildKeycloakAccountUrl(hash = ""): string {
     // Fall back to the same-origin account console URL until Keycloak is initialized.
   }
 
-  if (!hash) {
-    return accountUrl;
-  }
-
-  const url = new URL(accountUrl);
-  url.hash = hash;
-  return url.toString();
+  return accountUrl;
 }
 
 function buildAuthProfile(): AuthProfile {
@@ -70,7 +59,6 @@ function buildAuthProfile(): AuthProfile {
       username: null,
       avatarLabel: "A",
       manageAccountUrl: buildFallbackAccountUrl(),
-      changePasswordUrl: buildFallbackAccountUrl("#/security/signingin"),
     };
   }
 
@@ -90,7 +78,6 @@ function buildAuthProfile(): AuthProfile {
     username: parsed.preferred_username ?? parsed.sub ?? null,
     avatarLabel: displayName.slice(0, 1).toUpperCase() || "A",
     manageAccountUrl: buildKeycloakAccountUrl(),
-    changePasswordUrl: buildKeycloakAccountUrl("#/security/signingin"),
   };
 }
 

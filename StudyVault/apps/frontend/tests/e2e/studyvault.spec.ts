@@ -103,10 +103,7 @@ test("profile menu shows token details and account links", async ({ page }) => {
     "href",
     new RegExp(`^${BASE_URL}/realms/studyvault/account\\?referrer=studyvault-frontend&referrer_uri=${encodeURIComponent(`${BASE_URL}/`)}$`),
   );
-  await expect(profileMenu.getByRole("menuitem", { name: "Change Password" })).toHaveAttribute(
-    "href",
-    new RegExp(`^${BASE_URL}/realms/studyvault/account\\?referrer=studyvault-frontend&referrer_uri=${encodeURIComponent(`${BASE_URL}/`)}#/security/signingin$`),
-  );
+  await expect(profileMenu.getByRole("menuitem", { name: "Change Password" })).toHaveCount(0);
 
   await page.getByRole("heading", { name: "My Drive" }).click();
   await expect(profileMenu).toHaveCount(0);
