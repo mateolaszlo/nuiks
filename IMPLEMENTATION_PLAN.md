@@ -848,6 +848,7 @@ Revision note: restored the optional bundled `local-minio` Docker profile by let
 Revision note: documented the validated local Playwright flow as repo-root `local-minio` Compose startup plus `apps/frontend` test execution, and aligned GitHub Actions so only `main` runs the browser E2E path.
 Revision note: hardened the browser CSP by using a stricter default frontend policy, keeping inline script/style allowances only on proxied Keycloak routes, and moving the silent SSO helper to a same-origin external script so production CSP cleanup can focus on any edge-injected report-only headers.
 Revision note: relaxed frontend-route `style-src` back to `'unsafe-inline'` because `keycloak-js` injects hidden silent-SSO and login-session iframes with inline `display:none` styling before login; script execution remains stricter on frontend routes.
+Revision note: replaced hardcoded frontend account-console links with Keycloak-generated URLs, split `/realms/` nginx throttling so account-console navigation is not rate-limited like token/login actions, and added a `/favicon.ico` redirect fallback for browsers that still probe the legacy icon path.
 
 
 ## 6.12 User Profile and Password Management
@@ -869,6 +870,7 @@ Revision note: relaxed frontend-route `style-src` back to `'unsafe-inline'` beca
 - [x] Add a "Logout" action that triggers the Keycloak session termination flow
 - [x] Implement an automatic token refresh strategy (e.g., on window focus) to update the UI if the user altered their profile
 - [x] Ensure the dropdown menu dismisses correctly when clicking outside
+- [x] Generate account-console links from `keycloak-js` so Keycloak's native `referrer` and `referrer_uri` parameters survive profile and password navigation
 
 #### Testing
 - [x] Add Playwright E2E test verifying the avatar menu displays correct token details
