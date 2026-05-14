@@ -116,10 +116,10 @@ FILE_S3_BUCKET=studyvault-files
 FILE_S3_REGION=us-east-1
 ```
 
-and start Compose with the profile:
+and start Compose with the profile from the repo root (`nuiks/`):
 
 ```bash
-sudo docker compose --profile local-minio --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Check that Docker Compose accepted the configuration:
@@ -137,6 +137,18 @@ python3 tests/smoke/runtime_smoke.py
 ```
 
 Use [../tests/README.md](../tests/README.md) for the broader test matrix, targeted `pytest` commands, and Playwright E2E workflow.
+
+For the currently validated local E2E path, start the stack from the repo root (`nuiks/`) with:
+
+```bash
+sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+```
+
+Then run Playwright from `nuiks/StudyVault/apps/frontend` with:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e
+```
 
 Open these URLs on the same machine:
 

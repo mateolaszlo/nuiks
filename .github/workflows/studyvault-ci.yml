@@ -77,22 +77,35 @@ jobs:
         run: npm run build
 
       - name: Validate Docker Compose
-        run: docker compose -f infra/docker/compose/docker-compose.yml config
+        run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml config
 
       - name: Start StudyVault stack
-        run: docker compose -f infra/docker/compose/docker-compose.yml up -d --build
+        run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml up -d --build
 
       - name: Run runtime smoke test
         run: .venv/bin/python tests/smoke/runtime_smoke.py
 
+      - name: Install Playwright browser
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: StudyVault/apps/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend E2E
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: StudyVault/apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:8080
+          ELASTICSEARCH_URL: http://localhost:9200
+        run: npm run test:e2e
+
       - name: Dump Compose status on failure
         if: failure()
-        run: docker compose -f infra/docker/compose/docker-compose.yml ps
+        run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml ps
 
       - name: Dump Compose logs on failure
         if: failure()
-        run: docker compose -f infra/docker/compose/docker-compose.yml logs --no-color
+        run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml logs --no-color
 
       - name: Stop StudyVault stack
         if: always()
-        run: docker compose -f infra/docker/compose/docker-compose.yml down -v
+        run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml down -v

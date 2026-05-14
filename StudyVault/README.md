@@ -66,10 +66,10 @@ docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 
 Use `.env.example` as the template for `.env` when starting the Docker Compose stack. Do not pass `.env.test` to `docker compose --env-file`; that file uses fake hosts such as `keycloak.test` and `catalog.test` for Python tests, not real container-to-container networking.
 
-For the bundled local MinIO container instead of a dedicated external MinIO service:
+For the bundled local MinIO container instead of a dedicated external MinIO service, run this from the repo root (`nuiks/`):
 
 ```bash
-docker compose --profile local-minio -f infra/docker/compose/docker-compose.yml up -d --build
+sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 To validate the stack:
@@ -89,10 +89,17 @@ From the repo root, use the StudyVault-local virtualenv explicitly:
 cd StudyVault && PYTHONPATH=. .venv/bin/pytest -q
 ```
 
-Frontend browser E2E is available, but Playwright requires Node 18+:
+Frontend browser E2E is available, but Playwright requires Node 18+.
+Start the stack from the repo root (`nuiks/`) with:
 
 ```bash
-cd apps/frontend
+sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+```
+
+Then run Playwright from `nuiks/StudyVault/apps/frontend`:
+
+```bash
+cd StudyVault/apps/frontend
 npm ci
 npx playwright install --with-deps chromium
 PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e

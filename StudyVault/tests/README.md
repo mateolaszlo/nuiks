@@ -153,22 +153,22 @@ docker compose -f infra/docker/compose/docker-compose.yml down -v
 
 ## Frontend End-to-End Tests
 
-Run these from `apps/frontend/`:
+Start the stack from the repo root (`nuiks/`) with:
 
 ```bash
-cd apps/frontend
-PLAYWRIGHT_BASE_URL=http://localhost:8080 \
-ELASTICSEARCH_URL=http://localhost:9200 \
-npm run test:e2e
+sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+```
+
+Then run these from `nuiks/StudyVault/apps/frontend`:
+
+```bash
+PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e
 ```
 
 Equivalent direct Playwright command:
 
 ```bash
-cd apps/frontend
-PLAYWRIGHT_BASE_URL=http://localhost:8080 \
-ELASTICSEARCH_URL=http://localhost:9200 \
-npx playwright test tests/e2e/studyvault.spec.ts
+PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npx playwright test tests/e2e/studyvault.spec.ts
 ```
 
 The Playwright run now captures reusable authenticated storage state for the seeded `demo` and `admin` accounts before the main specs execute. That setup runs automatically; you do not need to log in manually between tests.
@@ -231,10 +231,7 @@ PYTHONPATH=. .venv/bin/pytest -q tests/services/search-service/test_search_api.p
 Run one Playwright scenario group:
 
 ```bash
-cd apps/frontend
-PLAYWRIGHT_BASE_URL=http://localhost:8080 \
-ELASTICSEARCH_URL=http://localhost:9200 \
-npx playwright test tests/e2e/studyvault.spec.ts --grep "upload|search|activity"
+PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npx playwright test tests/e2e/studyvault.spec.ts --grep "upload|search|activity"
 ```
 
 ## Notes
@@ -243,4 +240,4 @@ npx playwright test tests/e2e/studyvault.spec.ts --grep "upload|search|activity"
 - Service tests do not normally require the Compose stack.
 - Smoke tests and Playwright do require the Compose stack.
 - If Playwright appears to be exercising stale code, rebuild the Compose stack before rerunning it.
-- Some local environments require `sudo docker compose ...`; use the permission model that matches your machine.
+- The currently validated local E2E path uses `sudo docker compose --profile local-minio --env-file StudyVault/.env.example -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build` from the repo root.

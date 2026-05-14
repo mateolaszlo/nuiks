@@ -446,11 +446,14 @@ def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
     assert "command: [\"/bin/sh\", \"/app/render-nginx.sh\"]" in compose_contents
     assert "STUDYVAULT_ADMIN_RATE: ${STUDYVAULT_ADMIN_RATE:-120r/m}" in compose_contents
     assert "STUDYVAULT_ADMIN_BURST: ${STUDYVAULT_ADMIN_BURST:-30}" in compose_contents
-    assert "STUDYVAULT_AUTH_RATE=30r/m" in env_example
-    assert "STUDYVAULT_UPLOAD_RATE=10r/m" in env_example
-    assert "STUDYVAULT_SEARCH_RATE=60r/m" in env_example
-    assert "STUDYVAULT_ADMIN_RATE=120r/m" in env_example
-    assert "STUDYVAULT_ADMIN_BURST=30" in env_example
+    assert "STUDYVAULT_AUTH_RATE=360r/m" in env_example
+    assert "STUDYVAULT_AUTH_BURST=90" in env_example
+    assert "STUDYVAULT_UPLOAD_RATE=50r/m" in env_example
+    assert "STUDYVAULT_UPLOAD_BURST=50" in env_example
+    assert "STUDYVAULT_SEARCH_RATE=80r/m" in env_example
+    assert "STUDYVAULT_SEARCH_BURST=50" in env_example
+    assert "STUDYVAULT_ADMIN_RATE=150r/m" in env_example
+    assert "STUDYVAULT_ADMIN_BURST=50" in env_example
 
 
 def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:
