@@ -866,7 +866,6 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Add a clickable dropdown menu attached to the user avatar
 - [x] Display the extracted user information at the top of the dropdown menu
 - [x] Add a "Manage Account" link redirecting to the Keycloak account console (`/realms/studyvault/account/`)
-- [x] Add a "Change Password" link redirecting to the Keycloak password update page
 - [x] Add a "Logout" action that triggers the Keycloak session termination flow
 - [x] Implement an automatic token refresh strategy (e.g., on window focus) to update the UI if the user altered their profile
 - [x] Ensure the dropdown menu dismisses correctly when clicking outside
@@ -874,7 +873,7 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 #### Testing
 - [x] Add Playwright E2E test verifying the avatar menu displays correct token details
-- [x] Add Playwright E2E test verifying "Manage Account" and "Change Password" point to the correct external URLs
+- [x] Add Playwright E2E test verifying "Manage Account" points to the correct external URL
 - [x] Add Playwright E2E test verifying the "Logout" flow
 - [x] Refresh Playwright auth/admin workspace selectors so the suite tracks the current admin UI instead of the retired `Admin Console` expectation
 - [x] Relax local `.env.example` auth throttling defaults for manual testing and Playwright, and document that deployment environments should tighten them
