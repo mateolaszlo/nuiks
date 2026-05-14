@@ -271,7 +271,7 @@ The nginx gateway also restores the real client IP from `CF-Connecting-IP`, but 
 
 If uploads or other same-origin API calls show a browser warning such as `Content-Security-Policy-Report-Only ... connect-src 'none'`, verify the header at the public hostname before changing the app stack. The checked-in nginx template in `infra/nginx/nginx.conf.template` renders an enforcing CSP with `connect-src 'self'`, so a stricter report-only header usually means Cloudflare or another edge proxy is injecting it. Confirm the public response headers for `/`, frontend assets, `/realms/...`, and same-origin `/api/v1/...` routes, and make sure any edge-managed CSP or CSP report-only policy still allows same-origin `connect-src` and `script-src 'self'` requests.
 
-StudyVault now keeps a stricter default CSP for frontend routes and a separate looser CSP only for proxied Keycloak pages that still require inline script/style allowances. The silent SSO helper page no longer needs an inline script exception because it loads a same-origin helper script from `/silent-check-sso.js`.
+StudyVault now keeps a stricter default CSP for frontend routes and a separate looser CSP only for proxied Keycloak pages that still require inline script/style allowances. The silent SSO helper page no longer needs an inline script exception because it loads a same-origin helper script from `/silent-check-sso.js`. The frontend routes still allow inline styles because `keycloak-js` injects hidden silent-SSO and session-check iframes with inline `display:none` styling before login.
 
 Browser-extension console noise such as `moz-extension://... postMessage` mismatches is external to StudyVault. Treat it separately from real same-origin CSP violations on the public hostname.
 

@@ -405,7 +405,7 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     silent_sso_script = (project_root / "apps" / "frontend" / "public" / "silent-check-sso.js").read_text()
 
     assert "map $request_uri $studyvault_csp_header {" in nginx_contents
-    assert """default "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self'";""" in nginx_contents
+    assert """default "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
     assert """~^/(realms|resources|js)/ "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
     assert "add_header Content-Security-Policy $studyvault_csp_header always;" in nginx_contents
     assert "base-uri 'self';" in nginx_contents
@@ -417,7 +417,7 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert "font-src 'self' data:;" in nginx_contents
     assert "connect-src 'self';" in nginx_contents
     assert "script-src 'self';" in nginx_contents
-    assert "style-src 'self'" in nginx_contents
+    assert "style-src 'self' 'unsafe-inline'" in nginx_contents
     assert "script-src 'self' 'unsafe-inline';" in nginx_contents
     assert "style-src 'self' 'unsafe-inline'" in nginx_contents
     assert 'add_header X-Content-Type-Options "nosniff" always;' in nginx_contents
