@@ -845,6 +845,7 @@ Deferred to the next slice:
 Revision note: expanded the implementation plan to cover desktop file drag-and-drop, a client-side upload queue, and Google Drive–style upload progress because the current repository already has the backend primitives and now mainly needs a frontend execution plan for the next UX phase.
 Revision note: updated the plan after implementation work that made folder create and file upload resilient to post-persist downstream failures, widened trusted-host handling for internal Docker Compose service calls, and changed Playwright to reuse stored auth state for seeded users so E2E runs stop tripping gateway auth throttling.
 Revision note: restored the optional bundled `local-minio` Docker profile by letting `file-service` auto-create the configured bucket only when storage reports a true missing-bucket `404`, while keeping inaccessible dedicated buckets as startup failures.
+Revision note: documented the validated local Playwright flow as repo-root `local-minio` Compose startup plus `apps/frontend` test execution, and aligned GitHub Actions so only `main` runs the browser E2E path.
 
 
 ## 6.12 User Profile and Password Management
