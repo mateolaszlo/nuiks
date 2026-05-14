@@ -401,8 +401,13 @@ def test_gateway_cloudflare_real_ip_restore_is_configured() -> None:
 def test_gateway_browser_security_headers_are_configured() -> None:
     project_root = Path(__file__).resolve().parents[2]
     nginx_contents = (project_root / "infra" / "nginx" / "nginx.conf.template").read_text()
+    silent_sso_html = (project_root / "apps" / "frontend" / "public" / "silent-check-sso.html").read_text()
+    silent_sso_script = (project_root / "apps" / "frontend" / "public" / "silent-check-sso.js").read_text()
 
-    assert 'add_header Content-Security-Policy "default-src \'self\';' in nginx_contents
+    assert "map $request_uri $studyvault_csp_header {" in nginx_contents
+    assert """default "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self'";""" in nginx_contents
+    assert """~^/(realms|resources|js)/ "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
+    assert "add_header Content-Security-Policy $studyvault_csp_header always;" in nginx_contents
     assert "base-uri 'self';" in nginx_contents
     assert "object-src 'none';" in nginx_contents
     assert "form-action 'self';" in nginx_contents
@@ -411,6 +416,8 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert "img-src 'self' data:;" in nginx_contents
     assert "font-src 'self' data:;" in nginx_contents
     assert "connect-src 'self';" in nginx_contents
+    assert "script-src 'self';" in nginx_contents
+    assert "style-src 'self'" in nginx_contents
     assert "script-src 'self' 'unsafe-inline';" in nginx_contents
     assert "style-src 'self' 'unsafe-inline'" in nginx_contents
     assert 'add_header X-Content-Type-Options "nosniff" always;' in nginx_contents
@@ -420,6 +427,9 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert "map $studyvault_forwarded_proto $studyvault_hsts_header" in nginx_contents
     assert 'https "max-age=31536000; includeSubDomains";' in nginx_contents
     assert "add_header Strict-Transport-Security $studyvault_hsts_header always;" in nginx_contents
+    assert '<script src="/silent-check-sso.js"></script>' in silent_sso_html
+    assert "parent.postMessage(location.href, location.origin);" in silent_sso_script
+    assert "parent.postMessage(location.href, location.origin);" not in silent_sso_html
 
 
 def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
