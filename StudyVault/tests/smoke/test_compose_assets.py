@@ -250,6 +250,18 @@ def test_keycloak_realm_enables_failed_auth_event_types() -> None:
     assert '"REGISTER_ERROR"' in contents
 
 
+def test_keycloak_seeded_users_keep_account_console_roles() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    template = project_root / "infra" / "keycloak" / "studyvault-realm.template.json"
+    contents = template.read_text()
+
+    assert '"clientRoles": {' in contents
+    assert '"account": [' in contents
+    assert '"manage-account"' in contents
+    assert '"manage-account-links"' in contents
+    assert '"view-profile"' in contents
+
+
 def test_bootstrap_declares_float_metricbeat_docker_cpu_fields() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bootstrap_script = project_root / "infra" / "scripts" / "bootstrap_kibana.py"
