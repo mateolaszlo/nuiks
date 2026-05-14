@@ -89,6 +89,38 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
 test.describe("authenticated drive workspace", () => {
   test.use({ storageState: DEMO_STORAGE_STATE });
 
+test("profile menu shows token details and account links", async ({ page }) => {
+  await openDriveWorkspace(page);
+
+  await page.getByRole("button", { name: "Open profile menu for demo" }).click();
+  const profileMenu = page.getByRole("menu", { name: "Profile Menu" });
+
+  await expect(profileMenu).toBeVisible();
+  await expect(profileMenu).toContainText("demo");
+  await expect(profileMenu).toContainText("demo@studyvault.local");
+  await expect(profileMenu.getByRole("menuitem", { name: "Manage Account" })).toHaveAttribute(
+    "href",
+    `${BASE_URL}/realms/studyvault/account/`,
+  );
+  await expect(profileMenu.getByRole("menuitem", { name: "Change Password" })).toHaveAttribute(
+    "href",
+    `${BASE_URL}/realms/studyvault/account/#/security/signingin`,
+  );
+
+  await page.getByRole("heading", { name: "My Drive" }).click();
+  await expect(profileMenu).toHaveCount(0);
+});
+
+test("profile menu logout returns to the unauthenticated entry screen", async ({ page }) => {
+  await openDriveWorkspace(page);
+
+  await page.getByRole("button", { name: "Open profile menu for demo" }).click();
+  await page.getByRole("menuitem", { name: "Logout" }).click();
+
+  await expect(page.getByRole("button", { name: "Log In With Keycloak" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible({ timeout: 60_000 });
+});
+
 test("file can be dragged into a folder tile", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const folderName = `folder-${uniqueId}`;

@@ -2,6 +2,7 @@ import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
   startTransition,
   useEffect,
   useMemo,
@@ -21,13 +22,15 @@ import type {
   DriveItem,
 } from "./api/types";
 import {
+  type AuthProfile,
+  getAuthProfile,
   getAccessToken,
-  getProfileSummary,
   initializeAuth,
   isAdmin,
   isAuthenticated,
   login,
   logout,
+  refreshAuthProfile,
   register,
 } from "./auth/keycloak";
 
@@ -62,6 +65,14 @@ const MAX_ACTIVE_UPLOADS = 2;
 const DONE_UPLOAD_DISMISS_DELAY_MS = 1500;
 const MAX_CLIENT_UPLOAD_BYTES = 99 * 1024 * 1024;
 const UPLOAD_WARNING_DISMISS_DELAY_MS = 5000;
+const ANONYMOUS_PROFILE: AuthProfile = {
+  displayName: "Anonymous",
+  email: null,
+  username: null,
+  avatarLabel: "A",
+  manageAccountUrl: `${window.location.origin}/realms/studyvault/account/`,
+  changePasswordUrl: `${window.location.origin}/realms/studyvault/account/#/security/signingin`,
+};
 const SAFE_ADMIN_ERROR_CONTEXT_KEYS = [
   "service",
   "target_user_id",
@@ -354,7 +365,7 @@ function NavButton(props: {
 }
 
 function AppTopBar(props: {
-  profileLabel: string;
+  profile: AuthProfile;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
@@ -364,9 +375,13 @@ function AppTopBar(props: {
   secondaryActionLabel?: string;
   secondaryActionActive?: boolean;
   onSecondaryAction?: () => void;
+  profileMenuOpen: boolean;
+  onProfileMenuToggle: () => void;
+  profileMenuButtonRef: RefObject<HTMLButtonElement>;
+  profileMenuRef: RefObject<HTMLDivElement>;
 }) {
   const {
-    profileLabel,
+    profile,
     searchQuery,
     onSearchQueryChange,
     onSearch,
@@ -376,6 +391,10 @@ function AppTopBar(props: {
     secondaryActionLabel,
     secondaryActionActive = false,
     onSecondaryAction,
+    profileMenuOpen,
+    onProfileMenuToggle,
+    profileMenuButtonRef,
+    profileMenuRef,
   } = props;
 
   return (
@@ -420,15 +439,41 @@ function AppTopBar(props: {
             {secondaryActionLabel}
           </button>
         ) : null}
-        <div className="profile-chip">
-          <span className="profile-avatar" aria-hidden="true">
-            {profileLabel.slice(0, 1).toUpperCase()}
-          </span>
-          <span>{profileLabel}</span>
+        <div className="profile-menu-shell">
+          <button
+            ref={profileMenuButtonRef}
+            className="profile-chip profile-chip-button"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={profileMenuOpen}
+            aria-label={`Open profile menu for ${profile.displayName}`}
+            onClick={onProfileMenuToggle}
+          >
+            <span className="profile-avatar" aria-hidden="true">
+              {profile.avatarLabel}
+            </span>
+            <span>{profile.displayName}</span>
+          </button>
+          {profileMenuOpen ? (
+            <div ref={profileMenuRef} className="profile-menu" role="menu" aria-label="Profile Menu">
+              <div className="profile-menu-identity">
+                <strong>{profile.displayName}</strong>
+                <span>{profile.email ?? "No email"}</span>
+              </div>
+              <div className="profile-menu-actions">
+                <a href={profile.manageAccountUrl} role="menuitem" className="profile-menu-link">
+                  Manage Account
+                </a>
+                <a href={profile.changePasswordUrl} role="menuitem" className="profile-menu-link">
+                  Change Password
+                </a>
+                <button className="profile-menu-button" type="button" role="menuitem" onClick={onLogout}>
+                  Logout
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
-        <button className="secondary-button" type="button" onClick={onLogout}>
-          Log Out
-        </button>
       </div>
     </header>
   );
@@ -439,7 +484,8 @@ export default function App() {
   const [authState, setAuthState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
-  const [profileLabel, setProfileLabel] = useState("Anonymous");
+  const [profile, setProfile] = useState<AuthProfile>(ANONYMOUS_PROFILE);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [adminUser, setAdminUser] = useState(false);
   const [currentView, setCurrentView] = useState<DashboardView>("drive");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -490,6 +536,8 @@ export default function App() {
   const adminUsersSectionRef = useRef<HTMLElement | null>(null);
   const adminAuditSectionRef = useRef<HTMLElement | null>(null);
   const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
+  const profileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
@@ -547,6 +595,36 @@ export default function App() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (profileMenuRef.current?.contains(target) || profileMenuButtonRef.current?.contains(target)) {
+        return;
+      }
+      setProfileMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [profileMenuOpen]);
 
   async function loadFolder(folderId: string | null) {
     const catalogPromise = api.listCatalogItems(folderId);
@@ -733,6 +811,8 @@ export default function App() {
   function enterAuthRecovery(error: unknown) {
     startTransition(() => {
       setAuthenticated(false);
+      setProfile(ANONYMOUS_PROFILE);
+      setProfileMenuOpen(false);
       setAdminUser(false);
       setAdminPartialRefreshWarning(null);
       setCurrentView("drive");
@@ -771,6 +851,18 @@ export default function App() {
       return error.message;
     }
     return fallback;
+  }
+
+  async function refreshProfileState() {
+    const nextProfile = await refreshAuthProfile();
+    const nextAuthenticated = isAuthenticated();
+    const nextAdminUser = isAdmin();
+    startTransition(() => {
+      setProfile(nextProfile);
+      setAuthenticated(nextAuthenticated);
+      setAdminUser(nextAdminUser);
+    });
+    return { nextAuthenticated, nextAdminUser };
   }
 
   async function loadActivitiesBestEffort(): Promise<ActivityRecord[] | null> {
@@ -819,9 +911,10 @@ export default function App() {
       try {
         const loggedIn = await initializeAuth();
         const authReady = loggedIn || isAuthenticated();
+        const profileReady = getAuthProfile();
         const adminReady = isAdmin();
         setAuthenticated(authReady);
-        setProfileLabel(getProfileSummary());
+        setProfile(profileReady);
         setAdminUser(adminReady);
         setAuthState("ready");
         setError(null);
@@ -847,6 +940,25 @@ export default function App() {
 
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    function handleWindowFocus() {
+      void refreshProfileState().catch((refreshError) => {
+        if (isAuthApiError(refreshError)) {
+          enterAuthRecovery(refreshError);
+        }
+      });
+    }
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [authenticated]);
 
   useEffect(() => {
     if (!adminUser) {
@@ -2220,7 +2332,7 @@ export default function App() {
 
         <section className="workspace">
           <AppTopBar
-            profileLabel={profileLabel}
+            profile={profile}
             searchQuery={searchQuery}
             onSearchQueryChange={(value) => {
               setSearchQuery(value);
@@ -2229,12 +2341,19 @@ export default function App() {
               }
             }}
             onSearch={handleSearch}
-            onLogout={() => void logout()}
+            onLogout={() => {
+              setProfileMenuOpen(false);
+              void logout();
+            }}
             isBusy={isBusy}
             title="Drive"
             secondaryActionLabel="Activity"
             secondaryActionActive={drivePanelMode === "activity"}
             onSecondaryAction={toggleDriveActivityPanel}
+            profileMenuOpen={profileMenuOpen}
+            onProfileMenuToggle={() => setProfileMenuOpen((current) => !current)}
+            profileMenuButtonRef={profileMenuButtonRef}
+            profileMenuRef={profileMenuRef}
           />
 
           {error ? <div className="error-banner">{error}</div> : null}
@@ -2443,7 +2562,7 @@ export default function App() {
         <aside className="sidebar">
           <div className="sidebar-section side-card">
             <p className="eyebrow">Admin Console</p>
-            <strong>{profileLabel}</strong>
+            <strong>{profile.displayName}</strong>
             <p className="muted">Operational oversight for users, audit, and service health.</p>
           </div>
           <nav className="sidebar-nav" aria-label="Admin">
@@ -2473,13 +2592,20 @@ export default function App() {
 
         <section className="workspace">
           <AppTopBar
-            profileLabel={profileLabel}
+            profile={profile}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             onSearch={(event) => event.preventDefault()}
-            onLogout={() => void logout()}
+            onLogout={() => {
+              setProfileMenuOpen(false);
+              void logout();
+            }}
             isBusy={isBusy}
             title="Admin"
+            profileMenuOpen={profileMenuOpen}
+            onProfileMenuToggle={() => setProfileMenuOpen((current) => !current)}
+            profileMenuButtonRef={profileMenuButtonRef}
+            profileMenuRef={profileMenuRef}
           />
 
           {error ? <div className="error-banner">{error}</div> : null}
