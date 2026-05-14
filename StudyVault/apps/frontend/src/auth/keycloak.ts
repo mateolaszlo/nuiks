@@ -4,6 +4,7 @@ const STUDYVAULT_ADMIN_ROLE = "studyvault_admin";
 const keycloakBaseUrl = import.meta.env.VITE_KEYCLOAK_URL ?? window.location.origin;
 const keycloakRealm = import.meta.env.VITE_KEYCLOAK_REALM ?? "studyvault";
 const silentCheckSsoRedirectUri = `${window.location.origin}/silent-check-sso.html`;
+const accountReferrerUri = new URL("/", window.location.origin).toString();
 
 const keycloak = new Keycloak({
   url: keycloakBaseUrl,
@@ -44,7 +45,7 @@ function buildKeycloakAccountUrl(hash = ""): string {
   let accountUrl = buildFallbackAccountUrl();
 
   try {
-    const generatedUrl = keycloak.createAccountUrl({ redirectUri: window.location.origin });
+    const generatedUrl = keycloak.createAccountUrl({ redirectUri: accountReferrerUri });
     if (generatedUrl) {
       accountUrl = generatedUrl;
     }
