@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 
 import pytest
 
@@ -104,11 +104,11 @@ def test_keycloak_auth_sync_seeds_future_only_checkpoint() -> None:
         status="succeeded",
         service="keycloak",
         message="Keycloak login succeeded",
-        created_at=datetime(2026, 4, 30, 17, 0, tzinfo=UTC),
+        created_at=datetime(2026, 4, 30, 17, 0, tzinfo=timezone.utc),
     )
     keycloak = main.InMemoryKeycloakAdminGateway(auth_events=[old_event])
     emitted: list[AdminAuditEvent] = []
-    now = datetime(2026, 4, 30, 18, 0, tzinfo=UTC)
+    now = datetime(2026, 4, 30, 18, 0, tzinfo=timezone.utc)
     sync = integrations.KeycloakAuthEventSync(
         keycloak=keycloak,
         checkpoint_store=repository,
@@ -129,7 +129,7 @@ def test_keycloak_auth_sync_emits_only_new_events_after_checkpoint() -> None:
     main = load_service_module("activity")
     integrations = load_service_module("activity", "app.services.admin_integrations")
     repository = main.InMemoryActivityRepository()
-    checkpoint_time = datetime(2026, 4, 30, 18, 0, tzinfo=UTC)
+    checkpoint_time = datetime(2026, 4, 30, 18, 0, tzinfo=timezone.utc)
     repository.save_auth_event_sync_checkpoint(checkpoint_time, "event-a")
 
     keycloak = main.InMemoryKeycloakAdminGateway(
@@ -171,7 +171,7 @@ def test_keycloak_auth_sync_emits_only_new_events_after_checkpoint() -> None:
                 status="succeeded",
                 service="keycloak",
                 message="Keycloak register succeeded",
-                created_at=datetime(2026, 4, 30, 18, 1, tzinfo=UTC),
+                created_at=datetime(2026, 4, 30, 18, 1, tzinfo=timezone.utc),
             ),
         ]
     )
@@ -190,7 +190,7 @@ def test_keycloak_auth_sync_emits_only_new_events_after_checkpoint() -> None:
     assert synced == 2
     assert [event.event_id for event in emitted] == ["event-b", "event-c"]
     assert repository.get_auth_event_sync_checkpoint() == (
-        datetime(2026, 4, 30, 18, 1, tzinfo=UTC),
+        datetime(2026, 4, 30, 18, 1, tzinfo=timezone.utc),
         "event-c",
     )
     assert synced_again == 0
@@ -287,7 +287,7 @@ def test_admin_service_audit_uses_indexed_events_not_live_keycloak() -> None:
         status="succeeded",
         service="keycloak",
         message="Keycloak login succeeded",
-        created_at=datetime(2026, 5, 2, 10, 24, 13, tzinfo=UTC),
+        created_at=datetime(2026, 5, 2, 10, 24, 13, tzinfo=timezone.utc),
     )
     audit_gateway = activity.InMemoryAuditLogGateway(audit_events=[indexed_event])
     service = admin_module.AdminService(

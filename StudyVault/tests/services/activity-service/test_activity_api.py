@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -194,7 +194,7 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
         email="demo@example.com",
         enabled=True,
         roles=["user"],
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
     )
     admin_event = AdminAuditEvent(
         event_id="audit-1",
@@ -206,7 +206,7 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
         target_username="demo",
         filename="notes.txt",
         message="file upload succeeded",
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
     )
     app = module.create_app(
         repository=module.InMemoryActivityRepository(),
@@ -218,7 +218,7 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
                     event_id="error-1",
                     service="file-service",
                     message="Upload failed",
-                    created_at=datetime.now(UTC),
+                    created_at=datetime.now(timezone.utc),
                 )
             ],
             counts={"uploads": 3, "downloads": 2, "searches": 4, "errors": 1},
