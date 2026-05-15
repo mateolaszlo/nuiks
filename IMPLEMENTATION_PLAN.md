@@ -662,6 +662,19 @@ Future optimization path, explicitly out of scope here:
 - [x] Add batch processing
 - [x] Add retries/logging
 - [x] Make schedule configurable
+- [x] Add storage usage snapshot worker
+- [x] Add internal catalog storage usage aggregation endpoint
+- [x] Index per-user and global storage snapshots into Elasticsearch under `studyvault-storage-*`
+
+### 6.7.1 Storage usage snapshots
+
+This phase adds metadata-derived storage usage snapshots for Kibana without requiring direct MinIO metrics access or saved-object dashboards in the repo.
+
+- source of truth is catalog metadata, not object-store introspection
+- snapshots split usage into `active_bytes`, `trashed_bytes`, and `total_bytes`
+- counts are emitted alongside bytes for both user and global scopes
+- `catalog-service` exposes `GET /internal/catalog/storage-usage`
+- `storage-usage-worker` periodically indexes one document per user plus one global document into `studyvault-storage-*`
 
 ## 6.8 Public API versioning
 
