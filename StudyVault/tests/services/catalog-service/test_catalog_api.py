@@ -972,7 +972,7 @@ def test_catalog_internal_folder_hard_delete_rejects_non_trashed_folder() -> Non
     assert response.json()["detail"] == "Folder is not trashed"
 
 
-def test_catalog_internal_folder_hard_delete_removes_trashed_subtree_with_files() -> None:
+def test_catalog_internal_folder_hard_delete_rejects_subtree_with_files() -> None:
     module = load_service_module("catalog")
     root = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=0)
     root.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
@@ -991,8 +991,7 @@ def test_catalog_internal_folder_hard_delete_removes_trashed_subtree_with_files(
     file_record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
     file_record.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
     repository = module.InMemoryCatalogRepository(seed=[file_record], folder_seed=[root, child])
-    downstream = FakeSearchPublisher(repository)
-    app = module.create_app(repository=repository, downstream=downstream)
+    app = module.create_app(repository=repository)
 
     with TestClient(app) as client:
         response = client.delete(
@@ -1000,12 +999,11 @@ def test_catalog_internal_folder_hard_delete_removes_trashed_subtree_with_files(
             headers={"x-internal-token": "internal-test-token"},
         )
 
-    assert response.status_code == 204
-    assert repository.get_file("test-user", file_record.file_id) is None
-    assert repository.get_folder("test-user", root.folder_id) is None
-    assert repository.get_folder("test-user", child.folder_id) is None
-    assert downstream.hard_deleted_file_ids == [file_record.file_id]
-    assert downstream.deleted_item_ids == [child.folder_id, root.folder_id]
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Folder subtree still contains files"
+    assert repository.get_file("test-user", file_record.file_id) is not None
+    assert repository.get_folder("test-user", root.folder_id) is not None
+    assert repository.get_folder("test-user", child.folder_id) is not None
 
 
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:

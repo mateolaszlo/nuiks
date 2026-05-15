@@ -1796,7 +1796,7 @@ def test_public_file_hard_delete_rejects_non_trashed_file() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "File is not trashed"
-    assert stored.object_key not in object_store._objects
+    assert stored.object_key in object_store._objects
     assert downstream.catalog_records == []
     assert downstream.search_records[0].file_id == stored.file_id
 
