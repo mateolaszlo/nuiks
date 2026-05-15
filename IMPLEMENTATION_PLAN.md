@@ -273,9 +273,9 @@ Allowed.
 
 ### 5.7 Hard delete from UI
 
-Optional.
+Implemented.
 
-For MVP, it is acceptable to show only restore in the trash UI and rely on automatic purge. Adding “Delete forever” is a nice enhancement but not required.
+The trash UI now exposes both `Restore` and `Delete` actions. `Delete` requires a confirmation step and permanently removes the item from object storage and derived metadata systems.
 
 ### 5.8 Main Drive layout scope
 
@@ -375,6 +375,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add internal file restore endpoint
 - [x] Add internal file hard-delete endpoint
 - [x] Add internal folder hard-delete endpoint
+- [x] Add public folder hard-delete endpoint
 - [x] Add internal catalog export route
 - [x] Keep folder create responses successful after the folder is persisted even if search publication fails
 
@@ -386,6 +387,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Add trash file endpoint
 - [x] Add restore file endpoint
 - [x] Add hard delete method for purge worker
+- [x] Add public file hard-delete endpoint
 - [x] Add `delete()` to object store abstraction
 - [x] Keep the existing single-file `/api/files` contract as the backend primitive for queued uploads
 - [x] Document in code/comments that upload completion happens only after downstream sync, so frontend `processing` state is expected
@@ -446,6 +448,7 @@ That is enough to feel responsive, but conservative for the current Docker-first
 - [x] Auto-dismiss successful upload queue entries after a short delay
 - [x] Delay `Processing…` until the browser has actually completed the upload phase
 - [x] Reuse Playwright auth state for seeded users so browser E2E coverage avoids repeated auth throttling
+- [x] Add `Delete` action with confirmation modal for trash items
 
 ### 6.6.1 Drive browser UX refresh
 
