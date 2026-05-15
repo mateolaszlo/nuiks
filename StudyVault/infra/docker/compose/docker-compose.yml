@@ -306,6 +306,29 @@ services:
         gelf-address: "udp://127.0.0.1:12201"
         tag: "purge-worker"
 
+  storage-usage-worker:
+    build:
+      context: ../../..
+      dockerfile: apps/storage-usage-worker/Dockerfile
+    environment:
+      CATALOG_INTERNAL_URL: http://catalog-service:8000
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
+      STUDYVAULT_INTERNAL_TOKEN: ${STUDYVAULT_INTERNAL_TOKEN:-studyvault-internal-token-change-me}
+      STORAGE_USAGE_RUN_MODE: ${STORAGE_USAGE_RUN_MODE:-loop}
+      STORAGE_USAGE_INTERVAL_SECONDS: ${STORAGE_USAGE_INTERVAL_SECONDS:-3600}
+      STORAGE_USAGE_INDEX_PREFIX: ${STORAGE_USAGE_INDEX_PREFIX:-studyvault-storage}
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: "storage-usage-worker"
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     environment:

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from studyvault_backend_common.models import BreadcrumbEntry, DriveItem, FileRecord, FileRestoreResponse, FolderRecord
+from studyvault_backend_common.models import (
+    BreadcrumbEntry,
+    DriveItem,
+    FileRecord,
+    FileRestoreResponse,
+    FolderRecord,
+    StorageUsageSummary,
+    StorageUsageTotals,
+)
 
 
 class CatalogItemsResponse(BaseModel):
@@ -36,12 +44,18 @@ class CatalogRestoreResponse(BaseModel):
     message: str = ""
 
 
+class CatalogStorageUsageResponse(BaseModel):
+    users: list[StorageUsageSummary]
+    global_totals: StorageUsageTotals
+
+
 __all__ = [
     "CatalogBreadcrumbsResponse",
     "CatalogExpiredTrashResponse",
     "CatalogItemExportResponse",
     "CatalogItemsResponse",
     "CatalogRestoreResponse",
+    "CatalogStorageUsageResponse",
     "CatalogTrashResponse",
     "FileRestoreResponse",
 ]

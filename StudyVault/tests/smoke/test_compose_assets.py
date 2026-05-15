@@ -36,6 +36,7 @@ def test_docker_compose_config_contains_required_services() -> None:
         "keycloak",
         "file-service",
         "purge-worker",
+        "storage-usage-worker",
         "catalog-service",
         "search-service",
         "activity-service",
@@ -70,6 +71,10 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "FILE_INTERNAL_URL: http://file-service:8000" in result.stdout
     assert "PURGE_RUN_MODE: loop" in result.stdout
     assert "PURGE_INTERVAL_SECONDS: \"3600\"" in result.stdout
+    assert "ELASTICSEARCH_URL: http://elasticsearch:9200" in result.stdout
+    assert "STORAGE_USAGE_RUN_MODE: loop" in result.stdout
+    assert "STORAGE_USAGE_INTERVAL_SECONDS: \"3600\"" in result.stdout
+    assert "STORAGE_USAGE_INDEX_PREFIX: studyvault-storage" in result.stdout
     assert "FILE_S3_ENDPOINT:" in result.stdout
     assert "FILE_S3_ACCESS_KEY:" in result.stdout
     assert "FILE_S3_SECRET_KEY:" in result.stdout

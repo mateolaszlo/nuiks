@@ -33,6 +33,7 @@ from app.schemas.catalog import (
     CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
+    CatalogStorageUsageResponse,
     CatalogTrashResponse,
 )
 
@@ -1255,6 +1256,20 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogExpiredTrashResponse(files=files, folders=folders)
+
+    def get_storage_usage(self) -> CatalogStorageUsageResponse:
+        usage = self.repository.list_storage_usage()
+        global_totals = self.repository.get_global_storage_usage()
+        logger.info(
+            "catalog storage usage listed",
+            event_name="catalog_storage_usage_list_requested",
+            event_category="catalog",
+            owner_count=len(usage),
+            total_bytes=global_totals.total_bytes,
+            total_file_count=global_totals.total_file_count,
+            status="succeeded",
+        )
+        return CatalogStorageUsageResponse(users=usage, global_totals=global_totals)
 
     def export_items(
         self,

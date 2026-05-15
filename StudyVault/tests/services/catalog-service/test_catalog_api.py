@@ -262,6 +262,104 @@ def test_catalog_internal_export_requires_internal_token() -> None:
     assert authorized.json() == {"items": [], "next_offset": None, "has_more": False}
 
 
+def test_catalog_internal_storage_usage_requires_internal_token() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    client = TestClient(app)
+    try:
+        unauthorized = client.get("/internal/catalog/storage-usage")
+        authorized = client.get(
+            "/internal/catalog/storage-usage",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+    finally:
+        client.close()
+
+    assert unauthorized.status_code == 403
+    assert authorized.status_code == 200
+    assert authorized.json() == {
+        "users": [],
+        "global_totals": {
+            "active_bytes": 0,
+            "trashed_bytes": 0,
+            "total_bytes": 0,
+            "active_file_count": 0,
+            "trashed_file_count": 0,
+            "total_file_count": 0,
+        },
+    }
+
+
+def test_catalog_internal_storage_usage_splits_active_and_trashed_bytes() -> None:
+    module = load_service_module("catalog")
+    active = FileRecord.create(
+        owner_id="test-user",
+        filename="active.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    trashed = FileRecord.create(
+        owner_id="test-user",
+        filename="trashed.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    trashed.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    other_user = FileRecord.create(
+        owner_id="other-user",
+        filename="other.txt",
+        mime_type="text/plain",
+        size=3,
+        tags=[],
+    )
+    repository = module.InMemoryCatalogRepository(seed=[active, trashed, other_user])
+    app = module.create_app(repository=repository)
+
+    client = TestClient(app)
+    try:
+        response = client.get(
+            "/internal/catalog/storage-usage",
+            headers={"x-internal-token": "internal-test-token"},
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["users"] == [
+        {
+            "owner_id": "other-user",
+            "active_bytes": 3,
+            "trashed_bytes": 0,
+            "total_bytes": 3,
+            "active_file_count": 1,
+            "trashed_file_count": 0,
+            "total_file_count": 1,
+        },
+        {
+            "owner_id": "test-user",
+            "active_bytes": 10,
+            "trashed_bytes": 5,
+            "total_bytes": 15,
+            "active_file_count": 1,
+            "trashed_file_count": 1,
+            "total_file_count": 2,
+        },
+    ]
+    assert payload["global_totals"] == {
+        "active_bytes": 13,
+        "trashed_bytes": 5,
+        "total_bytes": 18,
+        "active_file_count": 2,
+        "trashed_file_count": 1,
+        "total_file_count": 3,
+    }
+
+
 def test_catalog_internal_export_returns_paginated_drive_items() -> None:
     module = load_service_module("catalog")
     early_folder = FolderRecord.create(owner_id="owner-a", name="Alpha")

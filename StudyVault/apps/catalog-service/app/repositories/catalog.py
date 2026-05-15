@@ -5,12 +5,12 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Protocol
 
-from sqlalchemy import create_engine, desc, select, text
+from sqlalchemy import case, create_engine, desc, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord
+from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord, StorageUsageSummary, StorageUsageTotals
 
 from app.models.file_record import Base, FileRow, FolderRow
 
@@ -65,6 +65,10 @@ class CatalogRepository(Protocol):
     def list_expired_trashed_files(self, now: datetime) -> list[FileRecord]: ...
 
     def list_expired_trashed_folders(self, now: datetime) -> list[FolderRecord]: ...
+
+    def list_storage_usage(self) -> list[StorageUsageSummary]: ...
+
+    def get_global_storage_usage(self) -> StorageUsageTotals: ...
 
     def ping(self) -> None: ...
 
@@ -227,6 +231,31 @@ class InMemoryCatalogRepository:
 
     def ping(self) -> None:
         return None
+
+    def list_storage_usage(self) -> list[StorageUsageSummary]:
+        usage_by_owner: dict[str, StorageUsageSummary] = {}
+        for record in self._records.values():
+            summary = usage_by_owner.setdefault(record.owner_id, StorageUsageSummary(owner_id=record.owner_id))
+            if record.trashed_at is None:
+                summary.active_bytes += record.size
+                summary.active_file_count += 1
+            else:
+                summary.trashed_bytes += record.size
+                summary.trashed_file_count += 1
+            summary.total_bytes += record.size
+            summary.total_file_count += 1
+        return sorted(usage_by_owner.values(), key=lambda item: item.owner_id)
+
+    def get_global_storage_usage(self) -> StorageUsageTotals:
+        totals = StorageUsageTotals()
+        for summary in self.list_storage_usage():
+            totals.active_bytes += summary.active_bytes
+            totals.trashed_bytes += summary.trashed_bytes
+            totals.total_bytes += summary.total_bytes
+            totals.active_file_count += summary.active_file_count
+            totals.trashed_file_count += summary.trashed_file_count
+            totals.total_file_count += summary.total_file_count
+        return totals
 
     @staticmethod
     def _drive_item_sort_key(item: DriveItem) -> tuple[int, str, datetime, str]:
@@ -537,6 +566,61 @@ class SqlAlchemyCatalogRepository:
                 .order_by(FolderRow.purge_after, FolderRow.created_at, FolderRow.folder_id)
             ).all()
         return [self._to_folder_record(row) for row in rows]
+
+    def list_storage_usage(self) -> list[StorageUsageSummary]:
+        with self.session_factory() as session:
+            active_bytes = func.coalesce(func.sum(case((FileRow.trashed_at.is_(None), FileRow.size), else_=0)), 0)
+            trashed_bytes = func.coalesce(func.sum(case((FileRow.trashed_at.is_not(None), FileRow.size), else_=0)), 0)
+            total_bytes = func.coalesce(func.sum(FileRow.size), 0)
+            active_file_count = func.coalesce(func.sum(case((FileRow.trashed_at.is_(None), 1), else_=0)), 0)
+            trashed_file_count = func.coalesce(func.sum(case((FileRow.trashed_at.is_not(None), 1), else_=0)), 0)
+            total_file_count = func.count(FileRow.file_id)
+            rows = session.execute(
+                select(
+                    FileRow.owner_id,
+                    active_bytes,
+                    trashed_bytes,
+                    total_bytes,
+                    active_file_count,
+                    trashed_file_count,
+                    total_file_count,
+                )
+                .group_by(FileRow.owner_id)
+                .order_by(FileRow.owner_id)
+            ).all()
+        return [
+            StorageUsageSummary(
+                owner_id=row[0],
+                active_bytes=int(row[1] or 0),
+                trashed_bytes=int(row[2] or 0),
+                total_bytes=int(row[3] or 0),
+                active_file_count=int(row[4] or 0),
+                trashed_file_count=int(row[5] or 0),
+                total_file_count=int(row[6] or 0),
+            )
+            for row in rows
+        ]
+
+    def get_global_storage_usage(self) -> StorageUsageTotals:
+        with self.session_factory() as session:
+            row = session.execute(
+                select(
+                    func.coalesce(func.sum(case((FileRow.trashed_at.is_(None), FileRow.size), else_=0)), 0),
+                    func.coalesce(func.sum(case((FileRow.trashed_at.is_not(None), FileRow.size), else_=0)), 0),
+                    func.coalesce(func.sum(FileRow.size), 0),
+                    func.coalesce(func.sum(case((FileRow.trashed_at.is_(None), 1), else_=0)), 0),
+                    func.coalesce(func.sum(case((FileRow.trashed_at.is_not(None), 1), else_=0)), 0),
+                    func.count(FileRow.file_id),
+                )
+            ).one()
+        return StorageUsageTotals(
+            active_bytes=int(row[0] or 0),
+            trashed_bytes=int(row[1] or 0),
+            total_bytes=int(row[2] or 0),
+            active_file_count=int(row[3] or 0),
+            trashed_file_count=int(row[4] or 0),
+            total_file_count=int(row[5] or 0),
+        )
 
     @staticmethod
     def _to_record(row: FileRow) -> FileRecord:

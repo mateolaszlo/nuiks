@@ -397,3 +397,16 @@ class AdminErrorRecord(BaseModel):
     event_name: str | None = None
     status: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class StorageUsageTotals(BaseModel):
+    active_bytes: int = 0
+    trashed_bytes: int = 0
+    total_bytes: int = 0
+    active_file_count: int = 0
+    trashed_file_count: int = 0
+    total_file_count: int = 0
+
+
+class StorageUsageSummary(StorageUsageTotals):
+    owner_id: str

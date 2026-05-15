@@ -18,6 +18,7 @@ SERVICE_ROOTS = {
     "activity": ROOT / "apps" / "activity-service",
     "file": ROOT / "apps" / "file-service",
     "purge": ROOT / "apps" / "purge-worker",
+    "storage_usage": ROOT / "apps" / "storage-usage-worker",
 }
 
 

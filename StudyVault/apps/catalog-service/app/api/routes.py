@@ -25,6 +25,7 @@ from app.schemas.catalog import (
     CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
+    CatalogStorageUsageResponse,
     CatalogTrashResponse,
     FileRestoreResponse,
 )
@@ -330,6 +331,14 @@ def build_internal_router(service: CatalogService) -> APIRouter:
             limit=limit,
             include_trashed=include_trashed,
         )
+
+    @router.get(
+        "/internal/catalog/storage-usage",
+        response_model=CatalogStorageUsageResponse,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def get_storage_usage() -> CatalogStorageUsageResponse:
+        return service.get_storage_usage()
 
     @router.post(
         "/internal/catalog/files",
