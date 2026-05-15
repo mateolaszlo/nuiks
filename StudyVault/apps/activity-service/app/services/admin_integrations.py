@@ -5,7 +5,7 @@ import secrets
 from collections.abc import Iterable
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 import httpx
@@ -35,7 +35,7 @@ def _parse_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value / 1000, tz=UTC)
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
     if isinstance(value, str):
         normalized = value.replace("Z", "+00:00")
         try:
@@ -115,7 +115,7 @@ def _normalize_keycloak_auth_event(item: dict[str, Any]) -> AdminAuditEvent | No
         service="keycloak",
         message=f"Keycloak {action} {'succeeded' if status == 'succeeded' else 'failed'}",
         metadata=details,
-        created_at=_parse_datetime(item.get("time")) or datetime.now(UTC),
+        created_at=_parse_datetime(item.get("time")) or datetime.now(timezone.utc),
     )
 
 
@@ -252,7 +252,7 @@ class KeycloakAuthEventSync:
         self.batch_size = batch_size
         self.interval_seconds = interval_seconds
         self.emit_event = emit_event or self._emit_event
-        self.now = now or (lambda: datetime.now(UTC))
+        self.now = now or (lambda: datetime.now(timezone.utc))
 
     def initialize_checkpoint(self) -> AuthEventSyncCheckpoint:
         existing = self._checkpoint()
@@ -399,7 +399,7 @@ class ElasticsearchAuditClient:
                         for key in ("query", "result_count", "mime_type", "tags_count", "size", "client_ip", "error")
                         if key in source
                     },
-                    created_at=_parse_datetime(source.get("@timestamp")) or datetime.now(UTC),
+                    created_at=_parse_datetime(source.get("@timestamp")) or datetime.now(timezone.utc),
                 )
             )
         return events
@@ -432,7 +432,7 @@ class ElasticsearchAuditClient:
                     request_id=source.get("request_id"),
                     event_name=source.get("event_name"),
                     status=source.get("status"),
-                    created_at=_parse_datetime(source.get("@timestamp")) or datetime.now(UTC),
+                    created_at=_parse_datetime(source.get("@timestamp")) or datetime.now(timezone.utc),
                 )
             )
         return records

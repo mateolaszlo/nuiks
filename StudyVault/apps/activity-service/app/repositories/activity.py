@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Protocol
 
 from pymongo import DESCENDING, MongoClient
@@ -72,7 +72,7 @@ class MongoActivityRepository:
             return None
         created_at = document["created_at"]
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
+            created_at = created_at.replace(tzinfo=timezone.utc)
         return created_at, document.get("event_id", "")
 
     def save_auth_event_sync_checkpoint(self, created_at: datetime, event_id: str) -> None:
