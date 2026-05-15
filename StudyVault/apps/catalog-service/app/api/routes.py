@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
@@ -264,6 +264,35 @@ def build_public_router(service: CatalogService) -> APIRouter:
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 
+    @router.delete(
+        "/catalog/folders/{folder_id}/hard-delete",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Catalog"],
+        summary="Permanently delete a folder",
+        description="Permanently delete a trashed folder subtree owned by the authenticated user.",
+        responses={
+            **PUBLIC_CATALOG_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder was not found for the authenticated user.",
+            },
+            409: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder is not currently in trash.",
+            },
+        },
+    )
+    @version(1)
+    def hard_delete_folder(
+        folder_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> Response:
+        try:
+            service.hard_delete_folder(user, folder_id)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
+
     return router
 
 
@@ -387,7 +416,7 @@ def build_internal_router(service: CatalogService) -> APIRouter:
         folder_id: str,
         owner_id: str = Query(...),
     ) -> None:
-        service.hard_delete_folder(owner_id=owner_id, folder_id=folder_id)
+        service.hard_delete_folder_internal(owner_id=owner_id, folder_id=folder_id)
 
     @router.get(
         "/internal/catalog/files/{file_id}",

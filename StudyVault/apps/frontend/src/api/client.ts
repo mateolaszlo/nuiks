@@ -159,6 +159,12 @@ export class ApiClient {
     });
   }
 
+  hardDeleteFile(fileId: string): Promise<void> {
+    return this.request<void>(`/api/v1/files/${encodeURIComponent(fileId)}/hard-delete`, {
+      method: "DELETE",
+    });
+  }
+
   trashFolder(folderId: string): Promise<void> {
     return this.request<void>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}`, {
       method: "DELETE",
@@ -174,6 +180,12 @@ export class ApiClient {
         body: JSON.stringify({ parent_folder_id: parentFolderId ?? null }),
       },
     );
+  }
+
+  hardDeleteFolder(folderId: string): Promise<void> {
+    return this.request<void>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}/hard-delete`, {
+      method: "DELETE",
+    });
   }
 
   search(

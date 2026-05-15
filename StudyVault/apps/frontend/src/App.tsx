@@ -516,6 +516,7 @@ export default function App() {
   const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
   const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
   const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
+  const [pendingPermanentDeleteItem, setPendingPermanentDeleteItem] = useState<DriveItem | null>(null);
   const [localActionError, setLocalActionError] = useState<LocalActionError>(null);
   const [searchFormError, setSearchFormError] = useState<string | null>(null);
   const [searchModeActive, setSearchModeActive] = useState(false);
@@ -1304,6 +1305,32 @@ export default function App() {
       setError(null);
     } catch (restoreError) {
       const message = handleApiFailure(restoreError, "Restore failed");
+      if (message) {
+        setError(message);
+      }
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handlePermanentDeleteItem(item: DriveItem) {
+    try {
+      setIsBusy(true);
+      if (item.kind === "folder") {
+        await api.hardDeleteFolder(item.item_id);
+      } else {
+        await api.hardDeleteFile(item.item_id);
+      }
+      if (selectedDriveItem?.item_id === item.item_id) {
+        setSelectedDriveItem(null);
+        setDrivePanelMode("hidden");
+      }
+      setPendingPermanentDeleteItem(null);
+      await loadTrash();
+      setError(null);
+    } catch (deleteError) {
+      setPendingPermanentDeleteItem(null);
+      const message = handleApiFailure(deleteError, "Permanent delete failed");
       if (message) {
         setError(message);
       }
@@ -2150,6 +2177,57 @@ export default function App() {
     );
   }
 
+  function renderPermanentDeleteModal() {
+    if (!pendingPermanentDeleteItem) {
+      return null;
+    }
+
+    const description =
+      pendingPermanentDeleteItem.kind === "folder"
+        ? "Permanently delete this folder and all items inside it? This action cannot be undone."
+        : "Permanently delete this file? This action cannot be undone.";
+
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="permanent-delete-title"
+          aria-describedby="permanent-delete-description"
+        >
+          <div className="section-header">
+            <div>
+              <p className="eyebrow">Delete Permanently</p>
+              <h2 id="permanent-delete-title">{pendingPermanentDeleteItem.name}</h2>
+            </div>
+          </div>
+          <p id="permanent-delete-description" className="muted">
+            {description}
+          </p>
+          <div className="modal-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setPendingPermanentDeleteItem(null)}
+              disabled={isBusy}
+            >
+              Cancel
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              onClick={() => void handlePermanentDeleteItem(pendingPermanentDeleteItem)}
+              disabled={isBusy}
+            >
+              Delete permanently
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderDriveDetailsPanel() {
     if (drivePanelMode === "activity") {
       return (
@@ -2536,6 +2614,14 @@ export default function App() {
                           <button className="primary-button" type="button" onClick={() => void handleRestoreItem(item)} disabled={isBusy}>
                             Restore
                           </button>
+                          <button
+                            className="danger-button"
+                            type="button"
+                            onClick={() => setPendingPermanentDeleteItem(item)}
+                            disabled={isBusy}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -2546,6 +2632,7 @@ export default function App() {
 
             {renderDriveDetailsPanel()}
           </div>
+          {renderPermanentDeleteModal()}
           {renderContextMenu()}
         </section>
       </div>

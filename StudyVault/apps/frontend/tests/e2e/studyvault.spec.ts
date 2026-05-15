@@ -699,6 +699,49 @@ test("trash view survives activity service failure", async ({ page }) => {
   await expect(page.locator(".error-banner").filter({ hasText: "Trash load failed" })).toHaveCount(0);
 });
 
+test("trash item can be permanently deleted after confirmation", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `trash-delete-${uniqueId}.txt`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await openDriveWorkspace(page);
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(`trash delete ${uniqueId}`, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const driveTile = driveSurface.locator(".drive-tile").filter({ hasText: filename }).first();
+  await expect(driveTile).toBeVisible({ timeout: 60_000 });
+
+  await driveSurface.getByRole("button", { name: `More actions for ${filename}` }).click();
+  await page.locator(".context-menu").getByRole("button", { name: "Move to Trash" }).click();
+
+  await page.getByRole("button", { name: "Trash" }).click();
+
+  const trashRow = page.locator(".table-row-trash").filter({ hasText: filename }).first();
+  await expect(page.getByRole("heading", { name: "Trash" })).toBeVisible({ timeout: 60_000 });
+  await expect(trashRow).toBeVisible({ timeout: 60_000 });
+
+  await trashRow.getByRole("button", { name: "Delete" }).click();
+  const dialog = page.getByRole("dialog", { name: filename });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Permanently delete this file? This action cannot be undone.");
+
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(trashRow).toBeVisible();
+
+  await trashRow.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete permanently" }).click();
+
+  await expect(page.locator(".table-row-trash").filter({ hasText: filename })).toHaveCount(0, {
+    timeout: 60_000,
+  });
+});
+
 test("successful uploads stay successful when activity refresh fails", async ({ page }) => {
   const uniqueId = Date.now().toString();
   const filename = `post-upload-activity-${uniqueId}.txt`;

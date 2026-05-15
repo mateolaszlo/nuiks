@@ -12,7 +12,7 @@ from app.api.routes import build_internal_router, build_public_router
 from app.core.config import get_settings
 from app.repositories.catalog import InMemoryCatalogRepository, SqlAlchemyCatalogRepository
 from app.services.catalog import CatalogService
-from app.services.downstream import HttpSearchPublisher, NoopSearchPublisher
+from app.services.downstream import HttpDownstreamPublisher, NoopDownstreamPublisher
 
 
 def create_app(repository=None, downstream=None) -> FastAPI:
@@ -27,10 +27,12 @@ def create_app(repository=None, downstream=None) -> FastAPI:
     if hasattr(repository, "create_tables"):
         retry_startup(repository.create_tables)
     if downstream is None and repository_provided:
-        downstream = NoopSearchPublisher()
+        downstream = NoopDownstreamPublisher()
     if downstream is None:
-        downstream = HttpSearchPublisher(
+        downstream = HttpDownstreamPublisher(
             search_url=settings.search_service_url,
+            file_url=settings.file_service_url,
+            activity_url=settings.activity_service_url,
             internal_token=settings.internal_token,
         )
 

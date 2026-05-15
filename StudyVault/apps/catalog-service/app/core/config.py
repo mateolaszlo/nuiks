@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     public_token_audience: str = DEFAULT_PUBLIC_TOKEN_AUDIENCE
     catalog_database_url: str = "postgresql+psycopg://studyvault:studyvault@postgres:5432/studyvault"
     search_service_url: str = "http://search-service:8000"
+    file_service_url: str = "http://file-service:8000"
+    activity_service_url: str = "http://activity-service:8000"
     internal_token: str = "studyvault-internal-token-change-me"
 
     model_config = SettingsConfigDict(
@@ -36,6 +38,8 @@ def get_settings() -> Settings:
             fallback_client_id=os.environ.get("KEYCLOAK_CLIENT_ID"),
         ),
         search_service_url=os.getenv("SEARCH_SERVICE_URL", "http://search-service:8000"),
+        file_service_url=os.getenv("FILE_SERVICE_URL", "http://file-service:8000"),
+        activity_service_url=os.getenv("ACTIVITY_SERVICE_URL", "http://activity-service:8000"),
         internal_token=os.getenv(
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",

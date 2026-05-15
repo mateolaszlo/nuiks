@@ -718,6 +718,35 @@ class FileService:
 
         return restore_result
 
+    async def hard_delete_user_file(self, *, user: AuthenticatedUser, file_id: str) -> None:
+        try:
+            file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
+        except ServiceClientError as exc:
+            raise self._map_catalog_file_hard_delete_error(exc) from exc
+
+        if file_record.trashed_at is None or file_record.purge_after is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="File is not trashed")
+
+        await self.hard_delete_file(owner_id=user.subject, file_id=file_id)
+
+        try:
+            await self.downstream.publish_activity(
+                ItemActivityEvent.from_file(file_record, action="item_hard_deleted"),
+                bearer_token=user.token or "",
+            )
+        except ServiceClientError:
+            logger.error(
+                "file hard delete activity publish failed after persistence",
+                event_name="file_hard_delete_activity_publish_failed",
+                event_category="file",
+                file_id=file_record.file_id,
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                filename=file_record.filename,
+                status="failed",
+            )
+
     async def download_file(self, *, user: AuthenticatedUser, file_id: str) -> tuple[FileRecord, bytes]:
         file_record = await self.downstream.fetch_catalog_file(file_id, user.subject, bearer_token=user.token or "")
         if file_record.owner_id != user.subject:

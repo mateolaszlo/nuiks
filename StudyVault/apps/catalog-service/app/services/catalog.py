@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from functools import partial
 import anyio
@@ -17,6 +18,7 @@ from studyvault_backend_common.models import (
     FileRecord,
     FileRestoreResponse,
     FolderRecord,
+    ItemActivityEvent,
     MoveItemRequest,
     RenameItemRequest,
     RestoreItemRequest,
@@ -24,7 +26,7 @@ from studyvault_backend_common.models import (
 )
 
 from app.repositories.catalog import CatalogRepository
-from app.services.downstream import SearchPublisher
+from app.services.downstream import DownstreamPublisher
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
@@ -41,7 +43,7 @@ logger = get_logger(__name__)
 class CatalogService:
     ROOT_BREADCRUMB_NAME = "My Drive"
 
-    def __init__(self, repository: CatalogRepository, downstream: SearchPublisher | None = None) -> None:
+    def __init__(self, repository: CatalogRepository, downstream: DownstreamPublisher | None = None) -> None:
         self.repository = repository
         self.downstream = downstream
 
@@ -719,6 +721,113 @@ class CatalogService:
             message=message,
         )
 
+    def hard_delete_folder(self, user: AuthenticatedUser, folder_id: str) -> None:
+        existing = self.repository.get_folder(user.subject, folder_id)
+        if existing is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+        if existing.trashed_at is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Folder is not trashed")
+
+        folders_to_delete: list[FolderRecord] = []
+        files_to_delete: list[FileRecord] = []
+        queue = [existing]
+
+        while queue:
+            current = queue.pop(0)
+            folders_to_delete.append(current)
+            files_to_delete.extend(self.repository.list_child_files(user.subject, current.folder_id))
+            queue.extend(
+                self.repository.list_child_folders(
+                    user.subject,
+                    current.folder_id,
+                    include_trashed=True,
+                )
+            )
+
+        for file_record in sorted(files_to_delete, key=lambda item: (item.parent_folder_id or "", item.file_id)):
+            try:
+                self._hard_delete_file(
+                    file_record.file_id,
+                    file_record.owner_id,
+                    bearer_token=user.token,
+                )
+            except Exception as exc:
+                logger.error(
+                    "catalog folder hard delete file purge failed",
+                    event_name="catalog_folder_hard_delete_file_failed",
+                    event_category="catalog",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    folder_id=folder_id,
+                    file_id=file_record.file_id,
+                    status="failed",
+                    error=str(exc),
+                )
+                raise api_error(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Folder hard delete failed",
+                    code="folder_hard_delete_failed",
+                    category="unavailable",
+                    recoverable=False,
+                    context={"folder_id": folder_id, "file_id": file_record.file_id},
+                ) from exc
+
+        for descendant in [item for item in folders_to_delete if item.folder_id != folder_id]:
+            try:
+                self._delete_search_item(descendant.folder_id, bearer_token=user.token)
+            except Exception as exc:
+                if "status 404" in str(exc):
+                    continue
+                logger.error(
+                    "catalog folder hard delete search cleanup failed",
+                    event_name="catalog_folder_hard_delete_search_cleanup_failed",
+                    event_category="catalog",
+                    owner_id=user.subject,
+                    owner_username=user.username,
+                    owner_email=user.email,
+                    folder_id=folder_id,
+                    descendant_folder_id=descendant.folder_id,
+                    status="failed",
+                    error=str(exc),
+                )
+                raise api_error(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Folder hard delete failed",
+                    code="folder_hard_delete_failed",
+                    category="unavailable",
+                    recoverable=False,
+                    context={"folder_id": folder_id, "descendant_folder_id": descendant.folder_id},
+                ) from exc
+
+        self.hard_delete_folder_internal(owner_id=user.subject, folder_id=folder_id)
+
+        try:
+            self._publish_activity(
+                ItemActivityEvent(
+                    action="item_hard_deleted",
+                    item_id=existing.folder_id,
+                    item_kind="folder",
+                    item_name=existing.name,
+                    owner_id=existing.owner_id,
+                    created_at=utcnow(),
+                    parent_folder_id=existing.parent_folder_id,
+                ),
+                bearer_token=user.token,
+            )
+        except Exception as exc:
+            logger.error(
+                "catalog folder hard delete activity publish failed after persistence",
+                event_name="catalog_folder_hard_delete_activity_publish_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="failed",
+                error=str(exc),
+            )
+
     def create_file(self, file_record: FileRecord) -> FileRecord:
         created = self.repository.create_file(file_record)
         logger.info(
@@ -979,7 +1088,7 @@ class CatalogService:
             status="succeeded",
         )
 
-    def hard_delete_folder(self, *, owner_id: str, folder_id: str) -> None:
+    def hard_delete_folder_internal(self, *, owner_id: str, folder_id: str) -> None:
         existing = self.repository.get_folder(owner_id, folder_id)
         if existing is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
@@ -1026,12 +1135,33 @@ class CatalogService:
     def _publish_search_item(self, item: DriveItem, *, bearer_token: str | None) -> None:
         if self.downstream is None:
             return
-        anyio.from_thread.run(partial(self.downstream.publish_search_item, item, bearer_token=bearer_token or ""))
+        self._run_downstream_call(partial(self.downstream.publish_search_item, item, bearer_token=bearer_token or ""))
 
     def _delete_search_item(self, item_id: str, *, bearer_token: str | None) -> None:
         if self.downstream is None:
             return
-        anyio.from_thread.run(partial(self.downstream.delete_search_item, item_id, bearer_token=bearer_token or ""))
+        self._run_downstream_call(partial(self.downstream.delete_search_item, item_id, bearer_token=bearer_token or ""))
+
+    def _hard_delete_file(self, file_id: str, owner_id: str, *, bearer_token: str | None) -> None:
+        if self.downstream is None:
+            return
+        self._run_downstream_call(
+            partial(
+                self.downstream.hard_delete_file,
+                file_id,
+                owner_id,
+                bearer_token=bearer_token or "",
+            )
+        )
+
+    def _publish_activity(self, event: ItemActivityEvent, *, bearer_token: str | None) -> None:
+        if self.downstream is None:
+            return
+        self._run_downstream_call(partial(self.downstream.publish_activity, event, bearer_token=bearer_token or ""))
+
+    @staticmethod
+    def _run_downstream_call(operation: Callable[[], Awaitable[None]]) -> None:
+        anyio.run(operation)
 
     def get_file_for_owner(self, *, owner_id: str, file_id: str) -> FileRecord:
         record = self.repository.get_file(owner_id, file_id)

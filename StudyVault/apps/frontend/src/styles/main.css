@@ -774,6 +774,12 @@ h3 {
   border-radius: 18px;
 }
 
+.table-row-trash .table-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .table-row-search {
   margin: 0 -0.35rem;
   padding: 1rem 0.35rem;
@@ -998,6 +1004,52 @@ h3 {
 
 .context-menu-item-danger:hover {
   background: #fde8e7;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.modal-card {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 1rem;
+  padding: 1.35rem;
+  border-radius: 24px;
+  border: 1px solid #dde4eb;
+  background: #fff;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.danger-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.72rem 1.1rem;
+  background: #b3261e;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #8c1d18;
+}
+
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .activity-list {

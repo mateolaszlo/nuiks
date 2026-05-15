@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi_versioning import version
 
 from studyvault_backend_common.auth import AuthSettings, build_auth_dependency
@@ -207,6 +207,35 @@ def build_public_router(service: FileService) -> APIRouter:
     ) -> FileRestoreResponse | JSONResponse:
         try:
             return await service.restore_file(user=user, file_id=file_id, request=request)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
+
+    @router.delete(
+        "/files/{file_id}/hard-delete",
+        status_code=204,
+        tags=["Files"],
+        summary="Permanently delete a file",
+        description="Permanently delete a trashed file owned by the authenticated user.",
+        responses={
+            **PUBLIC_FILE_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested file was not found for the authenticated user.",
+            },
+            409: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested file is not currently in trash.",
+            },
+        },
+    )
+    @version(1)
+    async def hard_delete_public_file(
+        file_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> Response:
+        try:
+            await service.hard_delete_user_file(user=user, file_id=file_id)
+            return Response(status_code=204)
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 

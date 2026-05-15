@@ -1740,6 +1740,62 @@ def test_file_hard_delete_returns_bad_gateway_when_search_delete_fails() -> None
 
     assert response.status_code == 502
     assert response.json()["detail"] == "Search delete failed"
+
+
+def test_public_file_hard_delete_removes_trashed_file_and_emits_activity() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="trash.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    stored.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    stored.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    downstream.catalog_records.append(stored)
+    downstream.search_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/files/{stored.file_id}/hard-delete",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 204
+    assert stored.object_key not in object_store._objects
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_actions[-1] == "item_hard_deleted"
+
+
+def test_public_file_hard_delete_rejects_non_trashed_file() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    stored = FileRecord.create(
+        owner_id="test-user",
+        filename="notes.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    downstream.catalog_records.append(stored)
+    object_store._objects[stored.object_key] = b"hello"
+    app = module.create_app(object_store=object_store, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/files/{stored.file_id}/hard-delete",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "File is not trashed"
     assert stored.object_key not in object_store._objects
     assert downstream.catalog_records == []
     assert downstream.search_records[0].file_id == stored.file_id

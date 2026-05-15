@@ -2,15 +2,20 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
+from studyvault_backend_common.http import ServiceClientError
 from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord
 from tests.conftest import load_service_module
 
 
 class FakeSearchPublisher:
-    def __init__(self) -> None:
+    def __init__(self, repository=None) -> None:
         self.published_items: list[DriveItem] = []
         self.deleted_item_ids: list[str] = []
         self.publish_error: Exception | None = None
+        self.repository = repository
+        self.hard_deleted_file_ids: list[str] = []
+        self.activity_actions: list[str] = []
+        self.activity_item_ids: list[str] = []
 
     async def publish_search_item(self, item: DriveItem, *, bearer_token: str) -> None:
         if self.publish_error is not None:
@@ -19,6 +24,25 @@ class FakeSearchPublisher:
 
     async def delete_search_item(self, item_id: str, *, bearer_token: str) -> None:
         self.deleted_item_ids.append(item_id)
+
+    async def hard_delete_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> None:
+        self.hard_deleted_file_ids.append(file_id)
+        if self.repository is None:
+            return None
+        record = self.repository.get_file(owner_id, file_id)
+        if record is None:
+            raise ServiceClientError(
+                f"DELETE http://file.test/internal/files/{file_id}/hard-delete failed with status 404"
+            )
+        if record.trashed_at is None:
+            raise ServiceClientError(
+                f"DELETE http://file.test/internal/files/{file_id}/hard-delete failed with status 409"
+            )
+        self.repository.delete_file(owner_id, file_id)
+
+    async def publish_activity(self, event, *, bearer_token: str) -> None:
+        self.activity_actions.append(event.action)
+        self.activity_item_ids.append(event.item_id)
 
 
 def test_catalog_lists_files_for_authenticated_user_only() -> None:
@@ -948,7 +972,7 @@ def test_catalog_internal_folder_hard_delete_rejects_non_trashed_folder() -> Non
     assert response.json()["detail"] == "Folder is not trashed"
 
 
-def test_catalog_internal_folder_hard_delete_rejects_subtree_with_files() -> None:
+def test_catalog_internal_folder_hard_delete_removes_trashed_subtree_with_files() -> None:
     module = load_service_module("catalog")
     root = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=0)
     root.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
@@ -964,8 +988,11 @@ def test_catalog_internal_folder_hard_delete_rejects_subtree_with_files() -> Non
         tags=[],
     )
     file_record.parent_folder_id = child.folder_id
+    file_record.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    file_record.purge_after = datetime(2026, 5, 10, tzinfo=timezone.utc)
     repository = module.InMemoryCatalogRepository(seed=[file_record], folder_seed=[root, child])
-    app = module.create_app(repository=repository)
+    downstream = FakeSearchPublisher(repository)
+    app = module.create_app(repository=repository, downstream=downstream)
 
     with TestClient(app) as client:
         response = client.delete(
@@ -973,10 +1000,12 @@ def test_catalog_internal_folder_hard_delete_rejects_subtree_with_files() -> Non
             headers={"x-internal-token": "internal-test-token"},
         )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Folder subtree still contains files"
-    assert repository.get_folder("test-user", root.folder_id) is not None
-    assert repository.get_folder("test-user", child.folder_id) is not None
+    assert response.status_code == 204
+    assert repository.get_file("test-user", file_record.file_id) is None
+    assert repository.get_folder("test-user", root.folder_id) is None
+    assert repository.get_folder("test-user", child.folder_id) is None
+    assert downstream.hard_deleted_file_ids == [file_record.file_id]
+    assert downstream.deleted_item_ids == [child.folder_id, root.folder_id]
 
 
 def test_catalog_internal_expired_trash_requires_internal_token() -> None:
@@ -2765,3 +2794,57 @@ def test_catalog_internal_hard_delete_folder_deletes_search_item() -> None:
 
     assert response.status_code == 204
     assert downstream.deleted_item_ids == [folder.folder_id]
+
+
+def test_catalog_public_folder_hard_delete_removes_trashed_subtree_and_emits_activity() -> None:
+    module = load_service_module("catalog")
+    root = FolderRecord.create(owner_id="test-user", name="Archive", path_depth=0)
+    root.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    root.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    child = FolderRecord.create(owner_id="test-user", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    child.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    child.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    file_record = FileRecord.create(
+        owner_id="test-user",
+        filename="trashed.txt",
+        mime_type="text/plain",
+        size=12,
+        tags=[],
+    )
+    file_record.parent_folder_id = child.folder_id
+    file_record.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    file_record.purge_after = datetime(2026, 5, 8, tzinfo=timezone.utc)
+    repository = module.InMemoryCatalogRepository(seed=[file_record], folder_seed=[root, child])
+    downstream = FakeSearchPublisher(repository)
+    app = module.create_app(repository=repository, downstream=downstream)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/catalog/folders/{root.folder_id}/hard-delete",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 204
+    assert repository.get_file("test-user", file_record.file_id) is None
+    assert repository.get_folder("test-user", root.folder_id) is None
+    assert repository.get_folder("test-user", child.folder_id) is None
+    assert downstream.hard_deleted_file_ids == [file_record.file_id]
+    assert downstream.deleted_item_ids == [child.folder_id, root.folder_id]
+    assert downstream.activity_actions == ["item_hard_deleted"]
+    assert downstream.activity_item_ids == [root.folder_id]
+
+
+def test_catalog_public_folder_hard_delete_rejects_non_trashed_folder() -> None:
+    module = load_service_module("catalog")
+    folder = FolderRecord.create(owner_id="test-user", name="Archive")
+    repository = module.InMemoryCatalogRepository(folder_seed=[folder])
+    app = module.create_app(repository=repository)
+
+    with TestClient(app) as client:
+        response = client.delete(
+            f"/api/catalog/folders/{folder.folder_id}/hard-delete",
+            headers={"authorization": "Bearer fake"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Folder is not trashed"
