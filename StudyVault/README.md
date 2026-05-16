@@ -105,7 +105,13 @@ npx playwright install --with-deps chromium
 PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e
 ```
 
-The profile-menu `Manage Account` and `Change Password` links use Keycloak-generated account-console URLs so the browser keeps Keycloak's native `referrer` and `referrer_uri` parameters. The gateway also splits `/realms/` throttling so login and token actions remain limited without over-throttling normal account-console navigation.
+The profile-menu `Manage Account` link uses a Keycloak-generated account-console URL so the browser keeps Keycloak's native `referrer` and `referrer_uri` parameters. The gateway also splits `/realms/` throttling so login and token actions remain limited without over-throttling normal account-console navigation.
+
+Kibana dashboards are bootstrapped from `infra/kibana/studyvault-observability.ndjson`. When you update dashboards from the Kibana UI, export saved objects to `infra/kibana/export.ndjson`, then regenerate the repo-safe bundle with:
+
+```bash
+python3 infra/scripts/normalize_kibana_export.py
+```
 
 ## Repository Layout
 

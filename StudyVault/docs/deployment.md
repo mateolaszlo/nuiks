@@ -155,6 +155,15 @@ Then run Playwright from `nuiks/StudyVault/apps/frontend` with:
 PLAYWRIGHT_BASE_URL=http://localhost:8080 ELASTICSEARCH_URL=http://localhost:9200 npm run test:e2e
 ```
 
+When dashboards are changed in the Kibana UI, export the saved objects into `StudyVault/infra/kibana/export.ndjson` and regenerate the bootstrap bundle with:
+
+```bash
+cd StudyVault
+python3 infra/scripts/normalize_kibana_export.py
+```
+
+The raw `export.ndjson` is only an intermediate export artifact. Bootstrap imports `infra/kibana/studyvault-observability.ndjson`, and data views remain repo-managed by `bootstrap_kibana.py`.
+
 Open these URLs on the same machine:
 
 - app and Keycloak-proxied login: `http://localhost:8080`

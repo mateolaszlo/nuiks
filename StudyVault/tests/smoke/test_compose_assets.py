@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import importlib.util
 from pathlib import Path
 
 from studyvault_backend_common.versioning import derive_public_origin_and_hosts
@@ -135,7 +136,6 @@ def test_kibana_saved_object_bundle_exists() -> None:
     assert bundle.exists()
     objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
     dashboard_objects = [obj for obj in objects if obj.get("type") == "dashboard"]
-    config_objects = [obj for obj in objects if obj.get("type") == "config"]
     dashboard_ids = {obj["id"] for obj in dashboard_objects}
     dashboard_titles = {
         _normalize_saved_object_title(obj["attributes"]["title"])
@@ -146,8 +146,6 @@ def test_kibana_saved_object_bundle_exists() -> None:
     assert all(obj.get("type") != "index-pattern" for obj in objects)
     assert len(dashboard_objects) >= 6
     assert len(dashboard_ids) == len(dashboard_objects)
-    assert len(config_objects) == 1
-    assert config_objects[0].get("attributes", {}).get("theme:darkMode") == "enabled"
     assert "studyvault upload pipeline" in dashboard_titles
     assert "studyvault ops overview" in dashboard_titles
     assert "studyvault admin and auth" in dashboard_titles
@@ -161,7 +159,10 @@ def test_kibana_saved_objects_match_pinned_importer_version() -> None:
     for obj in objects:
         if obj.get("type") not in {"search", "dashboard"}:
             continue
-        assert obj.get("typeMigrationVersion") == "10.2.0"
+        if obj.get("type") == "search":
+            assert obj.get("typeMigrationVersion") == "10.4.0"
+        else:
+            assert obj.get("typeMigrationVersion") == "10.2.0"
 
 
 def test_kibana_saved_searches_bind_runtime_data_views() -> None:
@@ -174,6 +175,61 @@ def test_kibana_saved_searches_bind_runtime_data_views() -> None:
             continue
         search_source = json.loads(obj["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
         assert search_source.get("indexRefName") == "kibanaSavedObjectMeta.searchSourceJSON.index"
+
+
+def test_kibana_saved_object_bundle_references_runtime_storage_data_view() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bundle = project_root / "infra" / "kibana" / "studyvault-observability.ndjson"
+    objects = [json.loads(line) for line in bundle.read_text().splitlines() if line.strip()]
+
+    upload_dashboard = next(
+        obj
+        for obj in objects
+        if obj.get("type") == "dashboard" and obj.get("attributes", {}).get("title") == "StudyVault Upload Pipeline"
+    )
+    index_pattern_refs = [ref["id"] for ref in upload_dashboard.get("references", []) if ref.get("type") == "index-pattern"]
+
+    assert "studyvault-storage" in index_pattern_refs
+
+
+def test_kibana_normalizer_script_declares_supported_runtime_data_views() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    normalizer_script = project_root / "infra" / "scripts" / "normalize_kibana_export.py"
+    contents = normalizer_script.read_text()
+
+    assert '"studyvault-logs-*": "studyvault-logs"' in contents
+    assert '"metricbeat*": "metricbeat"' in contents
+    assert '"studyvault-storage-*": "studyvault-storage"' in contents
+    assert 'DROP_TYPES = {"config", "config-global", "index-pattern"}' in contents
+    assert "exportedCount" in contents
+
+
+def test_kibana_normalizer_rewrites_raw_export_into_repo_bundle_contract() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    script_path = project_root / "infra" / "scripts" / "normalize_kibana_export.py"
+    raw_export = project_root / "infra" / "kibana" / "export.ndjson"
+
+    spec = importlib.util.spec_from_file_location("normalize_kibana_export", script_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        normalized_output = Path(temp_dir) / "normalized.ndjson"
+        count = module.normalize_export(raw_path=raw_export, output_path=normalized_output)
+        objects = [json.loads(line) for line in normalized_output.read_text().splitlines() if line.strip()]
+
+    assert count == len(objects)
+    assert all(obj.get("type") in {"search", "dashboard"} for obj in objects)
+    assert all(obj.get("type") != "index-pattern" for obj in objects)
+    upload_dashboard = next(
+        obj
+        for obj in objects
+        if obj.get("type") == "dashboard" and obj.get("attributes", {}).get("title") == "StudyVault Upload Pipeline"
+    )
+    assert "studyvault-storage" in [
+        ref["id"] for ref in upload_dashboard.get("references", []) if ref.get("type") == "index-pattern"
+    ]
 
 
 def test_admin_auth_saved_searches_include_keycloak_auth_attempt_events() -> None:
@@ -287,13 +343,14 @@ def test_bootstrap_validates_saved_object_importer_compatibility() -> None:
     contents = bootstrap_script.read_text()
 
     assert 'KIBANA_VERSION = "8.15.3"' in contents
-    assert 'MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.2.0"' in contents
+    assert 'MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.4.0"' in contents
     assert "validate_saved_object_compatibility(export_path)" in contents
     assert "must not include index-pattern objects" in contents
     assert "missing-indexRefName" in contents
     assert "missing-timeFrom" in contents
     assert "missing-timeTo" in contents
     assert ":timeRange" in contents
+    assert "exportedCount" in contents
 
 
 def test_bootstrap_declares_runtime_data_views() -> None:
@@ -305,6 +362,8 @@ def test_bootstrap_declares_runtime_data_views() -> None:
     assert '"title": "studyvault-logs-*"' in contents
     assert '"id": "metricbeat"' in contents
     assert '"title": "metricbeat*"' in contents
+    assert '"id": "studyvault-storage"' in contents
+    assert '"title": "studyvault-storage-*"' in contents
 
 
 def test_logstash_promotes_emitted_event_timestamp_to_index_timestamp() -> None:

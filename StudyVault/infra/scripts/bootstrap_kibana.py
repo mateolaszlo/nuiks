@@ -11,7 +11,7 @@ from uuid import uuid4
 KIBANA_URL = "http://kibana:5601"
 ELASTICSEARCH_URL = "http://elasticsearch:9200"
 KIBANA_VERSION = "8.15.3"
-MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.2.0"
+MAX_SAVED_OBJECT_TYPE_MIGRATION_VERSION = "10.4.0"
 DASHBOARD_EXPORT_DIR = Path("/app/kibana")
 DATA_VIEWS = [
     {
@@ -22,6 +22,11 @@ DATA_VIEWS = [
     {
         "id": "metricbeat",
         "title": "metricbeat*",
+        "time_field": "@timestamp",
+    },
+    {
+        "id": "studyvault-storage",
+        "title": "studyvault-storage-*",
         "time_field": "@timestamp",
     },
 ]
@@ -121,6 +126,8 @@ def validate_saved_object_compatibility(export_path: Path) -> None:
         if not line.strip():
             continue
         payload = json.loads(line)
+        if "exportedCount" in payload and "missingReferences" in payload:
+            continue
         object_type = payload.get("type")
         object_id = payload.get("id", "unknown-id")
         if object_type == "index-pattern":
