@@ -410,3 +410,10 @@ class StorageUsageTotals(BaseModel):
 
 class StorageUsageSummary(StorageUsageTotals):
     owner_id: str
+
+
+class FolderStats(BaseModel):
+    folder_id: str
+    total_size_bytes: int = 0
+    file_count: int = 0
+    folder_count: int = 0

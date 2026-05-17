@@ -22,6 +22,7 @@ from app.core.config import get_settings
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
+    CatalogFolderStatsResponse,
     CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
@@ -164,6 +165,27 @@ def build_public_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.get_user_folder(user, folder_id)
+
+    @router.get(
+        "/catalog/folders/{folder_id}/stats",
+        response_model=CatalogFolderStatsResponse,
+        tags=["Catalog"],
+        summary="Get folder stats",
+        description="Return recursive active file count, folder count, and byte totals for a folder.",
+        responses={
+            **PUBLIC_CATALOG_RESPONSES,
+            404: {
+                "model": StudyVaultErrorResponse,
+                "description": "The requested folder was not found for the authenticated user.",
+            },
+        },
+    )
+    @version(1)
+    def get_folder_stats(
+        folder_id: str,
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> CatalogFolderStatsResponse:
+        return service.get_folder_stats(user, folder_id)
 
     @router.post(
         "/catalog/folders",

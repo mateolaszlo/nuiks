@@ -7,6 +7,7 @@ from studyvault_backend_common.models import (
     DriveItem,
     FileRecord,
     FileRestoreResponse,
+    FolderStats,
     FolderRecord,
     StorageUsageSummary,
     StorageUsageTotals,
@@ -49,9 +50,14 @@ class CatalogStorageUsageResponse(BaseModel):
     global_totals: StorageUsageTotals
 
 
+class CatalogFolderStatsResponse(FolderStats):
+    pass
+
+
 __all__ = [
     "CatalogBreadcrumbsResponse",
     "CatalogExpiredTrashResponse",
+    "CatalogFolderStatsResponse",
     "CatalogItemExportResponse",
     "CatalogItemsResponse",
     "CatalogRestoreResponse",

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
-from studyvault_backend_common.models import FileRecord, FolderRecord
+from studyvault_backend_common.models import AuthenticatedUser, FileRecord, FolderRecord
 from tests.conftest import load_service_module
 
 
@@ -313,3 +313,120 @@ def test_list_expired_trashed_items_filters_by_purge_after() -> None:
 
     assert [folder.folder_id for folder in expired_folders] == ["folder-expired"]
     assert [file.file_id for file in expired_files] == ["file-expired"]
+
+
+def test_get_folder_stats_sums_nested_active_descendants() -> None:
+    repository = build_repository()
+    root = FolderRecord.create(owner_id="user-1", name="Root", path_depth=0)
+    child = FolderRecord.create(owner_id="user-1", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    leaf = FolderRecord.create(owner_id="user-1", name="Leaf", parent_folder_id=child.folder_id, path_depth=2)
+    repository.create_folder(root)
+    repository.create_folder(child)
+    repository.create_folder(leaf)
+    root_file = FileRecord.create(owner_id="user-1", filename="root.txt", mime_type="text/plain", size=5, tags=[])
+    root_file.parent_folder_id = root.folder_id
+    child_file = FileRecord.create(owner_id="user-1", filename="child.txt", mime_type="text/plain", size=7, tags=[])
+    child_file.parent_folder_id = child.folder_id
+    leaf_file = FileRecord.create(owner_id="user-1", filename="leaf.txt", mime_type="text/plain", size=11, tags=[])
+    leaf_file.parent_folder_id = leaf.folder_id
+    repository.create_file(root_file)
+    repository.create_file(child_file)
+    repository.create_file(leaf_file)
+
+    stats = repository.get_folder_stats("user-1", root.folder_id)
+
+    assert stats.folder_id == root.folder_id
+    assert stats.total_size_bytes == 23
+    assert stats.file_count == 3
+    assert stats.folder_count == 2
+
+
+def test_get_folder_stats_excludes_trashed_descendants() -> None:
+    repository = build_repository()
+    root = FolderRecord.create(owner_id="user-1", name="Root", path_depth=0)
+    active_child = FolderRecord.create(owner_id="user-1", name="Active", parent_folder_id=root.folder_id, path_depth=1)
+    trashed_child = FolderRecord.create(owner_id="user-1", name="Trashed", parent_folder_id=root.folder_id, path_depth=1)
+    trashed_child.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository.create_folder(root)
+    repository.create_folder(active_child)
+    repository.create_folder(trashed_child)
+    active_file = FileRecord.create(owner_id="user-1", filename="keep.txt", mime_type="text/plain", size=4, tags=[])
+    active_file.parent_folder_id = active_child.folder_id
+    trashed_root_file = FileRecord.create(
+        owner_id="user-1",
+        filename="ignore-root-trashed.txt",
+        mime_type="text/plain",
+        size=6,
+        tags=[],
+    )
+    trashed_root_file.parent_folder_id = root.folder_id
+    trashed_root_file.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    hidden_file = FileRecord.create(
+        owner_id="user-1",
+        filename="ignore-trashed-folder.txt",
+        mime_type="text/plain",
+        size=9,
+        tags=[],
+    )
+    hidden_file.parent_folder_id = trashed_child.folder_id
+    repository.create_file(active_file)
+    repository.create_file(trashed_root_file)
+    repository.create_file(hidden_file)
+
+    stats = repository.get_folder_stats("user-1", root.folder_id)
+
+    assert stats.total_size_bytes == 4
+    assert stats.file_count == 1
+    assert stats.folder_count == 1
+
+
+def test_get_folder_stats_returns_zero_for_empty_folder() -> None:
+    repository = build_repository()
+    root = FolderRecord.create(owner_id="user-1", name="Empty", path_depth=0)
+    repository.create_folder(root)
+
+    stats = repository.get_folder_stats("user-1", root.folder_id)
+
+    assert stats.total_size_bytes == 0
+    assert stats.file_count == 0
+    assert stats.folder_count == 0
+
+
+def test_catalog_service_get_folder_stats_returns_recursive_totals() -> None:
+    repository = build_repository()
+    service_module = load_service_module("catalog", "app.services.catalog")
+    root = FolderRecord.create(owner_id="user-1", name="Root", path_depth=0)
+    child = FolderRecord.create(owner_id="user-1", name="Child", parent_folder_id=root.folder_id, path_depth=1)
+    repository.create_folder(root)
+    repository.create_folder(child)
+    root_file = FileRecord.create(owner_id="user-1", filename="root.txt", mime_type="text/plain", size=2, tags=[])
+    root_file.parent_folder_id = root.folder_id
+    child_file = FileRecord.create(owner_id="user-1", filename="child.txt", mime_type="text/plain", size=8, tags=[])
+    child_file.parent_folder_id = child.folder_id
+    repository.create_file(root_file)
+    repository.create_file(child_file)
+    service = service_module.CatalogService(repository)
+    user = AuthenticatedUser(subject="user-1", email="user@example.com", username="user-1", roles=["user"], token="test")
+
+    response = service.get_folder_stats(user, root.folder_id)
+
+    assert response.folder_id == root.folder_id
+    assert response.total_size_bytes == 10
+    assert response.file_count == 2
+    assert response.folder_count == 1
+
+
+def test_catalog_service_get_folder_stats_rejects_trashed_folder() -> None:
+    repository = build_repository()
+    service_module = load_service_module("catalog", "app.services.catalog")
+    folder = FolderRecord.create(owner_id="user-1", name="Trash", path_depth=0)
+    folder.trashed_at = datetime(2026, 4, 8, tzinfo=timezone.utc)
+    repository.create_folder(folder)
+    service = service_module.CatalogService(repository)
+    user = AuthenticatedUser(subject="user-1", email="user@example.com", username="user-1", roles=["user"], token="test")
+
+    with pytest.raises(service_module.HTTPException) as exc_info:
+        service.get_folder_stats(user, folder.folder_id)
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Folder not found"

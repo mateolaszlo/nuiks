@@ -10,7 +10,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from studyvault_backend_common.models import DriveItem, FileRecord, FolderRecord, StorageUsageSummary, StorageUsageTotals
+from studyvault_backend_common.models import (
+    DriveItem,
+    FileRecord,
+    FolderRecord,
+    FolderStats,
+    StorageUsageSummary,
+    StorageUsageTotals,
+)
 
 from app.models.file_record import Base, FileRow, FolderRow
 
@@ -69,6 +76,8 @@ class CatalogRepository(Protocol):
     def list_storage_usage(self) -> list[StorageUsageSummary]: ...
 
     def get_global_storage_usage(self) -> StorageUsageTotals: ...
+
+    def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats: ...
 
     def ping(self) -> None: ...
 
@@ -256,6 +265,51 @@ class InMemoryCatalogRepository:
             totals.trashed_file_count += summary.trashed_file_count
             totals.total_file_count += summary.total_file_count
         return totals
+
+    def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats:
+        root = self.get_folder(owner_id, folder_id)
+        if root is None:
+            raise LookupError(f"Folder {folder_id} not found")
+
+        active_folders = {
+            record.folder_id: record
+            for record in self._folders.values()
+            if record.owner_id == owner_id and record.trashed_at is None
+        }
+        active_files = [
+            record
+            for record in self._records.values()
+            if record.owner_id == owner_id and record.trashed_at is None
+        ]
+        if root.trashed_at is not None:
+            return FolderStats(folder_id=folder_id)
+
+        descendant_ids: set[str] = set()
+        queue = [folder_id]
+        while queue:
+            current_id = queue.pop(0)
+            for folder in active_folders.values():
+                if folder.parent_folder_id != current_id or folder.folder_id in descendant_ids:
+                    continue
+                descendant_ids.add(folder.folder_id)
+                queue.append(folder.folder_id)
+
+        total_size_bytes = sum(
+            record.size
+            for record in active_files
+            if record.parent_folder_id == folder_id or record.parent_folder_id in descendant_ids
+        )
+        file_count = sum(
+            1
+            for record in active_files
+            if record.parent_folder_id == folder_id or record.parent_folder_id in descendant_ids
+        )
+        return FolderStats(
+            folder_id=folder_id,
+            total_size_bytes=total_size_bytes,
+            file_count=file_count,
+            folder_count=len(descendant_ids),
+        )
 
     @staticmethod
     def _drive_item_sort_key(item: DriveItem) -> tuple[int, str, datetime, str]:
@@ -620,6 +674,54 @@ class SqlAlchemyCatalogRepository:
             active_file_count=int(row[3] or 0),
             trashed_file_count=int(row[4] or 0),
             total_file_count=int(row[5] or 0),
+        )
+
+    def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats:
+        with self.session_factory() as session:
+            root = session.scalar(
+                select(FolderRow).where(FolderRow.owner_id == owner_id, FolderRow.folder_id == folder_id)
+            )
+            if root is None:
+                raise LookupError(f"Folder {folder_id} not found")
+            if root.trashed_at is not None:
+                return FolderStats(folder_id=folder_id)
+
+            descendants = (
+                select(FolderRow.folder_id)
+                .where(
+                    FolderRow.owner_id == owner_id,
+                    FolderRow.folder_id == folder_id,
+                    FolderRow.trashed_at.is_(None),
+                )
+                .cte(name="descendants", recursive=True)
+            )
+            descendant_children = select(FolderRow.folder_id).where(
+                FolderRow.owner_id == owner_id,
+                FolderRow.parent_folder_id == descendants.c.folder_id,
+                FolderRow.trashed_at.is_(None),
+            )
+            descendants = descendants.union_all(descendant_children)
+            descendant_ids = select(descendants.c.folder_id).subquery()
+            folder_count_query = select(func.count()).select_from(descendant_ids)
+            file_stats_query = (
+                select(
+                    func.coalesce(func.sum(FileRow.size), 0),
+                    func.count(FileRow.file_id),
+                )
+                .where(
+                    FileRow.owner_id == owner_id,
+                    FileRow.parent_folder_id.in_(select(descendant_ids.c.folder_id)),
+                    FileRow.trashed_at.is_(None),
+                )
+            )
+            folder_count = session.execute(folder_count_query).scalar_one()
+            file_stats = session.execute(file_stats_query).one()
+
+        return FolderStats(
+            folder_id=folder_id,
+            total_size_bytes=int(file_stats[0] or 0),
+            file_count=int(file_stats[1] or 0),
+            folder_count=max(0, int(folder_count or 0) - 1),
         )
 
     @staticmethod

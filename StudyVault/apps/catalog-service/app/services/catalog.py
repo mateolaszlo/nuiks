@@ -30,6 +30,7 @@ from app.services.downstream import DownstreamPublisher
 from app.schemas.catalog import (
     CatalogBreadcrumbsResponse,
     CatalogExpiredTrashResponse,
+    CatalogFolderStatsResponse,
     CatalogItemExportResponse,
     CatalogItemsResponse,
     CatalogRestoreResponse,
@@ -1270,6 +1271,37 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogStorageUsageResponse(users=usage, global_totals=global_totals)
+
+    def get_folder_stats(self, user: AuthenticatedUser, folder_id: str) -> CatalogFolderStatsResponse:
+        folder = self.repository.get_folder(user.subject, folder_id)
+        if folder is None or folder.trashed_at is not None:
+            logger.warning(
+                "catalog folder lookup failed",
+                event_name="catalog_folder_lookup_failed",
+                event_category="catalog",
+                owner_id=user.subject,
+                owner_username=user.username,
+                owner_email=user.email,
+                folder_id=folder_id,
+                status="not_found",
+            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Folder not found")
+
+        stats = self.repository.get_folder_stats(user.subject, folder_id)
+        logger.info(
+            "catalog folder stats requested",
+            event_name="catalog_folder_stats_requested",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            folder_id=folder_id,
+            total_size_bytes=stats.total_size_bytes,
+            file_count=stats.file_count,
+            folder_count=stats.folder_count,
+            status="succeeded",
+        )
+        return CatalogFolderStatsResponse.model_validate(stats.model_dump())
 
     def export_items(
         self,
