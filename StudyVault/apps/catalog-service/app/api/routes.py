@@ -28,6 +28,7 @@ from app.schemas.catalog import (
     CatalogRestoreResponse,
     CatalogStorageUsageResponse,
     CatalogTrashResponse,
+    CatalogUserUsageResponse,
     FileRestoreResponse,
 )
 from app.services.catalog import CatalogService
@@ -165,6 +166,20 @@ def build_public_router(service: CatalogService) -> APIRouter:
         user: AuthenticatedUser = Depends(current_user_dependency),
     ) -> FolderRecord:
         return service.get_user_folder(user, folder_id)
+
+    @router.get(
+        "/users/me/usage",
+        response_model=CatalogUserUsageResponse,
+        tags=["Catalog"],
+        summary="Get current user storage usage",
+        description="Return the authenticated user's active storage usage and configured quota limit.",
+        responses=PUBLIC_CATALOG_RESPONSES,
+    )
+    @version(1)
+    def get_my_storage_usage(
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> CatalogUserUsageResponse:
+        return service.get_my_storage_usage(user)
 
     @router.get(
         "/catalog/folders/{folder_id}/stats",
@@ -353,6 +368,14 @@ def build_internal_router(service: CatalogService) -> APIRouter:
             limit=limit,
             include_trashed=include_trashed,
         )
+
+    @router.get(
+        "/internal/users/{owner_id}/usage",
+        response_model=CatalogUserUsageResponse,
+        dependencies=[Depends(require_internal_token)],
+    )
+    def get_user_storage_usage(owner_id: str) -> CatalogUserUsageResponse:
+        return service.get_user_storage_usage(owner_id)
 
     @router.get(
         "/internal/catalog/storage-usage",

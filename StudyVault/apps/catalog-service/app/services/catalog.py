@@ -36,6 +36,7 @@ from app.schemas.catalog import (
     CatalogRestoreResponse,
     CatalogStorageUsageResponse,
     CatalogTrashResponse,
+    CatalogUserUsageResponse,
 )
 
 
@@ -45,9 +46,16 @@ logger = get_logger(__name__)
 class CatalogService:
     ROOT_BREADCRUMB_NAME = "My Drive"
 
-    def __init__(self, repository: CatalogRepository, downstream: DownstreamPublisher | None = None) -> None:
+    def __init__(
+        self,
+        repository: CatalogRepository,
+        downstream: DownstreamPublisher | None = None,
+        *,
+        user_storage_quota_bytes: int = 1024 * 1024 * 1024,
+    ) -> None:
         self.repository = repository
         self.downstream = downstream
+        self.user_storage_quota_bytes = user_storage_quota_bytes
 
     @classmethod
     def _location_label(cls, folder: FolderRecord | None) -> str:
@@ -1271,6 +1279,34 @@ class CatalogService:
             status="succeeded",
         )
         return CatalogStorageUsageResponse(users=usage, global_totals=global_totals)
+
+    def get_user_storage_usage(self, owner_id: str) -> CatalogUserUsageResponse:
+        usage = self.repository.get_user_storage_usage(owner_id, max_bytes=self.user_storage_quota_bytes)
+        logger.info(
+            "catalog user storage usage requested",
+            event_name="catalog_user_storage_usage_requested",
+            event_category="catalog",
+            owner_id=owner_id,
+            used_bytes=usage.used_bytes,
+            max_bytes=usage.max_bytes,
+            status="succeeded",
+        )
+        return CatalogUserUsageResponse.model_validate(usage.model_dump())
+
+    def get_my_storage_usage(self, user: AuthenticatedUser) -> CatalogUserUsageResponse:
+        usage = self.repository.get_user_storage_usage(user.subject, max_bytes=self.user_storage_quota_bytes)
+        logger.info(
+            "catalog my storage usage requested",
+            event_name="catalog_my_storage_usage_requested",
+            event_category="catalog",
+            owner_id=user.subject,
+            owner_username=user.username,
+            owner_email=user.email,
+            used_bytes=usage.used_bytes,
+            max_bytes=usage.max_bytes,
+            status="succeeded",
+        )
+        return CatalogUserUsageResponse.model_validate(usage.model_dump())
 
     def get_folder_stats(self, user: AuthenticatedUser, folder_id: str) -> CatalogFolderStatsResponse:
         folder = self.repository.get_folder(user.subject, folder_id)

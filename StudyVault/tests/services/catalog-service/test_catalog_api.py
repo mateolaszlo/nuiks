@@ -360,6 +360,19 @@ def test_catalog_internal_storage_usage_splits_active_and_trashed_bytes() -> Non
     }
 
 
+def test_catalog_usage_routes_are_registered() -> None:
+    module = load_service_module("catalog")
+    repository = module.InMemoryCatalogRepository()
+    app = module.create_app(repository=repository)
+
+    route_paths = {getattr(route, "path", None) for route in app.routes}
+    public_mount = next(route.app for route in app.routes if getattr(route, "path", None) == "/api/v1")
+    public_paths = {getattr(route, "path", None) for route in public_mount.routes}
+
+    assert "/internal/users/{owner_id}/usage" in route_paths
+    assert "/users/me/usage" in public_paths
+
+
 def test_catalog_internal_export_returns_paginated_drive_items() -> None:
     module = load_service_module("catalog")
     early_folder = FolderRecord.create(owner_id="owner-a", name="Alpha")

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     file_service_url: str = "http://file-service:8000"
     activity_service_url: str = "http://activity-service:8000"
     internal_token: str = "studyvault-internal-token-change-me"
+    user_storage_quota_bytes: int = 1024 * 1024 * 1024
 
     model_config = SettingsConfigDict(
         env_prefix="",
@@ -44,4 +45,5 @@ def get_settings() -> Settings:
             "STUDYVAULT_INTERNAL_TOKEN",
             "studyvault-internal-token-change-me",
         ),
+        user_storage_quota_bytes=int(os.getenv("USER_STORAGE_QUOTA_BYTES", str(1024 * 1024 * 1024))),
     )

@@ -18,6 +18,7 @@ from .models import (
     FolderStats,
     ItemActivityEvent,
     STUDYVAULT_ADMIN_ROLE,
+    UserStorageUsage,
     UploadActivityEvent,
 )
 from .responses import build_attachment_content_disposition
@@ -43,6 +44,7 @@ __all__ = [
     "JsonServiceClient",
     "ServiceClientError",
     "STUDYVAULT_ADMIN_ROLE",
+    "UserStorageUsage",
     "UploadActivityEvent",
     "build_auth_dependency",
     "build_attachment_content_disposition",

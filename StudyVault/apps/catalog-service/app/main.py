@@ -36,7 +36,11 @@ def create_app(repository=None, downstream=None) -> FastAPI:
             internal_token=settings.internal_token,
         )
 
-    service = CatalogService(repository, downstream=downstream)
+    service = CatalogService(
+        repository,
+        downstream=downstream,
+        user_storage_quota_bytes=settings.user_storage_quota_bytes,
+    )
     public_origin, allowed_hosts = derive_public_origin_and_hosts(settings.keycloak_issuer_url)
     app = build_versioned_service_app(
         title="StudyVault Catalog Service",

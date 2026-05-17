@@ -392,6 +392,51 @@ def test_get_folder_stats_returns_zero_for_empty_folder() -> None:
     assert stats.folder_count == 0
 
 
+def test_get_user_storage_usage_sums_active_bytes_only() -> None:
+    repository = build_repository()
+    active = FileRecord.create(
+        owner_id="user-1",
+        filename="active.txt",
+        mime_type="text/plain",
+        size=10,
+        tags=[],
+    )
+    trashed = FileRecord.create(
+        owner_id="user-1",
+        filename="trashed.txt",
+        mime_type="text/plain",
+        size=5,
+        tags=[],
+    )
+    trashed.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    other_user = FileRecord.create(
+        owner_id="user-2",
+        filename="other.txt",
+        mime_type="text/plain",
+        size=7,
+        tags=[],
+    )
+    repository.create_file(active)
+    repository.create_file(trashed)
+    repository.create_file(other_user)
+
+    usage = repository.get_user_storage_usage("user-1", max_bytes=100)
+
+    assert usage.owner_id == "user-1"
+    assert usage.used_bytes == 10
+    assert usage.max_bytes == 100
+
+
+def test_get_user_storage_usage_returns_zero_for_owner_without_files() -> None:
+    repository = build_repository()
+
+    usage = repository.get_user_storage_usage("missing-user", max_bytes=200)
+
+    assert usage.owner_id == "missing-user"
+    assert usage.used_bytes == 0
+    assert usage.max_bytes == 200
+
+
 def test_catalog_service_get_folder_stats_returns_recursive_totals() -> None:
     repository = build_repository()
     service_module = load_service_module("catalog", "app.services.catalog")
@@ -430,3 +475,63 @@ def test_catalog_service_get_folder_stats_rejects_trashed_folder() -> None:
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Folder not found"
+
+
+def test_catalog_service_get_user_storage_usage_returns_active_bytes_only() -> None:
+    repository = build_repository()
+    service_module = load_service_module("catalog", "app.services.catalog")
+    active = FileRecord.create(
+        owner_id="user-1",
+        filename="active.txt",
+        mime_type="text/plain",
+        size=9,
+        tags=[],
+    )
+    trashed = FileRecord.create(
+        owner_id="user-1",
+        filename="trashed.txt",
+        mime_type="text/plain",
+        size=4,
+        tags=[],
+    )
+    trashed.trashed_at = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    repository.create_file(active)
+    repository.create_file(trashed)
+    service = service_module.CatalogService(repository, user_storage_quota_bytes=25)
+
+    response = service.get_user_storage_usage("user-1")
+
+    assert response.owner_id == "user-1"
+    assert response.used_bytes == 9
+    assert response.max_bytes == 25
+
+
+def test_catalog_service_get_my_storage_usage_uses_authenticated_subject() -> None:
+    repository = build_repository()
+    service_module = load_service_module("catalog", "app.services.catalog")
+    repository.create_file(
+        FileRecord.create(
+            owner_id="user-1",
+            filename="active.txt",
+            mime_type="text/plain",
+            size=6,
+            tags=[],
+        )
+    )
+    repository.create_file(
+        FileRecord.create(
+            owner_id="user-2",
+            filename="other.txt",
+            mime_type="text/plain",
+            size=99,
+            tags=[],
+        )
+    )
+    service = service_module.CatalogService(repository, user_storage_quota_bytes=30)
+    user = AuthenticatedUser(subject="user-1", email="user@example.com", username="user-1", roles=["user"], token="test")
+
+    response = service.get_my_storage_usage(user)
+
+    assert response.owner_id == "user-1"
+    assert response.used_bytes == 6
+    assert response.max_bytes == 30

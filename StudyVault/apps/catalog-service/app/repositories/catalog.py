@@ -17,6 +17,7 @@ from studyvault_backend_common.models import (
     FolderStats,
     StorageUsageSummary,
     StorageUsageTotals,
+    UserStorageUsage,
 )
 
 from app.models.file_record import Base, FileRow, FolderRow
@@ -76,6 +77,8 @@ class CatalogRepository(Protocol):
     def list_storage_usage(self) -> list[StorageUsageSummary]: ...
 
     def get_global_storage_usage(self) -> StorageUsageTotals: ...
+
+    def get_user_storage_usage(self, owner_id: str, *, max_bytes: int) -> UserStorageUsage: ...
 
     def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats: ...
 
@@ -265,6 +268,14 @@ class InMemoryCatalogRepository:
             totals.trashed_file_count += summary.trashed_file_count
             totals.total_file_count += summary.total_file_count
         return totals
+
+    def get_user_storage_usage(self, owner_id: str, *, max_bytes: int) -> UserStorageUsage:
+        used_bytes = sum(
+            record.size
+            for record in self._records.values()
+            if record.owner_id == owner_id and record.trashed_at is None
+        )
+        return UserStorageUsage(owner_id=owner_id, used_bytes=used_bytes, max_bytes=max_bytes)
 
     def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats:
         root = self.get_folder(owner_id, folder_id)
@@ -675,6 +686,16 @@ class SqlAlchemyCatalogRepository:
             trashed_file_count=int(row[4] or 0),
             total_file_count=int(row[5] or 0),
         )
+
+    def get_user_storage_usage(self, owner_id: str, *, max_bytes: int) -> UserStorageUsage:
+        with self.session_factory() as session:
+            used_bytes = session.scalar(
+                select(func.coalesce(func.sum(FileRow.size), 0)).where(
+                    FileRow.owner_id == owner_id,
+                    FileRow.trashed_at.is_(None),
+                )
+            )
+        return UserStorageUsage(owner_id=owner_id, used_bytes=int(used_bytes or 0), max_bytes=max_bytes)
 
     def get_folder_stats(self, owner_id: str, folder_id: str) -> FolderStats:
         with self.session_factory() as session:
