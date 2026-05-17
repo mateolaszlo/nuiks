@@ -961,9 +961,9 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [ ] Implement a lightweight constraint on Keycloak to enforce `MAX_REGISTERED_USERS` (e.g., a periodic sync script in the `admin-service` that toggles Keycloak realm self-registration off when the limit is reached, or documenting manual admin enforcement if API-based sync is too heavy for MVP)
 
 #### `apps/catalog-service`
-- [ ] Add a repository query to calculate the total byte size of all non-trashed files for a specific `owner_id`
-- [ ] Expose an internal GET endpoint `/internal/users/{owner_id}/usage` returning current bytes used and the configured max bytes
-- [ ] Expose a public GET endpoint `/api/v1/users/me/usage` for the frontend to query the current user's storage utilization
+- [x] Add a repository query to calculate the total byte size of all non-trashed files for a specific `owner_id`
+- [x] Expose an internal GET endpoint `/internal/users/{owner_id}/usage` returning current bytes used and the configured max bytes
+- [x] Expose a public GET endpoint `/api/v1/users/me/usage` for the frontend to query the current user's storage utilization
 
 #### `apps/file-service`
 - [ ] Before handling an upload stream, make a synchronous call to `/internal/users/{owner_id}/usage` 
@@ -978,9 +978,15 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [ ] Enhance the file upload dropzone and queue to surface the new `quota_exceeded` structural error clearly to the user
 
 #### Testing
-- [ ] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
+- [x] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
 - [ ] Add `file-service` integration test proving an upload is rejected if it pushes the user past their configured limit
 - [ ] Update Playwright E2E tests: mock the `/api/v1/users/me/usage` endpoint to return 99% usage, attempt to upload a file, and verify the frontend queue displays a quota error
+
+### 6.14.1 User storage usage backend foundation
+
+- [x] Add a shared single-user storage usage model with `owner_id`, `used_bytes`, and `max_bytes`
+- [x] Read `USER_STORAGE_QUOTA_BYTES` in `catalog-service` config with a backend default
+- [x] Return zero usage for owners with no active files instead of failing lookups
 
 ## 6.15 Security Review and Baseline Hardening
 
