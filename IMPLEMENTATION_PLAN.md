@@ -906,11 +906,11 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 ### Task list
 
 #### `apps/catalog-service`
-- [ ] Add a repository CTE (Common Table Expression) or database query to recursively find all descendant items of a given `folder_id`
-- [ ] Aggregate `total_size_bytes` for all descendant files within the tree
-- [ ] Aggregate `file_count` and `folder_count` for all descendant items
-- [ ] Expose a new GET endpoint at `/api/v1/folders/{folder_id}/stats` returning the computed totals
-- [ ] Ensure the recursive query explicitly ignores any items where `is_trashed` / `trashed_at` is true
+- [x] Add a repository CTE (Common Table Expression) or database query to recursively find all descendant items of a given `folder_id`
+- [x] Aggregate `total_size_bytes` for all descendant files within the tree
+- [x] Aggregate `file_count` and `folder_count` for all descendant items
+- [x] Expose a new GET endpoint at `/api/v1/catalog/folders/{folder_id}/stats` returning the computed totals
+- [x] Ensure the recursive query explicitly ignores any items where `is_trashed` / `trashed_at` is true
 
 #### `apps/frontend`
 - [ ] Add a `getFolderStats(folderId: string)` definition to `apps/frontend/src/api/client.ts`
@@ -920,9 +920,16 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [ ] Display the counts cleanly in the metadata block (e.g., "Contains: 42 files, 3 folders")
 
 #### Testing
-- [ ] Add `catalog-service` unit tests proving the recursive size calculation correctly sums deeply nested files
-- [ ] Add `catalog-service` unit tests proving trashed descendant files and folders are excluded from stats
+- [x] Add `catalog-service` unit tests proving the recursive size calculation correctly sums deeply nested files
+- [x] Add `catalog-service` unit tests proving trashed descendant files and folders are excluded from stats
 - [ ] Update Playwright E2E tests: select a folder with known test seed data and verify the details panel eventually renders the correct total size and item count
+
+### 6.13.1 Folder stats backend foundation
+
+- [x] Add shared folder stats DTOs for catalog responses
+- [x] Implement recursive folder stats lookup in in-memory and SQLAlchemy catalog repositories
+- [x] Add public catalog route and service method for folder stats
+- [x] Add focused repository and service coverage for folder stats backend behavior
 
 ## 6.14 Instance Quotas and Storage Limits
 
