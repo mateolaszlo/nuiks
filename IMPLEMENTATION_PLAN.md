@@ -913,16 +913,16 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Ensure the recursive query explicitly ignores any items where `is_trashed` / `trashed_at` is true
 
 #### `apps/frontend`
-- [ ] Add a `getFolderStats(folderId: string)` definition to `apps/frontend/src/api/client.ts`
-- [ ] Update the right-side details panel component to trigger a stats fetch when the `selectedItem` is of kind `Folder`
-- [ ] Add a localized loading indicator (e.g., skeleton text or a small spinner) inside the details panel while stats are being fetched
-- [ ] Format and display the `total_size_bytes` using the existing human-readable size formatter
-- [ ] Display the counts cleanly in the metadata block (e.g., "Contains: 42 files, 3 folders")
+- [x] Add a `getFolderStats(folderId: string)` definition to `apps/frontend/src/api/client.ts`
+- [x] Update the right-side details panel component to trigger a stats fetch when the `selectedItem` is of kind `Folder`
+- [x] Add a localized loading indicator (e.g., skeleton text or a small spinner) inside the details panel while stats are being fetched
+- [x] Format and display the `total_size_bytes` using the existing human-readable size formatter
+- [x] Display the counts cleanly in the metadata block (e.g., "Contains: 42 files, 3 folders")
 
 #### Testing
 - [x] Add `catalog-service` unit tests proving the recursive size calculation correctly sums deeply nested files
 - [x] Add `catalog-service` unit tests proving trashed descendant files and folders are excluded from stats
-- [ ] Update Playwright E2E tests: select a folder with known test seed data and verify the details panel eventually renders the correct total size and item count
+- [x] Update Playwright E2E tests: select a folder with known test seed data and verify the details panel eventually renders the correct total size and item count
 
 ### 6.13.1 Folder stats backend foundation
 
@@ -930,6 +930,14 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Implement recursive folder stats lookup in in-memory and SQLAlchemy catalog repositories
 - [x] Add public catalog route and service method for folder stats
 - [x] Add focused repository and service coverage for folder stats backend behavior
+
+### 6.13.2 Folder stats frontend integration
+
+- [x] Add frontend folder stats API types and client method
+- [x] Fetch folder stats on demand when the details panel selects a folder
+- [x] Render localized loading and inline failure states for folder-only stats rows
+- [x] Display recursive folder counts and total size in the right-side details panel
+- [x] Add Playwright coverage for folder details stats rendering
 
 ## 6.14 Instance Quotas and Storage Limits
 
