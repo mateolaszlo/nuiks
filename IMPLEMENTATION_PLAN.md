@@ -769,6 +769,13 @@ Deferred to the next slice:
 - [x] Refresh deployment and docs index pages for the top-level `StudyVault/` layout and current validation workflow
 - [x] Verify markdown examples and commands against the current repo layout, `/api/v1` paths, and current test commands
 
+### 6.10.1 Persistence-boundary deployment guidance
+
+- [x] Document that Keycloak, catalog Postgres, and object storage form one persistence boundary
+- [x] Document that `owner_id` is tied to the Keycloak subject id, not reusable usernames or emails
+- [x] Document safe upgrade commands versus destructive `docker compose down -v`
+- [x] Warn operators not to pair dedicated external MinIO with disposable Keycloak or Postgres state
+
 ## 6.11 Security hardening
 
 - [x] Enforce JWT audience validation for all public `/api/v1/...` routes
