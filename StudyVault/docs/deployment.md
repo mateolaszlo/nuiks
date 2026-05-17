@@ -22,6 +22,30 @@ The file-service does not require the bundled MinIO container anymore. Its stora
 
 The environment variables that control this behavior are in `StudyVault/.env.example`.
 
+## Persistence Boundary You Must Preserve
+
+Treat these systems as one durable state boundary:
+
+- Keycloak realm and user state
+- catalog-service PostgreSQL metadata
+- object storage data in MinIO or another S3-compatible bucket
+
+StudyVault stores file ownership by Keycloak subject id (`sub`) through `owner_id`. That means:
+
+- rebuilding containers is safe
+- deleting Keycloak or catalog Postgres state is **not** safe
+- recreating a user with the same username or email does **not** restore access to old files
+
+If `FILE_S3_*` points at a dedicated MinIO instance on your LAN, but Keycloak or catalog state is reset, the bucket can still contain every blob while no valid StudyVault account can reach them.
+
+Operational rule:
+
+- normal deploy: `docker compose ... up -d --build`
+- non-destructive stop: `docker compose ... down`
+- destructive reset: `docker compose ... down -v`
+
+Use `down -v` only when you intentionally want to discard login state, catalog metadata, and local persistent volumes together.
+
 ## Shared Prerequisites
 
 Assume an Ubuntu or Debian-like Linux host with Docker Engine, the Docker Compose plugin, Git, and Python 3.12 or newer.
@@ -73,6 +97,12 @@ Edit `.env` before starting the stack.
 
 For dedicated external MinIO or other S3-compatible storage, the configured bucket should already exist and be accessible to the supplied credentials before StudyVault starts. When the optional bundled `local-minio` profile is enabled, `file-service` will create the configured bucket automatically if it is missing and the credentials permit bucket creation.
 
+When external object storage is used, persistent Keycloak and catalog backups become mandatory operationally. At minimum, preserve backups for:
+
+- the Keycloak database
+- the StudyVault catalog database
+- the external object-storage bucket
+
 StudyVault renders the Keycloak realm import from `infra/keycloak/studyvault-realm.template.json` through the `keycloak-realm-render` helper service before Keycloak starts. That means the login redirect URIs follow `STUDYVAULT_PUBLIC_BASE_URL` automatically. You do not need to hand-edit the Keycloak JSON for each deployment.
 
 Keycloak now uses a dedicated PostgreSQL role created from `KEYCLOAK_DB_USER` and `KEYCLOAK_DB_PASSWORD`. Leave the username at `keycloak` unless you have a reason to change it, but set a non-default database password before any VM or shared-host deployment. The same values are consumed by both the Postgres init script and the Keycloak container, so they must stay in sync.
@@ -110,6 +140,14 @@ Start the full stack:
 ```bash
 sudo docker compose --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
 ```
+
+For future code updates on the same deployment, reuse the same `.env` and same Compose project state:
+
+```bash
+sudo docker compose --env-file StudyVault/.env -f StudyVault/infra/docker/compose/docker-compose.yml up -d --build
+```
+
+Do not rotate into `down -v` for ordinary upgrades.
 
 If you want the bundled local MinIO container instead of a dedicated external MinIO service, change the storage variables in `.env` to:
 
@@ -383,6 +421,8 @@ Delete the stack and persistent data:
 docker compose -f infra/docker/compose/docker-compose.yml down -v
 ```
 
+This removes local Postgres, MongoDB, Elasticsearch, and any bundled MinIO volume data. If you are using dedicated external MinIO, `down -v` still destroys Keycloak and catalog ownership state, which can orphan blobs that remain in the external bucket.
+
 ## Recovery Notes
 
 If login redirects are wrong, the first thing to check is `STUDYVAULT_PUBLIC_BASE_URL` in `.env`. After changing it, restart the stack so Keycloak re-renders the import file.
@@ -393,5 +433,11 @@ If an old Keycloak or database volume preserves stale state after a URL change, 
 docker compose -f infra/docker/compose/docker-compose.yml down -v
 docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
+
+Use that reset path only for intentional environment rebuilds. Before doing it on any deployment that has valuable uploads, make sure you have:
+
+- a Keycloak/Postgres backup you can restore
+- a catalog Postgres backup you can restore
+- confirmation that the object-storage bucket is either disposable too or can be remapped intentionally
 
 If Docker Compose reports permission errors, the current shell usually is not in the `docker` group yet. Open a new shell or use `sudo docker compose ...`.

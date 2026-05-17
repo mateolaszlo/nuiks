@@ -29,6 +29,24 @@ Public API routes exposed through the gateway are versioned under `/api/v1/...`.
 
 By default, `file-service` expects an external S3-compatible endpoint from `.env` through `FILE_S3_ENDPOINT`, `FILE_S3_ACCESS_KEY`, `FILE_S3_SECRET_KEY`, `FILE_S3_BUCKET`, and `FILE_S3_REGION`. The configured bucket must already exist and be accessible to those credentials.
 
+## Persistence Boundary
+
+Treat these systems as one durable state boundary:
+
+- Keycloak users and realm state
+- catalog-service PostgreSQL metadata
+- MinIO or other S3-compatible object storage
+
+StudyVault stores ownership with the Keycloak user id (`sub`) through `owner_id`. Recreating a user with the same username or email does **not** restore access to old files if Keycloak or catalog state was lost.
+
+Operational rule:
+
+- normal upgrade: `docker compose ... up -d --build`
+- stop without deleting data: `docker compose ... down`
+- destructive reset only when intentionally wiping auth and metadata too: `docker compose ... down -v`
+
+If `FILE_S3_*` points at a dedicated external MinIO or S3 bucket, do not pair that with disposable Keycloak or Postgres state. Otherwise blobs can survive while every owning account disappears.
+
 If you want to run the bundled MinIO container for local development, start Compose with the optional `local-minio` profile and set `.env` like this:
 
 ```dotenv
@@ -65,6 +83,14 @@ docker compose -f infra/docker/compose/docker-compose.yml up -d --build
 ```
 
 Use `.env.example` as the template for `.env` when starting the Docker Compose stack. Do not pass `.env.test` to `docker compose --env-file`; that file uses fake hosts such as `keycloak.test` and `catalog.test` for Python tests, not real container-to-container networking.
+
+For ordinary upgrades, prefer restarting in place:
+
+```bash
+docker compose -f infra/docker/compose/docker-compose.yml up -d --build
+```
+
+Avoid `docker compose ... down -v` unless you intentionally want to remove Keycloak users, catalog ownership metadata, and every other local persistent volume together.
 
 For the bundled local MinIO container instead of a dedicated external MinIO service, run this from the repo root (`nuiks/`):
 
