@@ -74,6 +74,13 @@ export type CatalogRestoreResponse = {
   message: string;
 };
 
+export type FolderStats = {
+  folder_id: string;
+  total_size_bytes: number;
+  file_count: number;
+  folder_count: number;
+};
+
 export type ActivityRecord = {
   activity_id: string;
   owner_id: string;

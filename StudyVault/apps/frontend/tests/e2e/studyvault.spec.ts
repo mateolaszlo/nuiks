@@ -405,6 +405,57 @@ test("single click selects a folder and double click navigates into it", async (
   await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first()).toBeVisible();
 });
 
+test("folder details panel loads recursive counts and total size", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const folderName = `stats-parent-${uniqueId}`;
+  const childFolderName = `stats-child-${uniqueId}`;
+  const filename = `stats-${uniqueId}.txt`;
+  const fileContents = `folder stats ${uniqueId}`;
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+
+  await openDriveWorkspace(page);
+
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(folderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const parentFolderTile = driveSurface.locator(".drive-tile").filter({ hasText: folderName }).first();
+  await expect(parentFolderTile).toBeVisible({ timeout: 60_000 });
+  await parentFolderTile.dblclick();
+
+  const parentFolderSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: folderName }) }).first();
+  await expect(page.locator(".breadcrumb-current")).toContainText(folderName);
+  await page.getByRole("button", { name: "New Folder" }).click();
+  await page.getByLabel("Folder name").fill(childFolderName);
+  await page.getByRole("button", { name: "Create Folder" }).click();
+
+  const childFolderTile = parentFolderSurface.locator(".drive-tile").filter({ hasText: childFolderName }).first();
+  await expect(childFolderTile).toBeVisible({ timeout: 60_000 });
+  await childFolderTile.dblclick();
+
+  await expect(page.locator(".breadcrumb-current")).toContainText(childFolderName);
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from(fileContents, "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+  await expect(page.locator(".drive-tile").filter({ hasText: filename }).first()).toBeVisible({ timeout: 60_000 });
+
+  await page.locator(".breadcrumbs").getByRole("button", { name: "My Drive" }).click();
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible({ timeout: 60_000 });
+  await expect(parentFolderTile).toBeVisible({ timeout: 60_000 });
+
+  await parentFolderTile.click();
+
+  const detailsPanel = page.locator("aside").filter({ has: page.getByRole("heading", { name: folderName }) }).first();
+  await expect(detailsPanel).toBeVisible();
+  await expect(detailsPanel).toContainText("Contains");
+  await expect(detailsPanel).toContainText("1 file, 1 folder");
+  await expect(detailsPanel).toContainText("Total Size");
+  await expect(detailsPanel).toContainText(`${Buffer.byteLength(fileContents, "utf-8")} B`);
+});
+
 test("new folder action moved into drive header and sidebar can collapse", async ({ page }) => {
   await openDriveWorkspace(page);
 

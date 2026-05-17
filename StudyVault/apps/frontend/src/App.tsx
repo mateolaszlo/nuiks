@@ -20,6 +20,7 @@ import type {
   AdminUserSummary,
   BreadcrumbEntry,
   DriveItem,
+  FolderStats,
 } from "./api/types";
 import {
   type AuthProfile,
@@ -42,6 +43,7 @@ type ContextMenuState = { item: DriveItem; x: number; y: number };
 type AdminSection = "users" | "audit" | "errors";
 type AdminDataSection = AdminSection | "health";
 type DrivePanelMode = "hidden" | "details" | "activity";
+type FolderStatsLoadState = "idle" | "loading" | "ready" | "error";
 type UploadStatus = "queued" | "uploading" | "processing" | "done" | "failed";
 type LocalActionError =
   | { scope: "create-folder"; message: string }
@@ -105,6 +107,10 @@ function formatBytes(value: number | null | undefined): string {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatFolderContents(fileCount: number, folderCount: number): string {
+  return `${fileCount} file${fileCount === 1 ? "" : "s"}, ${folderCount} folder${folderCount === 1 ? "" : "s"}`;
 }
 
 function buildUploadSizeLimitMessage(files: File[]): string {
@@ -516,6 +522,9 @@ export default function App() {
   const [expandedHealthDetails, setExpandedHealthDetails] = useState<Record<string, boolean>>({});
   const [selectedDriveItem, setSelectedDriveItem] = useState<DriveItem | null>(null);
   const [drivePanelMode, setDrivePanelMode] = useState<DrivePanelMode>("hidden");
+  const [selectedFolderStats, setSelectedFolderStats] = useState<FolderStats | null>(null);
+  const [selectedFolderStatsState, setSelectedFolderStatsState] = useState<FolderStatsLoadState>("idle");
+  const [selectedFolderStatsError, setSelectedFolderStatsError] = useState<string | null>(null);
   const [pendingPermanentDeleteItem, setPendingPermanentDeleteItem] = useState<DriveItem | null>(null);
   const [localActionError, setLocalActionError] = useState<LocalActionError>(null);
   const [searchFormError, setSearchFormError] = useState<string | null>(null);
@@ -535,6 +544,7 @@ export default function App() {
   const adminErrorsSectionRef = useRef<HTMLElement | null>(null);
   const profileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const folderStatsRequestIdRef = useRef(0);
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
@@ -823,6 +833,9 @@ export default function App() {
       setAdminSectionErrors({});
       setSelectedDriveItem(null);
       setDrivePanelMode("hidden");
+      setSelectedFolderStats(null);
+      setSelectedFolderStatsState("idle");
+      setSelectedFolderStatsError(null);
       setContextMenu(null);
       setActiveDropTarget(null);
       setMoveItem(null);
@@ -1045,6 +1058,49 @@ export default function App() {
       window.removeEventListener("drop", handleWindowFileDrag);
     };
   }, [adminUser, authenticated, draggedItem]);
+
+  useEffect(() => {
+    if (drivePanelMode !== "details" || selectedDriveItem?.kind !== "folder") {
+      folderStatsRequestIdRef.current += 1;
+      setSelectedFolderStats(null);
+      setSelectedFolderStatsState("idle");
+      setSelectedFolderStatsError(null);
+      return;
+    }
+
+    const requestId = folderStatsRequestIdRef.current + 1;
+    folderStatsRequestIdRef.current = requestId;
+    setSelectedFolderStats(null);
+    setSelectedFolderStatsState("loading");
+    setSelectedFolderStatsError(null);
+
+    void api
+      .getFolderStats(selectedDriveItem.item_id)
+      .then((stats) => {
+        if (folderStatsRequestIdRef.current !== requestId) {
+          return;
+        }
+        startTransition(() => {
+          setSelectedFolderStats(stats);
+          setSelectedFolderStatsState("ready");
+          setSelectedFolderStatsError(null);
+        });
+      })
+      .catch((statsError) => {
+        if (folderStatsRequestIdRef.current !== requestId) {
+          return;
+        }
+        const message = handleApiFailure(statsError, "Folder stats could not be loaded.");
+        if (!message) {
+          return;
+        }
+        startTransition(() => {
+          setSelectedFolderStats(null);
+          setSelectedFolderStatsState("error");
+          setSelectedFolderStatsError(message);
+        });
+      });
+  }, [api, drivePanelMode, selectedDriveItem]);
 
   useEffect(() => {
     const availableSlots = MAX_ACTIVE_UPLOADS - activeUploadCount;
@@ -2286,6 +2342,30 @@ export default function App() {
               <dt>Path</dt>
               <dd>{buildDriveItemPath(breadcrumbs, selectedDriveItem)}</dd>
             </div>
+            {selectedDriveItem.kind === "folder" ? (
+              <div className="detail-row">
+                <dt>Contains</dt>
+                <dd>
+                  {selectedFolderStatsState === "loading"
+                    ? "Loading…"
+                    : selectedFolderStatsState === "ready" && selectedFolderStats
+                      ? formatFolderContents(selectedFolderStats.file_count, selectedFolderStats.folder_count)
+                      : "Unavailable"}
+                </dd>
+              </div>
+            ) : null}
+            {selectedDriveItem.kind === "folder" ? (
+              <div className="detail-row">
+                <dt>Total Size</dt>
+                <dd>
+                  {selectedFolderStatsState === "loading"
+                    ? "Loading…"
+                    : selectedFolderStatsState === "ready" && selectedFolderStats
+                      ? formatBytes(selectedFolderStats.total_size_bytes)
+                      : "Unavailable"}
+                </dd>
+              </div>
+            ) : null}
             {selectedDriveItem.kind === "file" ? (
               <div className="detail-row">
                 <dt>Size</dt>
@@ -2310,6 +2390,12 @@ export default function App() {
               <dt>Updated</dt>
               <dd>{formatDate(selectedDriveItem.updated_at)}</dd>
             </div>
+            {selectedDriveItem.kind === "folder" && selectedFolderStatsState === "error" && selectedFolderStatsError ? (
+              <div className="detail-row">
+                <dt>Stats</dt>
+                <dd>{selectedFolderStatsError}</dd>
+              </div>
+            ) : null}
           </dl>
         </section>
       </aside>
