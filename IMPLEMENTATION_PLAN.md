@@ -980,7 +980,7 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 #### Testing
 - [x] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
 - [x] Add `file-service` integration test proving an upload is rejected if it pushes the user past their configured limit
-- [ ] Update Playwright E2E tests: mock the `/api/v1/users/me/usage` endpoint to return 99% usage, attempt to upload a file, and verify the frontend queue displays a quota error
+- [x] Update Playwright E2E tests: mock the `/api/v1/users/me/usage` endpoint to return 99% usage, attempt to upload a file, and verify the frontend queue displays a quota error
 
 ### 6.14.1 User storage usage backend foundation
 
@@ -1004,6 +1004,10 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 ### 6.14.4 File-service quota integration coverage
 
 - [x] Add integration coverage proving the upload flow rejects quota-overrun files before persistence or downstream fanout
+
+### 6.14.5 Playwright quota E2E coverage
+
+- [x] Add browser coverage for a near-full usage snapshot plus a structured `quota_exceeded` upload failure
 
 ## 6.15 Security Review and Baseline Hardening
 
