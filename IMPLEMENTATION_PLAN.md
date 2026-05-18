@@ -966,9 +966,9 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Expose a public GET endpoint `/api/v1/users/me/usage` for the frontend to query the current user's storage utilization
 
 #### `apps/file-service`
-- [ ] Before handling an upload stream, make a synchronous call to `/internal/users/{owner_id}/usage` 
-- [ ] Calculate if `current_usage + incoming_content_length > quota`. If true, reject the request immediately with a structured quota error
-- [ ] Ensure backend error messaging states how much space is left and the size of the rejected file
+- [x] Before handling an upload stream, make a synchronous call to `/internal/users/{owner_id}/usage` 
+- [x] Calculate if `current_usage + incoming_content_length > quota`. If true, reject the request immediately with a structured quota error
+- [x] Ensure backend error messaging states how much space is left and the size of the rejected file
 
 #### `apps/frontend`
 - [ ] Add a `getUserUsage()` request definition in `apps/frontend/src/api/client.ts`
@@ -987,6 +987,12 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Add a shared single-user storage usage model with `owner_id`, `used_bytes`, and `max_bytes`
 - [x] Read `USER_STORAGE_QUOTA_BYTES` in `catalog-service` config with a backend default
 - [x] Return zero usage for owners with no active files instead of failing lookups
+
+### 6.14.2 File upload quota enforcement
+
+- [x] Fetch per-user storage usage from `catalog-service` before object storage persistence
+- [x] Reject uploads that would exceed the configured quota with structured `quota_exceeded` details
+- [x] Reuse the shared usage model and internal usage endpoint instead of duplicating quota config in `file-service`
 
 ## 6.15 Security Review and Baseline Hardening
 
