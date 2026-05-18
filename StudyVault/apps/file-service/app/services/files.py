@@ -20,6 +20,7 @@ from studyvault_backend_common.models import (
     MoveItemRequest,
     RenameItemRequest,
     RestoreItemRequest,
+    UserStorageUsage,
     has_control_chars,
     utcnow,
 )
@@ -73,6 +74,17 @@ class FileService:
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Folder lookup failed",
             code="folder_lookup_failed",
+            category="unavailable",
+            recoverable=False,
+            context=exc.context,
+        )
+
+    @staticmethod
+    def _map_storage_usage_lookup_error(exc: ServiceClientError) -> HTTPException:
+        return api_error(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Storage usage lookup failed",
+            code="quota_lookup_failed",
             category="unavailable",
             recoverable=False,
             context=exc.context,
@@ -293,6 +305,27 @@ class FileService:
             normalized_tags.append(normalized_tag)
         return normalized_tags
 
+    @staticmethod
+    def _raise_quota_exceeded(*, usage: UserStorageUsage, incoming_file_bytes: int) -> None:
+        remaining_bytes = max(0, usage.max_bytes - usage.used_bytes)
+        exceeded_by_bytes = max(0, usage.used_bytes + incoming_file_bytes - usage.max_bytes)
+        raise api_error(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=(
+                "Upload exceeds remaining quota: "
+                f"{remaining_bytes} bytes left, rejected file is {incoming_file_bytes} bytes."
+            ),
+            code="quota_exceeded",
+            category="validation",
+            context={
+                "max_bytes": usage.max_bytes,
+                "used_bytes": usage.used_bytes,
+                "remaining_bytes": remaining_bytes,
+                "incoming_file_bytes": incoming_file_bytes,
+                "exceeded_by_bytes": exceeded_by_bytes,
+            },
+        )
+
     async def upload_file(
         self,
         *,
@@ -397,6 +430,49 @@ class FileService:
                         code="upload_empty_file",
                         category="validation",
                     )
+
+                try:
+                    usage = await self.downstream.fetch_user_storage_usage(
+                        user.subject,
+                        bearer_token=user.token or "",
+                    )
+                except ServiceClientError as exc:
+                    logger.error(
+                        "file upload failed: storage usage lookup failed",
+                        event_name="file_upload_failed",
+                        event_category="file",
+                        owner_id=user.subject,
+                        owner_username=user.username,
+                        owner_email=user.email,
+                        filename=filename,
+                        mime_type=upload.content_type or "application/octet-stream",
+                        tags_count=len(normalized_tags),
+                        size=total_size,
+                        parent_folder_id=parent_folder_id,
+                        status="failed",
+                        error="Storage usage lookup failed",
+                    )
+                    raise self._map_storage_usage_lookup_error(exc) from exc
+
+                if usage.used_bytes + total_size > usage.max_bytes:
+                    logger.warning(
+                        "file upload rejected: quota exceeded",
+                        event_name="file_upload_failed",
+                        event_category="file",
+                        owner_id=user.subject,
+                        owner_username=user.username,
+                        owner_email=user.email,
+                        filename=filename,
+                        mime_type=upload.content_type or "application/octet-stream",
+                        tags_count=len(normalized_tags),
+                        size=total_size,
+                        parent_folder_id=parent_folder_id,
+                        used_bytes=usage.used_bytes,
+                        max_bytes=usage.max_bytes,
+                        status="rejected",
+                        error="Upload exceeds remaining quota",
+                    )
+                    self._raise_quota_exceeded(usage=usage, incoming_file_bytes=total_size)
 
                 buffered_upload.seek(0)
                 file_record = FileRecord.create(

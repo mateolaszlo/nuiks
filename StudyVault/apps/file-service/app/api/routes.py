@@ -45,6 +45,10 @@ FILE_MUTATION_RESPONSES = {
 
 UPLOAD_RESPONSES = {
     **PUBLIC_FILE_RESPONSES,
+    413: {
+        "model": StudyVaultErrorResponse,
+        "description": "The upload exceeds the per-file limit or the user's remaining storage quota.",
+    },
     422: {
         "model": StudyVaultErrorResponse,
         "description": "The upload metadata or multipart payload is invalid.",

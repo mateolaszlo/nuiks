@@ -10,6 +10,7 @@ from studyvault_backend_common.models import (
     ItemActivityEvent,
     MoveItemRequest,
     RestoreItemRequest,
+    UserStorageUsage,
 )
 
 
@@ -23,6 +24,8 @@ class DownstreamPublisher(Protocol):
     async def fetch_catalog_file(self, file_id: str, owner_id: str, *, bearer_token: str) -> FileRecord: ...
 
     async def fetch_catalog_folder(self, folder_id: str, *, bearer_token: str) -> FolderRecord: ...
+
+    async def fetch_user_storage_usage(self, owner_id: str, *, bearer_token: str) -> UserStorageUsage: ...
 
     async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord: ...
 
@@ -104,6 +107,14 @@ class HttpDownstreamPublisher:
             bearer_token=bearer_token,
         )
         return FolderRecord(**payload)
+
+    async def fetch_user_storage_usage(self, owner_id: str, *, bearer_token: str) -> UserStorageUsage:
+        payload = await self.client.get_json(
+            f"{self.catalog_url}/internal/users/{owner_id}/usage",
+            bearer_token=bearer_token,
+            internal_token=self.internal_token,
+        )
+        return UserStorageUsage(**payload)
 
     async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord:
         payload = await self.client.patch_json(

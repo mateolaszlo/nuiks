@@ -3,10 +3,18 @@ from __future__ import annotations
 import anyio
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from studyvault_backend_common.http import ServiceClientError
-from studyvault_backend_common.models import FileRecord, FolderRecord, MoveItemRequest, RestoreItemRequest
+from studyvault_backend_common.models import (
+    AuthenticatedUser,
+    FileRecord,
+    FolderRecord,
+    MoveItemRequest,
+    RestoreItemRequest,
+    UserStorageUsage,
+)
 from tests.conftest import load_service_module
 
 
@@ -23,6 +31,8 @@ class FakeDownstream:
         self.publish_catalog_error: ServiceClientError | None = None
         self.publish_search_error: ServiceClientError | None = None
         self.publish_activity_error: ServiceClientError | None = None
+        self.storage_usage = UserStorageUsage(owner_id="test-user", used_bytes=0, max_bytes=1024 * 1024 * 1024)
+        self.storage_usage_error: ServiceClientError | None = None
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
         if self.publish_catalog_error is not None:
@@ -62,6 +72,11 @@ class FakeDownstream:
         if folder is None or folder.owner_id != "test-user":
             raise ServiceClientError(f"GET http://catalog.test/api/v1/catalog/folders/{folder_id} failed with status 404")
         return folder
+
+    async def fetch_user_storage_usage(self, owner_id: str, *, bearer_token: str) -> UserStorageUsage:
+        if self.storage_usage_error is not None:
+            raise self.storage_usage_error
+        return self.storage_usage.model_copy(update={"owner_id": owner_id})
 
     async def update_catalog_file(self, file_record: FileRecord, *, bearer_token: str) -> FileRecord:
         existing = self.fetch_existing_file(file_record.file_id)
@@ -246,6 +261,7 @@ class FakeDownstream:
 class RecordingJsonClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object], str | None, str | None]] = []
+        self.get_calls: list[tuple[str, str | None, str | None]] = []
 
     async def post_json(
         self,
@@ -263,6 +279,40 @@ class RecordingJsonClient:
             size=5,
             tags=[],
         ).model_dump(mode="json")
+
+    async def get_json(
+        self,
+        url: str,
+        *,
+        bearer_token: str | None = None,
+        internal_token: str | None = None,
+        query_params: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        self.get_calls.append((url, bearer_token, internal_token))
+        return {
+            "owner_id": "test-user",
+            "used_bytes": 10,
+            "max_bytes": 20,
+        }
+
+
+class FakeUpload:
+    def __init__(self, *, filename: str, content: bytes, content_type: str) -> None:
+        self.filename = filename
+        self.content_type = content_type
+        self._content = content
+        self._offset = 0
+        self.closed = False
+
+    async def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._content) - self._offset
+        chunk = self._content[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 def test_file_upload_fans_out_to_all_downstream_services() -> None:
@@ -754,6 +804,27 @@ def test_http_downstream_move_catalog_file_sends_owner_id_as_query_param() -> No
     assert payload == {"parent_folder_id": "target-folder"}
     assert bearer_token == "fake"
     assert internal_token == "internal-test-token"
+
+
+def test_http_downstream_fetch_user_storage_usage_uses_internal_usage_endpoint() -> None:
+    module = load_service_module("file")
+    client = RecordingJsonClient()
+    downstream = module.HttpDownstreamPublisher(
+        catalog_url="http://catalog.test",
+        search_url="http://search.test",
+        activity_url="http://activity.test",
+        internal_token="internal-test-token",
+        client=client,
+    )
+
+    usage = anyio.run(lambda: downstream.fetch_user_storage_usage("test-user", bearer_token="fake"))
+
+    assert usage.owner_id == "test-user"
+    assert usage.used_bytes == 10
+    assert usage.max_bytes == 20
+    assert client.get_calls == [
+        ("http://catalog.test/internal/users/test-user/usage", "fake", "internal-test-token")
+    ]
 
 
 def test_file_move_rejects_target_name_conflict() -> None:
@@ -1254,6 +1325,115 @@ def test_file_upload_rejects_oversize_content() -> None:
     assert downstream.search_records == []
     assert downstream.activity_file_ids == []
     assert object_store._objects == {}
+
+
+def test_file_service_upload_rejects_when_user_quota_would_be_exceeded() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.storage_usage = UserStorageUsage(owner_id="test-user", used_bytes=98, max_bytes=100)
+    service = module.FileService(object_store=object_store, downstream=downstream, max_upload_bytes=1000)
+    user = AuthenticatedUser(subject="test-user", email="test@example.com", username="test-user", roles=["user"], token="fake")
+    upload = FakeUpload(filename="large.txt", content=b"abcde", content_type="text/plain")
+
+    try:
+        anyio.run(
+            lambda: service.upload_file(
+                user=user,
+                upload=upload,
+                tags=[],
+                parent_folder_id=None,
+            )
+        )
+    except HTTPException as exc:
+        response = exc
+    else:
+        raise AssertionError("expected quota-exceeded upload to raise HTTPException")
+
+    assert response.status_code == 413
+    assert response.detail == "Upload exceeds remaining quota: 2 bytes left, rejected file is 5 bytes."
+    assert response.code == "quota_exceeded"
+    assert response.category == "validation"
+    assert response.context == {
+        "max_bytes": 100,
+        "used_bytes": 98,
+        "remaining_bytes": 2,
+        "incoming_file_bytes": 5,
+        "exceeded_by_bytes": 3,
+    }
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+    assert upload.closed is True
+
+
+def test_file_service_upload_allows_user_quota_boundary_match(monkeypatch) -> None:
+    module = load_service_module("file")
+    service_module = load_service_module("file", "app.services.files")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.storage_usage = UserStorageUsage(owner_id="test-user", used_bytes=95, max_bytes=100)
+    service = service_module.FileService(object_store=object_store, downstream=downstream, max_upload_bytes=1000)
+    user = AuthenticatedUser(subject="test-user", email="test@example.com", username="test-user", roles=["user"], token="fake")
+    upload = FakeUpload(filename="exact.txt", content=b"abcde", content_type="text/plain")
+
+    async def immediate_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(service_module, "run_in_threadpool", immediate_run_in_threadpool)
+
+    response = anyio.run(
+        lambda: service.upload_file(
+            user=user,
+            upload=upload,
+            tags=[],
+            parent_folder_id=None,
+        )
+    )
+
+    assert response.filename == "exact.txt"
+    assert len(downstream.catalog_records) == 1
+    assert downstream.catalog_records[0].filename == "exact.txt"
+    assert object_store.get(downstream.catalog_records[0].object_key) == b"abcde"
+    assert upload.closed is True
+
+
+def test_file_service_upload_returns_structured_quota_lookup_error() -> None:
+    module = load_service_module("file")
+    object_store = module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.storage_usage_error = ServiceClientError(
+        "GET http://catalog.test/internal/users/test-user/usage failed with status 503",
+        status_code=503,
+    )
+    service = module.FileService(object_store=object_store, downstream=downstream, max_upload_bytes=1000)
+    user = AuthenticatedUser(subject="test-user", email="test@example.com", username="test-user", roles=["user"], token="fake")
+    upload = FakeUpload(filename="quota.txt", content=b"abcde", content_type="text/plain")
+
+    try:
+        anyio.run(
+            lambda: service.upload_file(
+                user=user,
+                upload=upload,
+                tags=[],
+                parent_folder_id=None,
+            )
+        )
+    except HTTPException as exc:
+        response = exc
+    else:
+        raise AssertionError("expected quota lookup failure to raise HTTPException")
+
+    assert response.status_code == 502
+    assert response.detail == "Storage usage lookup failed"
+    assert response.code == "quota_lookup_failed"
+    assert response.category == "unavailable"
+    assert downstream.catalog_records == []
+    assert downstream.search_records == []
+    assert downstream.activity_file_ids == []
+    assert object_store._objects == {}
+    assert upload.closed is True
 
 
 def test_file_upload_returns_structured_storage_unavailable_error() -> None:
