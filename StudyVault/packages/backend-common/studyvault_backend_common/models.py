@@ -351,6 +351,13 @@ class AdminPasswordResetResult(BaseModel):
     temporary_password: str
 
 
+class AdminRegistrationSyncResult(BaseModel):
+    max_registered_users: int
+    current_user_count: int
+    registration_allowed: bool
+    changed: bool = False
+
+
 class AdminAuditEvent(BaseModel):
     event_id: str
     event_type: str

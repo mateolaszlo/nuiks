@@ -229,6 +229,7 @@ services:
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}}
+      MAX_REGISTERED_USERS: ${MAX_REGISTERED_USERS:-20}
       ACTIVITY_MONGODB_URL: mongodb://mongodb:27017
     depends_on:
       mongodb:

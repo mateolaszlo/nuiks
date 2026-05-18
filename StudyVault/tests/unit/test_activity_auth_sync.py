@@ -5,7 +5,7 @@ from datetime import timezone, datetime
 
 import pytest
 
-from studyvault_backend_common.models import AdminAuditEvent, AuthenticatedUser, STUDYVAULT_ADMIN_ROLE
+from studyvault_backend_common.models import AdminAuditEvent, AdminUserSummary, AuthenticatedUser, STUDYVAULT_ADMIN_ROLE
 from tests.conftest import load_service_module
 
 
@@ -87,6 +87,59 @@ def test_keycloak_admin_client_preserves_sparse_failure_reason_without_username(
     assert events[0].metadata["error"] == "already_logged_in"
     assert events[0].metadata["client_ip"] == "203.0.113.12"
     assert events[0].actor_username is None
+
+
+def test_keycloak_admin_client_reads_realm_registration_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("activity", "app.services.admin_integrations")
+    client = module.KeycloakAdminClient(
+        base_url="http://keycloak:8080",
+        realm="studyvault",
+        username="admin",
+        password="admin",
+    )
+
+    async def fake_request(method: str, path: str, **kwargs):
+        assert method == "GET"
+        assert path == "/admin/realms/studyvault"
+        return {"realm": "studyvault", "registrationAllowed": False}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    registration_allowed = asyncio.run(client.get_registration_allowed())
+
+    assert registration_allowed is False
+
+
+def test_keycloak_admin_client_updates_realm_registration_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_service_module("activity", "app.services.admin_integrations")
+    client = module.KeycloakAdminClient(
+        base_url="http://keycloak:8080",
+        realm="studyvault",
+        username="admin",
+        password="admin",
+    )
+    calls: list[tuple[str, str, dict[str, object]]] = []
+    payload = {"realm": "studyvault", "registrationAllowed": True}
+
+    async def fake_request(method: str, path: str, **kwargs):
+        calls.append((method, path, kwargs))
+        if method == "GET":
+            return dict(payload)
+        if method == "PUT":
+            payload.update(kwargs["json"])
+            return None
+        raise AssertionError(f"unexpected method {method}")
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    registration_allowed = asyncio.run(client.set_registration_allowed(False))
+
+    assert registration_allowed is False
+    assert calls[0][:2] == ("GET", "/admin/realms/studyvault")
+    assert calls[1][0] == "PUT"
+    assert calls[1][1] == "/admin/realms/studyvault"
+    assert calls[1][2]["json"]["registrationAllowed"] is False
+    assert calls[2][:2] == ("GET", "/admin/realms/studyvault")
 
 
 def test_keycloak_auth_sync_seeds_future_only_checkpoint() -> None:
@@ -304,3 +357,71 @@ def test_admin_service_audit_uses_indexed_events_not_live_keycloak() -> None:
     events = asyncio.run(service.list_audit_events(actor, limit=50))
 
     assert events == [indexed_event]
+
+
+def test_admin_service_sync_registration_limit_disables_registration_at_cap() -> None:
+    activity = load_service_module("activity")
+    admin_module = load_service_module("activity", "app.services.admin")
+    users = [
+        AdminUserSummary(user_id="user-1", username="demo"),
+        AdminUserSummary(user_id="user-2", username="admin"),
+    ]
+    keycloak = activity.InMemoryKeycloakAdminGateway(users=users, registration_allowed=True)
+    service = admin_module.AdminService(
+        keycloak=keycloak,
+        audit_logs=activity.InMemoryAuditLogGateway(),
+        service_health=activity.InMemoryServiceHealthGateway(),
+        max_registered_users=2,
+    )
+    actor = AuthenticatedUser(subject="admin-1", username="admin", roles=[STUDYVAULT_ADMIN_ROLE])
+
+    result = asyncio.run(service.sync_registration_limit(actor))
+
+    assert result.max_registered_users == 2
+    assert result.current_user_count == 2
+    assert result.registration_allowed is False
+    assert result.changed is True
+    assert asyncio.run(keycloak.get_registration_allowed()) is False
+
+
+def test_admin_service_sync_registration_limit_is_noop_when_already_disabled() -> None:
+    activity = load_service_module("activity")
+    admin_module = load_service_module("activity", "app.services.admin")
+    users = [
+        AdminUserSummary(user_id="user-1", username="demo"),
+        AdminUserSummary(user_id="user-2", username="admin"),
+    ]
+    keycloak = activity.InMemoryKeycloakAdminGateway(users=users, registration_allowed=False)
+    service = admin_module.AdminService(
+        keycloak=keycloak,
+        audit_logs=activity.InMemoryAuditLogGateway(),
+        service_health=activity.InMemoryServiceHealthGateway(),
+        max_registered_users=2,
+    )
+    actor = AuthenticatedUser(subject="admin-1", username="admin", roles=[STUDYVAULT_ADMIN_ROLE])
+
+    result = asyncio.run(service.sync_registration_limit(actor))
+
+    assert result.registration_allowed is False
+    assert result.changed is False
+
+
+def test_admin_service_sync_registration_limit_reenables_registration_below_cap() -> None:
+    activity = load_service_module("activity")
+    admin_module = load_service_module("activity", "app.services.admin")
+    users = [AdminUserSummary(user_id="user-1", username="demo")]
+    keycloak = activity.InMemoryKeycloakAdminGateway(users=users, registration_allowed=False)
+    service = admin_module.AdminService(
+        keycloak=keycloak,
+        audit_logs=activity.InMemoryAuditLogGateway(),
+        service_health=activity.InMemoryServiceHealthGateway(),
+        max_registered_users=2,
+    )
+    actor = AuthenticatedUser(subject="admin-1", username="admin", roles=[STUDYVAULT_ADMIN_ROLE])
+
+    result = asyncio.run(service.sync_registration_limit(actor))
+
+    assert result.current_user_count == 1
+    assert result.registration_allowed is True
+    assert result.changed is True
+    assert asyncio.run(keycloak.get_registration_allowed()) is True

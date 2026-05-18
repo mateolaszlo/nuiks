@@ -62,6 +62,7 @@ def create_app(repository=None, keycloak_client=None, audit_client=None, health_
         keycloak=keycloak_client,
         audit_logs=audit_client,
         service_health=health_client,
+        max_registered_users=settings.max_registered_users,
     )
     public_origin, allowed_hosts = derive_public_origin_and_hosts(settings.keycloak_issuer_url)
     app = build_versioned_service_app(

@@ -144,7 +144,8 @@ def test_activity_message_mapping_for_generic_item_actions(action: str, expected
     assert response.json()["message"] == expected_message
 
 
-def test_admin_routes_require_admin_role() -> None:
+def test_admin_routes_require_admin_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KEYCLOAK_AUTH_SYNC_ENABLED", "false")
     module = load_service_module("activity")
     app = module.create_app(
         repository=module.InMemoryActivityRepository(),
@@ -164,6 +165,7 @@ def test_admin_routes_require_admin_role() -> None:
 
 def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
+    monkeypatch.setenv("KEYCLOAK_AUTH_SYNC_ENABLED", "false")
 
     class FakeCache:
         async def get(self, _: str):
@@ -256,6 +258,24 @@ def test_admin_routes_return_users_audit_and_health(monkeypatch: pytest.MonkeyPa
     assert reset_response.json()["temporary_password"] == "sv-test-reset"
 
 
+def test_admin_registration_sync_route_is_registered() -> None:
+    module = load_service_module("activity")
+    app = module.create_app(
+        repository=module.InMemoryActivityRepository(),
+        keycloak_client=module.InMemoryKeycloakAdminGateway(),
+        audit_client=module.InMemoryAuditLogGateway(),
+        health_client=module.InMemoryServiceHealthGateway(),
+    )
+
+    route = next(
+        route
+        for route in app.routes
+        if getattr(route, "path", "") == "/api/v1/admin/registration/sync"
+    )
+
+    assert "POST" in route.methods
+
+
 def test_admin_audit_rejects_limit_above_max(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STUDYVAULT_AUTH_DISABLED", "false")
 
@@ -334,3 +354,22 @@ def test_admin_errors_rejects_limit_below_one(monkeypatch: pytest.MonkeyPatch) -
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["query", "limit"]
+
+
+def test_admin_registration_sync_route_is_registered() -> None:
+    module = load_service_module("activity")
+    app = module.create_app(
+        repository=module.InMemoryActivityRepository(),
+        keycloak_client=module.InMemoryKeycloakAdminGateway(),
+        audit_client=module.InMemoryAuditLogGateway(),
+        health_client=module.InMemoryServiceHealthGateway(),
+    )
+
+    version_mount = next(route for route in app.routes if getattr(route, "path", None) == "/api/v1")
+    child_route = next(
+        route
+        for route in version_mount.app.routes
+        if getattr(route, "path", None) == "/admin/registration/sync"
+    )
+
+    assert "POST" in child_route.methods

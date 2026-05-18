@@ -9,6 +9,7 @@ from studyvault_backend_common.models import (
     AdminErrorRecord,
     AdminHealthSummary,
     AdminPasswordResetResult,
+    AdminRegistrationSyncResult,
     AdminUserSummary,
     AuthenticatedUser,
     STUDYVAULT_ADMIN_ROLE,
@@ -28,10 +29,12 @@ class AdminService:
         keycloak: KeycloakAdminGateway,
         audit_logs: AuditLogGateway,
         service_health: ServiceHealthGateway,
+        max_registered_users: int = 20,
     ) -> None:
         self.keycloak = keycloak
         self.audit_logs = audit_logs
         self.service_health = service_health
+        self.max_registered_users = max_registered_users
 
     @staticmethod
     def require_admin(user: AuthenticatedUser) -> None:
@@ -99,6 +102,38 @@ class AdminService:
             status="succeeded",
         )
         return result
+
+    async def sync_registration_limit(self, actor: AuthenticatedUser) -> AdminRegistrationSyncResult:
+        self.require_admin(actor)
+        users = await self.keycloak.list_users()
+        current_user_count = len(users)
+        should_allow_registration = current_user_count < self.max_registered_users
+        current_registration_allowed = await self.keycloak.get_registration_allowed()
+        changed = current_registration_allowed != should_allow_registration
+        registration_allowed = current_registration_allowed
+        if changed:
+            registration_allowed = await self.keycloak.set_registration_allowed(should_allow_registration)
+        logger.info(
+            "admin synced registration limit",
+            event_name="admin_registration_limit_synced",
+            event_category="admin",
+            actor_user_id=actor.subject,
+            actor_username=actor.username,
+            actor_email=actor.email,
+            status="succeeded",
+            metadata={
+                "current_user_count": current_user_count,
+                "max_registered_users": self.max_registered_users,
+                "registration_allowed": registration_allowed,
+                "changed": changed,
+            },
+        )
+        return AdminRegistrationSyncResult(
+            max_registered_users=self.max_registered_users,
+            current_user_count=current_user_count,
+            registration_allowed=registration_allowed,
+            changed=changed,
+        )
 
     async def list_audit_events(self, actor: AuthenticatedUser, limit: int = 100) -> list[AdminAuditEvent]:
         self.require_admin(actor)

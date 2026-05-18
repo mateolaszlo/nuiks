@@ -12,6 +12,7 @@ from studyvault_backend_common.models import (
     AdminErrorRecord,
     AdminHealthSummary,
     AdminPasswordResetResult,
+    AdminRegistrationSyncResult,
     AdminUserSummary,
     AuthenticatedUser,
     ItemActivityEvent,
@@ -91,6 +92,23 @@ def build_public_router(service: ActivityService, admin_service: AdminService) -
     ) -> list[AdminUserSummary] | JSONResponse:
         try:
             return await admin_service.list_users(user)
+        except StudyVaultHTTPException as exc:
+            return _studyvault_error_response(exc)
+
+    @router.post(
+        "/admin/registration/sync",
+        response_model=AdminRegistrationSyncResult,
+        tags=["Admin"],
+        summary="Sync registration limit",
+        description="Apply the configured registration cap to Keycloak self-registration.",
+        responses=ADMIN_RESPONSES,
+    )
+    @version(1)
+    async def sync_registration_limit(
+        user: AuthenticatedUser = Depends(current_user_dependency),
+    ) -> AdminRegistrationSyncResult | JSONResponse:
+        try:
+            return await admin_service.sync_registration_limit(user)
         except StudyVaultHTTPException as exc:
             return _studyvault_error_response(exc)
 

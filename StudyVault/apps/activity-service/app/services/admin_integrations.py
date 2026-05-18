@@ -48,6 +48,10 @@ def _parse_datetime(value: Any) -> datetime | None:
 class KeycloakAdminGateway(Protocol):
     async def list_users(self) -> list[AdminUserSummary]: ...
 
+    async def get_registration_allowed(self) -> bool: ...
+
+    async def set_registration_allowed(self, enabled: bool) -> bool: ...
+
     async def set_enabled(self, user_id: str, enabled: bool) -> AdminUserSummary: ...
 
     async def set_admin_role(self, user_id: str, make_admin: bool) -> AdminUserSummary: ...
@@ -167,6 +171,17 @@ class KeycloakAdminClient:
             f"/admin/realms/{self.realm}/users/{user_id}/role-mappings/realm",
         )
         return [role["name"] for role in payload]
+
+    async def get_registration_allowed(self) -> bool:
+        payload = await self._request("GET", f"/admin/realms/{self.realm}")
+        return bool(payload.get("registrationAllowed", False))
+
+    async def set_registration_allowed(self, enabled: bool) -> bool:
+        payload = await self._request("GET", f"/admin/realms/{self.realm}")
+        payload["registrationAllowed"] = enabled
+        await self._request("PUT", f"/admin/realms/{self.realm}", json=payload)
+        updated = await self._request("GET", f"/admin/realms/{self.realm}")
+        return bool(updated.get("registrationAllowed", False))
 
     async def _build_user_summary(self, payload: dict[str, Any]) -> AdminUserSummary:
         roles = await self._get_realm_roles(payload["id"])
@@ -497,12 +512,21 @@ class InMemoryKeycloakAdminGateway:
         self,
         users: Iterable[AdminUserSummary] | None = None,
         auth_events: Iterable[AdminAuditEvent] | None = None,
+        registration_allowed: bool = True,
     ) -> None:
         self.users = {user.user_id: user for user in users or []}
         self.auth_events = list(auth_events or [])
+        self.registration_allowed = registration_allowed
 
     async def list_users(self) -> list[AdminUserSummary]:
         return sorted(self.users.values(), key=lambda item: item.username.lower())
+
+    async def get_registration_allowed(self) -> bool:
+        return self.registration_allowed
+
+    async def set_registration_allowed(self, enabled: bool) -> bool:
+        self.registration_allowed = enabled
+        return self.registration_allowed
 
     async def set_enabled(self, user_id: str, enabled: bool) -> AdminUserSummary:
         user = self.users[user_id]
