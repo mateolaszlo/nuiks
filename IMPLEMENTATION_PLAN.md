@@ -971,11 +971,11 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Ensure backend error messaging states how much space is left and the size of the rejected file
 
 #### `apps/frontend`
-- [ ] Add a `getUserUsage()` request definition in `apps/frontend/src/api/client.ts`
-- [ ] Fetch the user storage usage on initial app load and after any successful upload or permanent delete
-- [ ] Add a visual progress gauge at the bottom of the left Drive sidebar
-- [ ] Format the gauge text in gigabytes (e.g., "400 MB / 1.0 GB used")
-- [ ] Enhance the file upload dropzone and queue to surface the new `quota_exceeded` structural error clearly to the user
+- [x] Add a `getUserUsage()` request definition in `apps/frontend/src/api/client.ts`
+- [x] Fetch the user storage usage on initial app load and after any successful upload or permanent delete
+- [x] Add a visual progress gauge at the bottom of the left Drive sidebar
+- [x] Format the gauge text in gigabytes (e.g., "400 MB / 1.0 GB used")
+- [x] Enhance the file upload dropzone and queue to surface the new `quota_exceeded` structural error clearly to the user
 
 #### Testing
 - [x] Add `catalog-service` unit tests proving the user usage sum accurately totals non-trashed files
@@ -993,6 +993,13 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Fetch per-user storage usage from `catalog-service` before object storage persistence
 - [x] Reject uploads that would exceed the configured quota with structured `quota_exceeded` details
 - [x] Reuse the shared usage model and internal usage endpoint instead of duplicating quota config in `file-service`
+
+### 6.14.3 Frontend storage usage UI
+
+- [x] Add frontend user-usage API types and a `getUserUsage()` client helper
+- [x] Load sidebar storage usage on drive bootstrap and refresh it after successful upload, trash, restore, and delete actions
+- [x] Render a left-sidebar storage gauge with used and remaining byte labels
+- [x] Surface `quota_exceeded` upload failures with a quota-specific queue message
 
 ## 6.15 Security Review and Baseline Hardening
 
