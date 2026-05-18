@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import anyio
+from fastapi import HTTPException
 
 from studyvault_backend_common.models import ActivityRecord, AuthenticatedUser, FileRecord, UserStorageUsage
 from tests.conftest import load_service_module
@@ -97,4 +98,61 @@ def test_upload_flow_produces_metadata_search_and_activity_views() -> None:
     assert file_id in downstream.search_records
     assert downstream.activity_records[0].file_id == file_id
     assert object_store.get(downstream.catalog_records[file_id].object_key) == b"# summary"
+    assert upload.closed is True
+
+
+def test_upload_flow_rejects_when_quota_would_be_exceeded() -> None:
+    service_module = load_service_module("file", "app.services.files")
+    object_store_module = load_service_module("file", "app.repositories.object_store")
+    object_store = object_store_module.InMemoryObjectStoreRepository()
+    downstream = FakeDownstream()
+    downstream.storage_usage = UserStorageUsage(owner_id="test-user", used_bytes=98, max_bytes=100)
+
+    async def immediate_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    service_module.run_in_threadpool = immediate_run_in_threadpool
+    service = service_module.FileService(
+        object_store=object_store,
+        downstream=downstream,
+        max_upload_bytes=1000,
+    )
+    user = AuthenticatedUser(
+        subject="test-user",
+        email="test@example.com",
+        username="test-user",
+        roles=["user"],
+        token="fake",
+    )
+    upload = FakeUpload(filename="quota.md", content=b"abcde", content_type="text/markdown")
+
+    try:
+        anyio.run(
+            lambda: service.upload_file(
+                user=user,
+                upload=upload,
+                tags=["revision"],
+                parent_folder_id=None,
+            )
+        )
+    except HTTPException as exc:
+        response = exc
+    else:
+        raise AssertionError("expected quota-exceeded upload to raise HTTPException")
+
+    assert response.status_code == 413
+    assert response.detail == "Upload exceeds remaining quota: 2 bytes left, rejected file is 5 bytes."
+    assert response.code == "quota_exceeded"
+    assert response.category == "validation"
+    assert response.context == {
+        "max_bytes": 100,
+        "used_bytes": 98,
+        "remaining_bytes": 2,
+        "incoming_file_bytes": 5,
+        "exceeded_by_bytes": 3,
+    }
+    assert downstream.catalog_records == {}
+    assert downstream.search_records == {}
+    assert downstream.activity_records == []
+    assert object_store._objects == {}
     assert upload.closed is True
