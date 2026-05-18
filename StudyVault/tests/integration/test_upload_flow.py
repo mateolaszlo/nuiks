@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+import anyio
 
-from studyvault_backend_common.models import ActivityRecord, FileRecord
+from studyvault_backend_common.models import ActivityRecord, AuthenticatedUser, FileRecord, UserStorageUsage
 from tests.conftest import load_service_module
 
 
@@ -11,6 +11,7 @@ class FakeDownstream:
         self.catalog_records: dict[str, FileRecord] = {}
         self.search_records: dict[str, FileRecord] = {}
         self.activity_records: list[ActivityRecord] = []
+        self.storage_usage = UserStorageUsage(owner_id="test-user", used_bytes=0, max_bytes=1024 * 1024 * 1024)
 
     async def publish_catalog(self, file_record: FileRecord, *, bearer_token: str) -> None:
         self.catalog_records[file_record.file_id] = file_record
@@ -35,25 +36,65 @@ class FakeDownstream:
     async def fetch_catalog_file(self, file_id: str, *, bearer_token: str) -> FileRecord:
         return self.catalog_records[file_id]
 
+    async def fetch_user_storage_usage(self, owner_id: str, *, bearer_token: str) -> UserStorageUsage:
+        return self.storage_usage.model_copy(update={"owner_id": owner_id})
+
+
+class FakeUpload:
+    def __init__(self, *, filename: str, content: bytes, content_type: str) -> None:
+        self.filename = filename
+        self.content_type = content_type
+        self._content = content
+        self._offset = 0
+        self.closed = False
+
+    async def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self._content) - self._offset
+        chunk = self._content[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
+
+    async def close(self) -> None:
+        self.closed = True
+
 
 def test_upload_flow_produces_metadata_search_and_activity_views() -> None:
-    module = load_service_module("file")
-    object_store = module.InMemoryObjectStoreRepository()
+    service_module = load_service_module("file", "app.services.files")
+    object_store_module = load_service_module("file", "app.repositories.object_store")
+    object_store = object_store_module.InMemoryObjectStoreRepository()
     downstream = FakeDownstream()
-    app = module.create_app(object_store=object_store, downstream=downstream)
 
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/files",
-            headers={"authorization": "Bearer fake"},
-            files={"file": ("summary.md", b"# summary", "text/markdown")},
-            data={"tags": "revision"},
+    async def immediate_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    service_module.run_in_threadpool = immediate_run_in_threadpool
+    service = service_module.FileService(
+        object_store=object_store,
+        downstream=downstream,
+        max_upload_bytes=1000,
+    )
+    user = AuthenticatedUser(
+        subject="test-user",
+        email="test@example.com",
+        username="test-user",
+        roles=["user"],
+        token="fake",
+    )
+    upload = FakeUpload(filename="summary.md", content=b"# summary", content_type="text/markdown")
+
+    payload = anyio.run(
+        lambda: service.upload_file(
+            user=user,
+            upload=upload,
+            tags=["revision"],
+            parent_folder_id=None,
         )
+    )
 
-    assert response.status_code == 200
-    payload = response.json()
-    file_id = payload["file_id"]
+    file_id = payload.file_id
     assert file_id in downstream.catalog_records
     assert file_id in downstream.search_records
     assert downstream.activity_records[0].file_id == file_id
     assert object_store.get(downstream.catalog_records[file_id].object_key) == b"# summary"
+    assert upload.closed is True
