@@ -703,6 +703,69 @@ test("oversized uploads show a friendly message when nginx returns an HTML 413 p
   await expect(queueRow).not.toContainText("<html>");
 });
 
+test("quota-exceeded uploads surface a friendly queue message and keep the file out of drive contents", async ({ page }) => {
+  const uniqueId = Date.now().toString();
+  const filename = `quota-${uniqueId}.txt`;
+  const queuePanel = page.locator("section[aria-label='Upload Queue']").first();
+  const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const storageCard = page.locator(".side-card").filter({ hasText: "Storage" }).first();
+
+  await page.route("**/api/v1/users/me/usage", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        owner_id: "demo-user",
+        used_bytes: 99,
+        max_bytes: 100,
+      }),
+    });
+  });
+
+  await page.route("**/api/v1/files", async (route, request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname === "/api/v1/files") {
+      await route.fulfill({
+        status: 413,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Upload exceeds remaining quota: 1 bytes left, rejected file is 5 bytes.",
+          code: "quota_exceeded",
+          category: "validation",
+          recoverable: true,
+          context: {
+            max_bytes: 100,
+            used_bytes: 99,
+            remaining_bytes: 1,
+            incoming_file_bytes: 5,
+            exceeded_by_bytes: 4,
+          },
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await openDriveWorkspace(page);
+
+  await expect(storageCard).toContainText("99 B / 100 B used");
+  await expect(storageCard).toContainText("1 B remaining");
+
+  await page.locator("#upload-file").setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from("abcde", "utf-8"),
+  });
+  await page.getByRole("button", { name: "Add to Upload Queue" }).click();
+
+  const queueRow = queuePanel.locator(".upload-queue-row").filter({ hasText: filename }).first();
+  await expect(queueRow).toBeVisible({ timeout: 60_000 });
+  await expect(queueRow).toContainText("Not enough storage space. 5 B would exceed your remaining 1 B.");
+  await expect(driveSurface.locator(".drive-tile").filter({ hasText: filename })).toHaveCount(0);
+  await expect(page.locator(".error-banner")).toHaveCount(0);
+});
+
 test("drive bootstrap survives activity service failure", async ({ page }) => {
   await page.route("**/api/v1/activity/me", async (route) => {
     await route.fulfill({
