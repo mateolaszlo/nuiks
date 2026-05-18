@@ -15,6 +15,7 @@ import type {
   FileRestoreResponse,
   FolderRecord,
   FolderStats,
+  UserStorageUsage,
 } from "./types";
 
 type UploadProgressOptions = {
@@ -185,6 +186,10 @@ export class ApiClient {
 
   getFolderStats(folderId: string): Promise<FolderStats> {
     return this.request<FolderStats>(`/api/v1/catalog/folders/${encodeURIComponent(folderId)}/stats`);
+  }
+
+  getUserUsage(): Promise<UserStorageUsage> {
+    return this.request<UserStorageUsage>("/api/v1/users/me/usage");
   }
 
   hardDeleteFolder(folderId: string): Promise<void> {

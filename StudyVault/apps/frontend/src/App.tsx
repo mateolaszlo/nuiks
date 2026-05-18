@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
@@ -21,6 +22,7 @@ import type {
   BreadcrumbEntry,
   DriveItem,
   FolderStats,
+  UserStorageUsage,
 } from "./api/types";
 import {
   type AuthProfile,
@@ -44,6 +46,7 @@ type AdminSection = "users" | "audit" | "errors";
 type AdminDataSection = AdminSection | "health";
 type DrivePanelMode = "hidden" | "details" | "activity";
 type FolderStatsLoadState = "idle" | "loading" | "ready" | "error";
+type UserStorageUsageLoadState = "idle" | "loading" | "ready" | "error";
 type UploadStatus = "queued" | "uploading" | "processing" | "done" | "failed";
 type LocalActionError =
   | { scope: "create-folder"; message: string }
@@ -111,6 +114,14 @@ function formatBytes(value: number | null | undefined): string {
 
 function formatFolderContents(fileCount: number, folderCount: number): string {
   return `${fileCount} file${fileCount === 1 ? "" : "s"}, ${folderCount} folder${folderCount === 1 ? "" : "s"}`;
+}
+
+function readNumericContextValue(
+  context: Record<string, string | number | boolean | null>,
+  key: string,
+): number | null {
+  const value = context[key];
+  return typeof value === "number" ? value : null;
 }
 
 function buildUploadSizeLimitMessage(files: File[]): string {
@@ -245,6 +256,14 @@ function getUploadErrorMessage(error: unknown): string {
     }
     if (error.code === "upload_size_exceeded") {
       return "This file is too large for the current upload limit.";
+    }
+    if (error.code === "quota_exceeded") {
+      const incomingBytes = readNumericContextValue(error.context, "incoming_file_bytes");
+      const remainingBytes = readNumericContextValue(error.context, "remaining_bytes");
+      if (incomingBytes !== null && remainingBytes !== null) {
+        return `Not enough storage space. ${formatBytes(incomingBytes)} would exceed your remaining ${formatBytes(remainingBytes)}.`;
+      }
+      return "Not enough storage space for this upload.";
     }
     if (error.code === "storage_unavailable") {
       return "File storage is temporarily unavailable. Retry the upload in a moment.";
@@ -525,6 +544,9 @@ export default function App() {
   const [selectedFolderStats, setSelectedFolderStats] = useState<FolderStats | null>(null);
   const [selectedFolderStatsState, setSelectedFolderStatsState] = useState<FolderStatsLoadState>("idle");
   const [selectedFolderStatsError, setSelectedFolderStatsError] = useState<string | null>(null);
+  const [userStorageUsage, setUserStorageUsage] = useState<UserStorageUsage | null>(null);
+  const [userStorageUsageState, setUserStorageUsageState] = useState<UserStorageUsageLoadState>("idle");
+  const [userStorageUsageError, setUserStorageUsageError] = useState<string | null>(null);
   const [pendingPermanentDeleteItem, setPendingPermanentDeleteItem] = useState<DriveItem | null>(null);
   const [localActionError, setLocalActionError] = useState<LocalActionError>(null);
   const [searchFormError, setSearchFormError] = useState<string | null>(null);
@@ -545,6 +567,7 @@ export default function App() {
   const profileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const folderStatsRequestIdRef = useRef(0);
+  const userStorageUsageRequestIdRef = useRef(0);
 
   const currentFolderLabel = breadcrumbs[breadcrumbs.length - 1]?.name ?? ROOT_BREADCRUMB.name;
   const canGoUp = breadcrumbs.length > 1;
@@ -555,6 +578,12 @@ export default function App() {
   const activeUploadCount = uploadQueue.filter(
     (item) => item.status === "uploading" || item.status === "processing",
   ).length;
+  const userStorageUsagePercent =
+    userStorageUsage && userStorageUsage.max_bytes > 0
+      ? Math.min(100, Math.max(0, (userStorageUsage.used_bytes / userStorageUsage.max_bytes) * 100))
+      : 0;
+  const userStorageUsageRemainingBytes =
+    userStorageUsage !== null ? Math.max(0, userStorageUsage.max_bytes - userStorageUsage.used_bytes) : null;
 
   const moveDestinations = useMemo<MoveDestination[]>(() => {
     const destinations = new Map<string, MoveDestination>();
@@ -836,6 +865,9 @@ export default function App() {
       setSelectedFolderStats(null);
       setSelectedFolderStatsState("idle");
       setSelectedFolderStatsError(null);
+      setUserStorageUsage(null);
+      setUserStorageUsageState("idle");
+      setUserStorageUsageError(null);
       setContextMenu(null);
       setActiveDropTarget(null);
       setMoveItem(null);
@@ -895,6 +927,41 @@ export default function App() {
     }
   }
 
+  async function loadUserUsage(options?: { showLoading?: boolean }) {
+    const requestId = userStorageUsageRequestIdRef.current + 1;
+    userStorageUsageRequestIdRef.current = requestId;
+    if (options?.showLoading ?? true) {
+      startTransition(() => {
+        setUserStorageUsageState("loading");
+        setUserStorageUsageError(null);
+      });
+    }
+
+    try {
+      const usage = await api.getUserUsage();
+      if (userStorageUsageRequestIdRef.current !== requestId) {
+        return;
+      }
+      startTransition(() => {
+        setUserStorageUsage(usage);
+        setUserStorageUsageState("ready");
+        setUserStorageUsageError(null);
+      });
+    } catch (usageError) {
+      if (userStorageUsageRequestIdRef.current !== requestId) {
+        return;
+      }
+      const message = handleApiFailure(usageError, "Storage usage could not be loaded.");
+      if (!message) {
+        return;
+      }
+      startTransition(() => {
+        setUserStorageUsageState("error");
+        setUserStorageUsageError(message);
+      });
+    }
+  }
+
   function hasExternalFiles(event: ReactDragEvent<HTMLElement>): boolean {
     if (draggedItem) {
       return false;
@@ -933,7 +1000,7 @@ export default function App() {
             if (adminReady) {
               await refreshAdminPanel();
             } else {
-              await loadFolder(null);
+              await Promise.all([loadFolder(null), loadUserUsage({ showLoading: true })]);
             }
           } catch (dashboardError) {
             const message = handleApiFailure(dashboardError, "Workspace bootstrap failed");
@@ -1029,6 +1096,15 @@ export default function App() {
       pendingAdminSectionRef.current = null;
     };
   }, [adminUser]);
+
+  useEffect(() => {
+    if (!authenticated || adminUser) {
+      userStorageUsageRequestIdRef.current += 1;
+      setUserStorageUsage(null);
+      setUserStorageUsageState("idle");
+      setUserStorageUsageError(null);
+    }
+  }, [adminUser, authenticated]);
 
   useEffect(() => {
     if (!authenticated || adminUser) {
@@ -1234,7 +1310,7 @@ export default function App() {
       } else {
         await api.trashFile(item.item_id);
       }
-      await loadFolder(currentFolderId);
+      await Promise.all([loadFolder(currentFolderId), loadUserUsage({ showLoading: false })]);
       setError(null);
     } catch (trashError) {
       const message = handleApiFailure(trashError, "Move to trash failed");
@@ -1357,7 +1433,7 @@ export default function App() {
       } else {
         await api.restoreFile(item.item_id);
       }
-      await loadTrash();
+      await Promise.all([loadTrash(), loadUserUsage({ showLoading: false })]);
       setError(null);
     } catch (restoreError) {
       const message = handleApiFailure(restoreError, "Restore failed");
@@ -1382,7 +1458,7 @@ export default function App() {
         setDrivePanelMode("hidden");
       }
       setPendingPermanentDeleteItem(null);
-      await loadTrash();
+      await Promise.all([loadTrash(), loadUserUsage({ showLoading: false })]);
       setError(null);
     } catch (deleteError) {
       setPendingPermanentDeleteItem(null);
@@ -1857,13 +1933,19 @@ export default function App() {
         (item.parent_folder_id ?? null) === (currentFolderIdRef.current ?? null)
       ) {
         try {
-          await loadFolder(currentFolderIdRef.current);
+          await Promise.all([
+            loadFolder(currentFolderIdRef.current),
+            loadUserUsage({ showLoading: false }),
+          ]);
         } catch (postUploadRefreshError) {
           refreshError = postUploadRefreshError;
         }
       } else {
         try {
-          await refreshActivitiesBestEffort();
+          await Promise.all([
+            refreshActivitiesBestEffort(),
+            loadUserUsage({ showLoading: false }),
+          ]);
         } catch (postUploadRefreshError) {
           refreshError = postUploadRefreshError;
         }
@@ -2485,6 +2567,33 @@ export default function App() {
                     Add to Upload Queue
                   </button>
                 </form>
+              </section>
+              <section className="sidebar-section side-card">
+                <p className="eyebrow">Storage</p>
+                {userStorageUsage ? (
+                  <>
+                    <div
+                      className="storage-usage-bar"
+                      role="progressbar"
+                      aria-label="Storage usage"
+                      aria-valuemin={0}
+                      aria-valuemax={userStorageUsage.max_bytes}
+                      aria-valuenow={Math.min(userStorageUsage.used_bytes, userStorageUsage.max_bytes)}
+                      style={{ "--storage-usage": `${userStorageUsagePercent}%` } as CSSProperties}
+                    />
+                    <strong>{`${formatBytes(userStorageUsage.used_bytes)} / ${formatBytes(userStorageUsage.max_bytes)} used`}</strong>
+                    <p className="muted">
+                      {`${formatBytes(userStorageUsageRemainingBytes)} remaining`}
+                    </p>
+                    {userStorageUsageState === "loading" ? <p className="muted">Refreshing usage…</p> : null}
+                  </>
+                ) : null}
+                {!userStorageUsage && userStorageUsageState === "loading" ? (
+                  <p className="muted">Loading current usage…</p>
+                ) : null}
+                {userStorageUsageState === "error" ? (
+                  <p className="muted">{userStorageUsageError ?? "Storage usage is unavailable."}</p>
+                ) : null}
               </section>
             </>
           ) : null}

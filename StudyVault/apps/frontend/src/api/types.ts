@@ -81,6 +81,12 @@ export type FolderStats = {
   folder_count: number;
 };
 
+export type UserStorageUsage = {
+  owner_id: string;
+  used_bytes: number;
+  max_bytes: number;
+};
+
 export type ActivityRecord = {
   activity_id: string;
   owner_id: string;
