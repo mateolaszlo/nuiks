@@ -8,6 +8,9 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "verifyEmail": false,
+  "attributes": {
+    "studyvault.maxRegisteredUsers": "__STUDYVAULT_MAX_REGISTERED_USERS__"
+  },
   "eventsEnabled": true,
   "eventsListeners": [
     "jboss-logging"

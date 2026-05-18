@@ -83,6 +83,8 @@ def test_docker_compose_config_contains_required_services() -> None:
     assert "FILE_S3_REGION: us-east-1" in result.stdout
     assert "KEYCLOAK_ADMIN_USERNAME: admin" in result.stdout
     assert "KEYCLOAK_ADMIN_PASSWORD: admin" in result.stdout
+    assert "MAX_REGISTERED_USERS: \"20\"" in result.stdout
+    assert "USER_STORAGE_QUOTA_BYTES: \"10737418240\"" in result.stdout
     assert "internal-demo-token" not in result.stdout
 
 
@@ -287,13 +289,18 @@ def test_keycloak_realm_template_renders_public_base_url() -> None:
             capture_output=True,
             text=True,
             check=False,
-            env={**os.environ, "STUDYVAULT_PUBLIC_BASE_URL": "https://studyvault.example.com"},
+            env={
+                **os.environ,
+                "STUDYVAULT_PUBLIC_BASE_URL": "https://studyvault.example.com",
+                "MAX_REGISTERED_USERS": "20",
+            },
         )
 
         assert result.returncode == 0, result.stderr
         contents = output.read_text()
 
     assert "https://studyvault.example.com/*" in contents
+    assert '"studyvault.maxRegisteredUsers": "20"' in contents
     assert '"webOrigins": [' in contents
     assert '"protocolMapper": "oidc-audience-mapper"' in contents
     assert '"included.client.audience": "studyvault-frontend"' in contents

@@ -159,6 +159,7 @@ services:
       - /rendered/studyvault-realm.json
     environment:
       STUDYVAULT_PUBLIC_BASE_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}
+      MAX_REGISTERED_USERS: ${MAX_REGISTERED_USERS:-20}
     volumes:
       - ../../keycloak/studyvault-realm.template.json:/app/studyvault-realm.template.json:ro
       - ../../scripts/render_studyvault_realm.sh:/app/render_studyvault_realm.sh:ro
@@ -174,6 +175,7 @@ services:
       KEYCLOAK_ISSUER_URL: ${STUDYVAULT_PUBLIC_BASE_URL:-http://localhost:8080}/realms/studyvault
       KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/studyvault/protocol/openid-connect/certs
       CATALOG_DATABASE_URL: postgresql+psycopg://studyvault:studyvault@postgres:5432/studyvault
+      USER_STORAGE_QUOTA_BYTES: ${USER_STORAGE_QUOTA_BYTES:-10737418240}
     depends_on:
       postgres:
         condition: service_healthy
