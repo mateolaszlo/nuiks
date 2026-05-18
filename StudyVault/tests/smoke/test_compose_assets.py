@@ -531,6 +531,7 @@ def test_gateway_rate_limiting_is_configured_for_abuse_prone_routes() -> None:
     assert "envsubst '${STUDYVAULT_AUTH_RATE} ${STUDYVAULT_AUTH_NAV_RATE} ${STUDYVAULT_UPLOAD_RATE} ${STUDYVAULT_SEARCH_RATE} ${STUDYVAULT_ADMIN_RATE}" in render_script
     assert "location /api/v1/files {" in nginx_contents
     assert "limit_req zone=studyvault_upload_rate burst=${STUDYVAULT_UPLOAD_BURST} nodelay;" in nginx_contents
+    assert "location /api/v1/users/ {" in nginx_contents
     assert "location /api/v1/search {" in nginx_contents
     assert "limit_req zone=studyvault_search_rate burst=${STUDYVAULT_SEARCH_BURST} nodelay;" in nginx_contents
     assert "location ^~ /api/v1/admin/ {" in nginx_contents

@@ -82,7 +82,7 @@ export class ApiClient {
     if (response.status === 204) {
       return undefined as T;
     }
-    return (await response.json()) as T;
+    return await readJsonResponse<T>(response);
   }
 
   listFiles(): Promise<FileRecord[]> {
@@ -365,6 +365,24 @@ export class ApiClient {
 async function readApiErrorFromResponse(response: Response): Promise<ApiError> {
   const responseText = await response.text();
   return readApiErrorFromText(responseText, response.status);
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const responseText = await response.text();
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new ApiError("Server returned an unexpected response format.", {
+      status: response.status,
+      code: "invalid_response_format",
+      category: looksLikeHtmlDocument(responseText) ? "unavailable" : "internal",
+      recoverable: true,
+    });
+  }
 }
 
 function readApiErrorFromText(responseText: string, status: number): ApiError {
