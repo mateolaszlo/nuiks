@@ -958,7 +958,7 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 #### `infra/` & Keycloak
 - [x] Add `MAX_REGISTERED_USERS` and `USER_STORAGE_QUOTA_BYTES` to the base `.env.example` and environment configurations
-- [ ] Implement a lightweight constraint on Keycloak to enforce `MAX_REGISTERED_USERS` (e.g., a periodic sync script in the `admin-service` that toggles Keycloak realm self-registration off when the limit is reached, or documenting manual admin enforcement if API-based sync is too heavy for MVP)
+- [x] Implement a lightweight constraint on Keycloak to enforce `MAX_REGISTERED_USERS` (e.g., a periodic sync script in the `admin-service` that toggles Keycloak realm self-registration off when the limit is reached, or documenting manual admin enforcement if API-based sync is too heavy for MVP)
 
 #### `apps/catalog-service`
 - [x] Add a repository query to calculate the total byte size of all non-trashed files for a specific `owner_id`
@@ -1013,6 +1013,13 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 - [x] Add `MAX_REGISTERED_USERS` to `.env.example` and thread it through Compose-backed Keycloak realm rendering metadata
 - [x] Pass `USER_STORAGE_QUOTA_BYTES` through Compose-backed `catalog-service` environment configuration
+
+### 6.14.7 Keycloak registration-cap enforcement foundation
+
+- [x] Add `MAX_REGISTERED_USERS` runtime config to `activity-service` admin wiring
+- [x] Add Keycloak admin helpers for reading and updating `registrationAllowed`
+- [x] Add an admin registration-sync action that toggles Keycloak self-registration based on current user count
+- [x] Add focused unit, route-registration, and compose-env coverage for registration-cap sync behavior
 
 ## 6.15 Security Review and Baseline Hardening
 
