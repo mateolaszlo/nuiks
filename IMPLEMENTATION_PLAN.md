@@ -957,7 +957,7 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 ### Task list
 
 #### `infra/` & Keycloak
-- [ ] Add `MAX_REGISTERED_USERS` and `USER_STORAGE_QUOTA_BYTES` to the base `.env.example` and environment configurations
+- [x] Add `MAX_REGISTERED_USERS` and `USER_STORAGE_QUOTA_BYTES` to the base `.env.example` and environment configurations
 - [ ] Implement a lightweight constraint on Keycloak to enforce `MAX_REGISTERED_USERS` (e.g., a periodic sync script in the `admin-service` that toggles Keycloak realm self-registration off when the limit is reached, or documenting manual admin enforcement if API-based sync is too heavy for MVP)
 
 #### `apps/catalog-service`
@@ -1008,6 +1008,11 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 ### 6.14.5 Playwright quota E2E coverage
 
 - [x] Add browser coverage for a near-full usage snapshot plus a structured `quota_exceeded` upload failure
+
+### 6.14.6 Quota and account-limit env wiring
+
+- [x] Add `MAX_REGISTERED_USERS` to `.env.example` and thread it through Compose-backed Keycloak realm rendering metadata
+- [x] Pass `USER_STORAGE_QUOTA_BYTES` through Compose-backed `catalog-service` environment configuration
 
 ## 6.15 Security Review and Baseline Hardening
 
