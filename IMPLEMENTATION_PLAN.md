@@ -1025,11 +1025,17 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 ### 6.15.1 Secret and artifact hygiene
 
-- [ ] Add a short `StudyVault/docs/security.md` section explaining the local `--env-file StudyVault/.env` workflow
-- [ ] Document that `StudyVault/.env` is required for local Docker Compose but must not be committed or shared
-- [ ] Add a pre-commit or CI secret scan using a tool such as `gitleaks` or `trufflehog`
-- [ ] Configure the secret scan to fail on real-looking API keys, private keys, database URLs with passwords, Keycloak admin credentials, MinIO credentials, and `STUDYVAULT_INTERNAL_TOKEN`
-- [ ] Add an allowlist only for known fake fixtures such as `.env.example` and `.env.test`
+- [x] Add a short `StudyVault/docs/security.md` section explaining the local `--env-file StudyVault/.env` workflow
+- [x] Document that `StudyVault/.env` is required for local Docker Compose but must not be committed or shared
+- [x] Add a pre-commit or CI secret scan using a tool such as `gitleaks` or `trufflehog`
+- [x] Configure the secret scan to fail on real-looking API keys, private keys, database URLs with passwords, Keycloak admin credentials, MinIO credentials, and `STUDYVAULT_INTERNAL_TOKEN`
+- [x] Add an allowlist only for known fake fixtures such as `.env.example` and `.env.test`
+
+### 6.15.1.1 Secret-scan baseline
+
+- [x] Add `docs/security.md` for local `.env`, `.env.example`, and `.env.test` handling
+- [x] Add CI gitleaks scanning with a checked-in allowlist-aware config
+- [x] Add focused smoke checks for the security doc, CI workflow, and gitleaks config
 
 ### 6.15.2 Frontend exposure and network-call checks
 
