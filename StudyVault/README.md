@@ -4,6 +4,7 @@ StudyVault is a runnable microservice application for personal file management. 
 
 For the full deployment runbook, including local IP access, Cloudflare-backed public hosting, firewall notes, and day-2 Docker commands, use [docs/deployment.md](docs/deployment.md).
 For the public API reference, use [docs/api.md](docs/api.md).
+For local secret-handling rules and the `.env` workflow, use [docs/security.md](docs/security.md).
 
 Before any non-local deployment, set `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD`, and `STUDYVAULT_INTERNAL_TOKEN` in `.env` to non-default secrets. If `KEYCLOAK_ADMIN_PASSWORD` is unset, the activity-service admin client falls back to `KC_BOOTSTRAP_ADMIN_PASSWORD`.
 

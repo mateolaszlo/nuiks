@@ -566,3 +566,37 @@ def test_postgres_initdb_uses_env_driven_keycloak_db_credentials() -> None:
     assert "KEYCLOAK_DB_USER" in contents
     assert "KEYCLOAK_DB_PASSWORD" in contents
     assert "PASSWORD 'keycloak'" not in contents
+
+
+def test_security_doc_covers_local_env_secret_handling() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    security_doc = (project_root / "docs" / "security.md").read_text()
+
+    assert ".env.example" in security_doc
+    assert ".env" in security_doc
+    assert ".env.test" in security_doc
+    assert "must not be passed to `docker compose --env-file`" in security_doc
+    assert "must not be committed" in security_doc or "Do not commit" in security_doc
+    assert "STUDYVAULT_INTERNAL_TOKEN" in security_doc
+
+
+def test_ci_workflow_runs_gitleaks_before_heavier_jobs() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "studyvault-ci.yml").read_text()
+
+    assert "secret-scan:" in workflow
+    assert "gitleaks/gitleaks-action@v2" in workflow
+    assert "GITLEAKS_CONFIG: .gitleaks.toml" in workflow
+    assert "needs: secret-scan" in workflow
+
+
+def test_gitleaks_config_allowlists_fake_env_fixtures() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    gitleaks_config = (repo_root / ".gitleaks.toml").read_text()
+
+    assert "useDefault = true" in gitleaks_config
+    assert "studyvault-named-secrets" in gitleaks_config
+    assert "studyvault-db-urls-with-passwords" in gitleaks_config
+    assert "studyvault-private-keys" in gitleaks_config
+    assert r"^StudyVault/\.env\.example$" in gitleaks_config
+    assert r"^StudyVault/\.env\.test$" in gitleaks_config

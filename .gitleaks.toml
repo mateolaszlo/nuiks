@@ -1,0 +1,26 @@
+title = "StudyVault gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "studyvault-named-secrets"
+description = "StudyVault named secrets in env-style files"
+regex = '''(?i)(KEYCLOAK_ADMIN_PASSWORD|KC_BOOTSTRAP_ADMIN_PASSWORD|KEYCLOAK_DB_PASSWORD|FILE_S3_SECRET_KEY|STUDYVAULT_INTERNAL_TOKEN)\s*=\s*["']?[A-Za-z0-9_./+=:@-]{8,}["']?'''
+
+[[rules]]
+id = "studyvault-db-urls-with-passwords"
+description = "Database URLs with embedded passwords"
+regex = '''(?i)(postgres(?:ql)?(?:\+[a-z0-9]+)?://[^:\s]+:[^@\s]+@|mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@)'''
+
+[[rules]]
+id = "studyvault-private-keys"
+description = "Private key material"
+regex = '''-----BEGIN (?:[A-Z ]+)?PRIVATE KEY-----'''
+
+[[allowlists]]
+description = "Known fake env fixtures"
+paths = [
+  '''^StudyVault/\.env\.example$''',
+  '''^StudyVault/\.env\.test$''',
+]
