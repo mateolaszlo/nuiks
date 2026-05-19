@@ -1,5 +1,8 @@
 name: StudyVault CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:

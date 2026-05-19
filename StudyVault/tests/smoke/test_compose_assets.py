@@ -589,6 +589,8 @@ def test_ci_workflow_runs_gitleaks_before_heavier_jobs() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     workflow = (repo_root / ".github" / "workflows" / "studyvault-ci.yml").read_text()
 
+    assert "permissions:" in workflow
+    assert "contents: read" in workflow
     assert "secret-scan:" in workflow
     assert "actions/checkout@v6" in workflow
     assert "actions/setup-python@v6" in workflow
