@@ -610,5 +610,19 @@ def test_gitleaks_config_allowlists_fake_env_fixtures() -> None:
     assert "studyvault-named-secrets" in gitleaks_config
     assert "studyvault-db-urls-with-passwords" in gitleaks_config
     assert "studyvault-private-keys" in gitleaks_config
-    assert r"^StudyVault/\.env\.example$" in gitleaks_config
-    assert r"^StudyVault/\.env\.test$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/\.env\.example$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/\.env\.test$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/README\.md$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/SECURITY_REVIEW\.md$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/docs/deployment\.md$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/infra/docker/compose/docker-compose\.yml$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/tests/smoke/test_compose_assets\.py$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/apps/activity-service/app/core/config\.py$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/apps/catalog-service/app/core/config\.py$" in gitleaks_config
+    assert "studyvault-keycloak-db-password-change-me" in gitleaks_config
+    assert "studyvault-internal-token-change-me" in gitleaks_config
+    assert "replace-with-minio-secret-key" in gitleaks_config
+    assert "replace-with-a-strong-secret" in gitleaks_config
+    assert "internal-demo-token" in gitleaks_config
+    assert "internal-test-token" in gitleaks_config
+    assert "minioadmin" in gitleaks_config

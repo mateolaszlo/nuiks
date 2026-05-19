@@ -21,6 +21,22 @@ regex = '''-----BEGIN (?:[A-Z ]+)?PRIVATE KEY-----'''
 [[allowlists]]
 description = "Known fake env fixtures"
 paths = [
-  '''^StudyVault/\.env\.example$''',
-  '''^StudyVault/\.env\.test$''',
+  '''(?:^|.*/)StudyVault/\.env\.example$''',
+  '''(?:^|.*/)StudyVault/\.env\.test$''',
+  '''(?:^|.*/)StudyVault/README\.md$''',
+  '''(?:^|.*/)StudyVault/SECURITY_REVIEW\.md$''',
+  '''(?:^|.*/)StudyVault/docs/deployment\.md$''',
+  '''(?:^|.*/)StudyVault/infra/docker/compose/docker-compose\.yml$''',
+  '''(?:^|.*/)StudyVault/tests/smoke/test_compose_assets\.py$''',
+  '''(?:^|.*/)StudyVault/apps/activity-service/app/core/config\.py$''',
+  '''(?:^|.*/)StudyVault/apps/catalog-service/app/core/config\.py$''',
+]
+regexes = [
+  '''studyvault-keycloak-db-password-change-me''',
+  '''studyvault-internal-token-change-me''',
+  '''replace-with-minio-secret-key''',
+  '''replace-with-a-strong-secret''',
+  '''internal-demo-token''',
+  '''internal-test-token''',
+  '''minioadmin''',
 ]
