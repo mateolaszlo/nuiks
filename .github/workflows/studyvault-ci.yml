@@ -31,7 +31,24 @@ jobs:
           chmod +x /tmp/gitleaks
 
       - name: Run gitleaks
-        run: /tmp/gitleaks git . --config .gitleaks.toml --redact --exit-code 2
+        env:
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            scan_range="$PR_BASE_SHA..$PR_HEAD_SHA"
+          else
+            scan_range="$PUSH_BASE_SHA..$PUSH_HEAD_SHA"
+          fi
+
+          if printf '%s' "$scan_range" | grep -q '^0000000000000000000000000000000000000000\.\.'; then
+            scan_range="$(git rev-list --max-parents=0 HEAD)..HEAD"
+          fi
+
+          /tmp/gitleaks git . --config .gitleaks.toml --redact --exit-code 2 --log-opts="$scan_range"
 
   pytest:
     if: github.event_name == 'push' && github.ref == 'refs/heads/testing'

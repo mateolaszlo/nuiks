@@ -597,7 +597,9 @@ def test_ci_workflow_runs_gitleaks_before_heavier_jobs() -> None:
     assert "actions/setup-node@v6" in workflow
     assert "gitleaks/gitleaks-action" not in workflow
     assert "curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" in workflow
-    assert "/tmp/gitleaks git . --config .gitleaks.toml --redact --exit-code 2" in workflow
+    assert "--log-opts=\"$scan_range\"" in workflow
+    assert 'if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then' in workflow
+    assert "git rev-list --max-parents=0 HEAD" in workflow
     assert "fetch-depth: 0" in workflow
     assert "needs: secret-scan" in workflow
 
@@ -612,13 +614,13 @@ def test_gitleaks_config_allowlists_fake_env_fixtures() -> None:
     assert "studyvault-private-keys" in gitleaks_config
     assert r"(?:^|.*/)StudyVault/\.env\.example$" in gitleaks_config
     assert r"(?:^|.*/)StudyVault/\.env\.test$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/README\.md$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/SECURITY_REVIEW\.md$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/docs/deployment\.md$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/infra/docker/compose/docker-compose\.yml$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/tests/smoke/test_compose_assets\.py$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/apps/activity-service/app/core/config\.py$" in gitleaks_config
-    assert r"(?:^|.*/)StudyVault/apps/catalog-service/app/core/config\.py$" in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/README\.md$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/SECURITY_REVIEW\.md$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/docs/deployment\.md$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/infra/docker/compose/docker-compose\.yml$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/tests/smoke/test_compose_assets\.py$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/apps/activity-service/app/core/config\.py$" not in gitleaks_config
+    assert r"(?:^|.*/)StudyVault/apps/catalog-service/app/core/config\.py$" not in gitleaks_config
     assert "studyvault-keycloak-db-password-change-me" in gitleaks_config
     assert "studyvault-internal-token-change-me" in gitleaks_config
     assert "replace-with-minio-secret-key" in gitleaks_config

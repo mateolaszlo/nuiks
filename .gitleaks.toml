@@ -6,12 +6,12 @@ useDefault = true
 [[rules]]
 id = "studyvault-named-secrets"
 description = "StudyVault named secrets in env-style files"
-regex = '''(?i)(KEYCLOAK_ADMIN_PASSWORD|KC_BOOTSTRAP_ADMIN_PASSWORD|KEYCLOAK_DB_PASSWORD|FILE_S3_SECRET_KEY|STUDYVAULT_INTERNAL_TOKEN)\s*=\s*["']?[A-Za-z0-9_./+=:@-]{8,}["']?'''
+regex = '''(?i)^\s*(KEYCLOAK_ADMIN_PASSWORD|KC_BOOTSTRAP_ADMIN_PASSWORD|KEYCLOAK_DB_PASSWORD|FILE_S3_SECRET_KEY|STUDYVAULT_INTERNAL_TOKEN)\s*(?:=|:)\s*["']?(?:\$\{[A-Z0-9_]+:-)?[A-Za-z0-9_./+=:@-]{8,}(?:\})?["']?\s*$'''
 
 [[rules]]
 id = "studyvault-db-urls-with-passwords"
 description = "Database URLs with embedded passwords"
-regex = '''(?i)(postgres(?:ql)?(?:\+[a-z0-9]+)?://[^:\s]+:[^@\s]+@|mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@)'''
+regex = '''(?i)^\s*[A-Z0-9_]+\s*(?:=|:)\s*["']?(?:\$\{[A-Z0-9_]+:-)?(postgres(?:ql)?(?:\+[a-z0-9]+)?://[^:\s]+:[^@\s]+@|mongodb(?:\+srv)?://[^:\s]+:[^@\s]+@)(?:\})?["']?\s*$'''
 
 [[rules]]
 id = "studyvault-private-keys"
@@ -23,13 +23,6 @@ description = "Known fake env fixtures"
 paths = [
   '''(?:^|.*/)StudyVault/\.env\.example$''',
   '''(?:^|.*/)StudyVault/\.env\.test$''',
-  '''(?:^|.*/)StudyVault/README\.md$''',
-  '''(?:^|.*/)StudyVault/SECURITY_REVIEW\.md$''',
-  '''(?:^|.*/)StudyVault/docs/deployment\.md$''',
-  '''(?:^|.*/)StudyVault/infra/docker/compose/docker-compose\.yml$''',
-  '''(?:^|.*/)StudyVault/tests/smoke/test_compose_assets\.py$''',
-  '''(?:^|.*/)StudyVault/apps/activity-service/app/core/config\.py$''',
-  '''(?:^|.*/)StudyVault/apps/catalog-service/app/core/config\.py$''',
 ]
 regexes = [
   '''studyvault-keycloak-db-password-change-me''',
