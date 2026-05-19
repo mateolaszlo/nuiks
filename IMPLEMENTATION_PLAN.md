@@ -1058,10 +1058,10 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 ### 6.15.3 Security headers and browser hardening
 
-- [ ] Add `server_tokens off;` to nginx so version details are not advertised by default
-- [ ] Keep `X-Content-Type-Options: nosniff` on browser-facing responses
-- [ ] Keep `Referrer-Policy: strict-origin-when-cross-origin` on browser-facing responses
-- [ ] Keep `Permissions-Policy` restrictive for unused browser capabilities
+- [x] Add `server_tokens off;` to nginx so version details are not advertised by default
+- [x] Keep `X-Content-Type-Options: nosniff` on browser-facing responses
+- [x] Keep `Referrer-Policy: strict-origin-when-cross-origin` on browser-facing responses
+- [x] Keep `Permissions-Policy` restrictive for unused browser capabilities
 - [ ] Add `Cross-Origin-Opener-Policy: same-origin` if it does not break Keycloak login/account flows
 - [ ] Add `Cross-Origin-Resource-Policy: same-origin` for same-origin application responses if compatible with proxied assets
 - [x] Prefer CSP `frame-ancestors` over relying only on `X-Frame-Options`
@@ -1069,10 +1069,16 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Replace broad `script-src 'unsafe-inline'` with nonce/hash-based exceptions or route-specific CSP where practical
 - [x] Keep `style-src 'unsafe-inline'` only if required by the current frontend/Keycloak rendering path, and document why it remains necessary
 - [x] Add a separate CSP note for `silent-check-sso.html` if that file is the reason inline script is still allowed
-- [ ] Add `Cache-Control: no-store` for `/api/v1/admin/` responses and other sensitive JSON responses
-- [ ] Add `Cache-Control: no-store` for responses that can include temporary passwords, account-management state, or token-adjacent details
+- [x] Add `Cache-Control: no-store` for `/api/v1/admin/` responses and other sensitive JSON responses
+- [x] Add `Cache-Control: no-store` for responses that can include temporary passwords, account-management state, or token-adjacent details
 - [ ] Increase production HSTS to a preload-ready value only after end-to-end HTTPS is confirmed stable
-- [ ] Add regression tests or nginx config checks for the final browser header set
+- [x] Add regression tests or nginx config checks for the final browser header set
+
+### 6.15.3.1 Safe header hardening without Keycloak-flow risk
+
+- [x] Add `server_tokens off;` to the nginx gateway
+- [x] Add `Cache-Control: no-store` to admin JSON responses, including temporary-password flows
+- [x] Extend nginx config coverage for the safe browser header subset that does not risk Keycloak iframe/account compatibility
 
 ### 6.15.4 TLS, proxy, and public deployment posture
 
