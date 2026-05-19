@@ -408,6 +408,7 @@ def test_internal_fanout_is_not_exposed_through_gateway() -> None:
     downstream_contents = (project_root / "apps" / "file-service" / "app" / "services" / "downstream.py").read_text()
     config_contents = (project_root / "apps" / "file-service" / "app" / "core" / "config.py").read_text()
 
+    assert "location /internal/files/" not in nginx_contents
     assert "location /internal/catalog/" not in nginx_contents
     assert "location /internal/search/" not in nginx_contents
     assert "location /internal/activity/" not in nginx_contents
