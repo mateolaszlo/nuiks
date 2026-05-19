@@ -590,8 +590,13 @@ def test_ci_workflow_runs_gitleaks_before_heavier_jobs() -> None:
     workflow = (repo_root / ".github" / "workflows" / "studyvault-ci.yml").read_text()
 
     assert "secret-scan:" in workflow
-    assert "gitleaks/gitleaks-action@v2" in workflow
-    assert "GITLEAKS_CONFIG: .gitleaks.toml" in workflow
+    assert "actions/checkout@v6" in workflow
+    assert "actions/setup-python@v6" in workflow
+    assert "actions/setup-node@v6" in workflow
+    assert "gitleaks/gitleaks-action" not in workflow
+    assert "curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" in workflow
+    assert "/tmp/gitleaks git . --config .gitleaks.toml --redact --exit-code 2" in workflow
+    assert "fetch-depth: 0" in workflow
     assert "needs: secret-scan" in workflow
 
 
