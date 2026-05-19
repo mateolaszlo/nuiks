@@ -370,9 +370,9 @@ Compose uses `depends_on` with health conditions to reduce race conditions:
 - `keycloak` waits for PostgreSQL and the rendered realm file
 - workers wait for the services they call internally
 
-### Public ports
+### Host Ports
 
-The following host ports are commonly exposed:
+The following ports are bound on the Docker host for local access, administration, or gateway entrypoints:
 
 - `8080` -> public gateway
 - `8081` -> direct Keycloak access
