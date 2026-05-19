@@ -492,6 +492,7 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert """default "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
     assert """~^/(realms|resources|js)/ "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
     assert "add_header Content-Security-Policy $studyvault_csp_header always;" in nginx_contents
+    assert 'add_header Cross-Origin-Resource-Policy "same-origin" always;' in nginx_contents
     assert "base-uri 'self';" in nginx_contents
     assert "object-src 'none';" in nginx_contents
     assert "form-action 'self';" in nginx_contents
