@@ -5,6 +5,7 @@ This directory contains the operational and background documentation that comple
 ## Recommended Entry Points
 
 - [../README.md](../README.md): product overview, local startup, and validation entrypoint
+- [microservices.md](microservices.md): overview of the active microservices, support services, and Docker Compose topology
 - [api.md](api.md): public API reference for the gateway-facing `/api/v1/...` routes
 - [deployment.md](deployment.md): full local, LAN, and Cloudflare-backed deployment runbook
 - [../tests/README.md](../tests/README.md): test taxonomy, smoke workflow, and Playwright commands
