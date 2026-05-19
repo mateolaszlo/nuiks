@@ -1063,7 +1063,7 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Keep `Referrer-Policy: strict-origin-when-cross-origin` on browser-facing responses
 - [x] Keep `Permissions-Policy` restrictive for unused browser capabilities
 - [ ] Add `Cross-Origin-Opener-Policy: same-origin` if it does not break Keycloak login/account flows
-- [ ] Add `Cross-Origin-Resource-Policy: same-origin` for same-origin application responses if compatible with proxied assets
+- [x] Add `Cross-Origin-Resource-Policy: same-origin` for same-origin application responses if compatible with proxied assets
 - [x] Prefer CSP `frame-ancestors` over relying only on `X-Frame-Options`
 - [x] Keep `X-Frame-Options: SAMEORIGIN` only as a compatibility fallback while Keycloak silent SSO constraints are evaluated
 - [x] Replace broad `script-src 'unsafe-inline'` with nonce/hash-based exceptions or route-specific CSP where practical
@@ -1079,6 +1079,12 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [x] Add `server_tokens off;` to the nginx gateway
 - [x] Add `Cache-Control: no-store` to admin JSON responses, including temporary-password flows
 - [x] Extend nginx config coverage for the safe browser header subset that does not risk Keycloak iframe/account compatibility
+
+### 6.15.3.2 CORP hardening with COOP deferred
+
+- [x] Add `Cross-Origin-Resource-Policy: same-origin` to browser-facing gateway responses
+- [x] Extend nginx config coverage for the added `CORP` header
+- [ ] Verify `Cross-Origin-Opener-Policy: same-origin` against Keycloak silent-SSO and account-console flows before enabling it
 
 ### 6.15.4 TLS, proxy, and public deployment posture
 
