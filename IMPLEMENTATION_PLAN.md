@@ -1039,16 +1039,22 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 
 ### 6.15.2 Frontend exposure and network-call checks
 
-- [ ] Audit all `import.meta.env` usage in `apps/frontend` and confirm only safe `VITE_*` public values are referenced
-- [ ] Confirm no backend-only values such as database URLs, internal service tokens, MinIO secrets, or Keycloak admin credentials are referenced by frontend code
-- [ ] Build the frontend and search the generated `dist/` output for known secret variable names and local secret values
-- [ ] Search frontend source for `apiKey`, `secret`, `password`, `token`, `Authorization`, `Bearer`, and direct service URLs
-- [ ] Verify frontend network calls go only through the intended same-origin gateway paths such as `/api/v1/...` and proxied Keycloak paths
-- [ ] Confirm the browser never calls internal service hostnames directly, such as `catalog-service`, `file-service`, `search-service`, `activity-service`, `minio`, `postgres`, or `mongo`
-- [ ] Confirm no admin service token is sent from the browser
-- [ ] Confirm access tokens are sent only in the `Authorization` header for authenticated API calls
-- [ ] Confirm no access token, refresh token, temporary password, or reset secret is written to localStorage, sessionStorage, query strings, or application logs
-- [ ] Add a Playwright or smoke check that fails if known local secret values appear in page HTML, loaded JavaScript, or captured network request URLs
+- [x] Audit all `import.meta.env` usage in `apps/frontend` and confirm only safe `VITE_*` public values are referenced
+- [x] Confirm no backend-only values such as database URLs, internal service tokens, MinIO secrets, or Keycloak admin credentials are referenced by frontend code
+- [x] Build the frontend and search the generated `dist/` output for known secret variable names and local secret values
+- [x] Search frontend source for `apiKey`, `secret`, `password`, `token`, `Authorization`, `Bearer`, and direct service URLs
+- [x] Verify frontend network calls go only through the intended same-origin gateway paths such as `/api/v1/...` and proxied Keycloak paths
+- [x] Confirm the browser never calls internal service hostnames directly, such as `catalog-service`, `file-service`, `search-service`, `activity-service`, `minio`, `postgres`, or `mongo`
+- [x] Confirm no admin service token is sent from the browser
+- [x] Confirm access tokens are sent only in the `Authorization` header for authenticated API calls
+- [x] Confirm no access token, refresh token, temporary password, or reset secret is written to localStorage, sessionStorage, query strings, or application logs
+- [x] Add a Playwright or smoke check that fails if known local secret values appear in page HTML, loaded JavaScript, or captured network request URLs
+
+### 6.15.2.1 Frontend exposure audit baseline
+
+- [x] Add static smoke coverage for safe `import.meta.env`, relative network targets, and forbidden backend-only names
+- [x] Add a build-time `dist/` scanner for leaked secret variable names, local secret values, and internal hostnames
+- [x] Add browser-side request and storage regression coverage for auth headers, query strings, and secret leakage
 
 ### 6.15.3 Security headers and browser hardening
 
