@@ -487,6 +487,7 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     silent_sso_html = (project_root / "apps" / "frontend" / "public" / "silent-check-sso.html").read_text()
     silent_sso_script = (project_root / "apps" / "frontend" / "public" / "silent-check-sso.js").read_text()
 
+    assert "server_tokens off;" in nginx_contents
     assert "map $request_uri $studyvault_csp_header {" in nginx_contents
     assert """default "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
     assert """~^/(realms|resources|js)/ "default-src 'self'; base-uri 'self'; object-src 'none'; form-action 'self'; frame-ancestors 'self'; frame-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";""" in nginx_contents
@@ -510,6 +511,8 @@ def test_gateway_browser_security_headers_are_configured() -> None:
     assert "map $studyvault_forwarded_proto $studyvault_hsts_header" in nginx_contents
     assert 'https "max-age=31536000; includeSubDomains";' in nginx_contents
     assert "add_header Strict-Transport-Security $studyvault_hsts_header always;" in nginx_contents
+    assert 'location ^~ /api/v1/admin/ {' in nginx_contents
+    assert 'add_header Cache-Control "no-store" always;' in nginx_contents
     assert '<script src="/silent-check-sso.js"></script>' in silent_sso_html
     assert "parent.postMessage(location.href, location.origin);" in silent_sso_script
     assert "parent.postMessage(location.href, location.origin);" not in silent_sso_html
