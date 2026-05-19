@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import {
@@ -9,6 +12,58 @@ import {
   openAdminWorkspace,
   openDriveWorkspace,
 } from "./helpers";
+
+const FRONTEND_SECURITY_QUERY_KEYS = [
+  "access_token",
+  "refresh_token",
+  "token",
+  "password",
+  "temporary_password",
+  "reset_secret",
+];
+
+const FRONTEND_SECURITY_INTERNAL_HOSTS = [
+  "catalog-service",
+  "file-service",
+  "search-service",
+  "activity-service",
+  "minio",
+  "postgres",
+  "mongodb",
+];
+
+function readFrontendSecurityMarkers(): string[] {
+  const envPath = path.resolve(process.cwd(), "../../.env.example");
+  const interestingKeys = new Set([
+    "KEYCLOAK_DB_PASSWORD",
+    "STUDYVAULT_INTERNAL_TOKEN",
+    "FILE_S3_SECRET_KEY",
+    "CATALOG_DATABASE_URL",
+    "SEARCH_MONGODB_URL",
+    "ACTIVITY_MONGODB_URL",
+  ]);
+  const markers = new Set<string>([
+    ...interestingKeys,
+    ...FRONTEND_SECURITY_INTERNAL_HOSTS,
+  ]);
+
+  for (const line of fs.readFileSync(envPath, "utf-8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+    const [key, value] = trimmed.split("=", 2);
+    if (!interestingKeys.has(key)) {
+      continue;
+    }
+    markers.add(key);
+    if (value && !value.startsWith("${") && value.length >= 8) {
+      markers.add(value);
+    }
+  }
+
+  return [...markers];
+}
 
 test("login, upload, search, activity, download, and log ingestion", async ({ page, request }) => {
   const uniqueId = Date.now().toString();
@@ -90,7 +145,7 @@ test("login, upload, search, activity, download, and log ingestion", async ({ pa
 test.describe("authenticated drive workspace", () => {
   test.use({ storageState: DEMO_STORAGE_STATE });
 
-test("profile menu shows token details and account links", async ({ page }) => {
+test("profile menu shows account identity and account links", async ({ page }) => {
   await openDriveWorkspace(page);
 
   await page.getByRole("button", { name: "Open profile menu for demo" }).click();
@@ -107,6 +162,79 @@ test("profile menu shows token details and account links", async ({ page }) => {
 
   await page.getByRole("heading", { name: "My Drive" }).click();
   await expect(profileMenu).toHaveCount(0);
+});
+
+test("frontend security keeps secrets out of storage, bundles, and request URLs", async ({ page, request }) => {
+  const seenRequests: Array<{ url: string; headers: Record<string, string> }> = [];
+  const secretMarkers = readFrontendSecurityMarkers();
+  const baseOrigin = new URL(BASE_URL).origin;
+
+  page.on("request", (outboundRequest) => {
+    seenRequests.push({
+      url: outboundRequest.url(),
+      headers: outboundRequest.headers(),
+    });
+  });
+
+  await openDriveWorkspace(page);
+  await page.getByRole("button", { name: "Refresh" }).first().click();
+  await expect(page.getByRole("heading", { name: "My Drive" })).toBeVisible();
+
+  const pageHtml = await page.content();
+  for (const marker of secretMarkers) {
+    expect(pageHtml).not.toContain(marker);
+  }
+
+  const scriptUrls = await page.locator("script[src]").evaluateAll((scripts) =>
+    scripts
+      .map((script) => script.getAttribute("src"))
+      .filter((value): value is string => Boolean(value)),
+  );
+  for (const scriptUrl of scriptUrls) {
+    const absoluteUrl = new URL(scriptUrl, BASE_URL).toString();
+    const response = await request.get(absoluteUrl);
+    expect(response.ok()).toBeTruthy();
+    const scriptBody = await response.text();
+    for (const marker of secretMarkers) {
+      expect(scriptBody).not.toContain(marker);
+    }
+  }
+
+  const storageSnapshot = await page.evaluate(() => ({
+    local: { ...window.localStorage },
+    session: { ...window.sessionStorage },
+  }));
+  const storageText = JSON.stringify(storageSnapshot).toLowerCase();
+  for (const queryKey of FRONTEND_SECURITY_QUERY_KEYS) {
+    expect(storageText).not.toContain(queryKey);
+  }
+  expect(storageText).not.toContain("bearer ");
+
+  const apiRequests = seenRequests.filter(({ url }) => {
+    const parsed = new URL(url);
+    return parsed.origin === baseOrigin && parsed.pathname.startsWith("/api/v1/");
+  });
+
+  expect(apiRequests.length).toBeGreaterThan(0);
+
+  for (const { url, headers } of seenRequests) {
+    const parsed = new URL(url);
+    for (const hostname of FRONTEND_SECURITY_INTERNAL_HOSTS) {
+      expect(parsed.hostname).not.toBe(hostname);
+      expect(parsed.href).not.toContain(hostname);
+    }
+    for (const queryKey of FRONTEND_SECURITY_QUERY_KEYS) {
+      expect(parsed.searchParams.has(queryKey)).toBeFalsy();
+    }
+    expect(Object.keys(headers).some((header) => header.toLowerCase() === "x-internal-token")).toBeFalsy();
+  }
+
+  for (const { url, headers } of apiRequests) {
+    expect(headers.authorization).toMatch(/^Bearer\s.+/);
+    expect(headers["x-internal-token"]).toBeUndefined();
+    const parsed = new URL(url);
+    expect(parsed.pathname.startsWith("/api/v1/")).toBeTruthy();
+  }
 });
 
 test("file can be dragged into a folder tile", async ({ page }) => {

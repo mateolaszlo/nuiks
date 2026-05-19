@@ -89,6 +89,9 @@ jobs:
         working-directory: StudyVault/apps/frontend
         run: npm run build
 
+      - name: Run frontend bundle security scan
+        run: .venv/bin/python tests/smoke/check_frontend_dist_security.py
+
       - name: Validate Docker Compose
         run: docker compose --profile local-minio --env-file .env.example -f infra/docker/compose/docker-compose.yml config
 
