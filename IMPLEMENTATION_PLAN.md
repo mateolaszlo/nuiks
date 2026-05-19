@@ -1100,8 +1100,8 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [ ] Disable direct access grants for the browser SPA client unless a specific tested flow requires them
 - [ ] Enable Keycloak brute-force protection for production
 - [ ] Keep the public client audience contract aligned with backend JWT audience validation
-- [ ] Confirm wrong-audience tokens are rejected by every public service
-- [ ] Confirm internal routes cannot be reached with only a browser access token
+- [x] Confirm wrong-audience tokens are rejected by every public service
+- [x] Confirm internal routes cannot be reached with only a browser access token
 - [ ] Confirm internal-token values are never exposed to frontend code, frontend build output, or network responses
 - [ ] Upgrade Keycloak to a currently supported patched image before production deployment
 
@@ -1110,12 +1110,20 @@ Revision note: replaced hardcoded frontend account-console links with Keycloak-g
 - [ ] Verify every public `/api/v1/...` route requires the shared auth dependency unless it is intentionally public
 - [ ] Verify every admin route requires an admin role check in addition to normal authentication
 - [ ] Verify every internal `/internal/...` route requires `X-Internal-Token`
-- [ ] Confirm internal routes are not exposed through nginx public routing
-- [ ] Add explicit tests for unauthenticated, wrong-role, wrong-audience, and wrong-internal-token access
+- [x] Confirm internal routes are not exposed through nginx public routing
+- [x] Add explicit tests for unauthenticated, wrong-role, wrong-audience, and wrong-internal-token access
 - [ ] For temporary password return, mark the response `Cache-Control: no-store`
 - [ ] For temporary password return, ensure the temporary password is shown only once and is never logged
 - [ ] Ensure request and error logs do not include bearer tokens, internal tokens, temporary passwords, reset links, or full database URLs
 - [ ] Add log redaction for known sensitive header and field names
+
+### 6.15.6.1 Access-control regression baseline
+
+- [x] Add representative public-route tests proving all public services reject missing bearer tokens
+- [x] Add representative HTTP-boundary tests proving wrong-audience tokens are rejected by catalog, search, activity, and file services
+- [x] Add representative internal-route tests proving browser bearer tokens and wrong `X-Internal-Token` values are rejected across catalog, search, activity, and file services
+- [x] Add explicit unauthenticated admin-route coverage alongside the existing wrong-role admin coverage
+- [x] Extend nginx smoke coverage to include file-service internal route non-exposure
 
 ### 6.15.7 OWASP baseline review
 
