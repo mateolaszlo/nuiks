@@ -935,7 +935,8 @@ test("trash view survives activity service failure", async ({ page }) => {
   await openDriveWorkspace(page);
 
   failActivity = true;
-  await page.getByRole("button", { name: "Trash" }).click();
+  const sidebar = page.locator("aside.sidebar").first();
+  await sidebar.getByRole("button", { name: "Trash", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Trash" })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(".error-banner").filter({ hasText: "Trash load failed" })).toHaveCount(0);
@@ -945,6 +946,7 @@ test("trash item can be permanently deleted after confirmation", async ({ page }
   const uniqueId = Date.now().toString();
   const filename = `trash-delete-${uniqueId}.txt`;
   const driveSurface = page.locator("section").filter({ has: page.getByRole("heading", { name: "My Drive" }) }).first();
+  const sidebar = page.locator("aside.sidebar").first();
 
   await openDriveWorkspace(page);
 
@@ -961,7 +963,7 @@ test("trash item can be permanently deleted after confirmation", async ({ page }
   await driveSurface.getByRole("button", { name: `More actions for ${filename}` }).click();
   await page.locator(".context-menu").getByRole("button", { name: "Move to Trash" }).click();
 
-  await page.getByRole("button", { name: "Trash" }).click();
+  await sidebar.getByRole("button", { name: "Trash", exact: true }).click();
 
   const trashRow = page.locator(".table-row-trash").filter({ hasText: filename }).first();
   await expect(page.getByRole("heading", { name: "Trash" })).toBeVisible({ timeout: 60_000 });
